@@ -31,6 +31,30 @@ It's not "a calming app." It's not "a hype playlist." It's not trying to make yo
 
 **The gap it fills:** WHOOP identifies the problem but doesn't act on it. Your Spotify library has the remedy but doesn't know which one you need today. Attuned closes the loop — it takes the diagnosis and applies the right intervention, automatically, every morning.
 
+### The Deeper Problem: Insights Without Action
+
+This is a universal problem with wearables, not just a personal one. Talk to anyone who wears a WHOOP — they see the data, they understand it broadly, but they don't take a specific, concrete action because of it on any given day. What are you going to do with a 42% recovery — decide to sleep better tonight? You were already trying. Reduce stress? Sure, but how, specifically, right now?
+
+The insight is real but the actionable step is missing. And humans are creatures of routine — making significant behavioral changes on a given day is genuinely hard. You can't restructure your sleep schedule on a Tuesday morning. You can't undo accumulated fatigue by willing it away.
+
+But you CAN press play on a playlist. You were already going to listen to music — on your commute, at your desk, before a workout, while studying. Music is something people do every single day, across every age and lifestyle. It requires zero extra effort, zero behavior change, zero willpower. Attuned doesn't ask you to do anything new. It makes something you already do work harder for you.
+
+### The Motivation Loop
+
+This is the part that makes Attuned stick. The value isn't only that the music physiologically helps your nervous system (though it does). It's that **knowing you're taking action toward your recovery creates its own positive effect.**
+
+When you open that playlist, you feel agency. You feel like the WHOOP data is finally *working for you* instead of just informing you. The data isn't sitting in an app being passively acknowledged — it's driving a real, tangible thing you can hear and feel. That sense of "I'm listening to something I love AND I'm doing something good for myself" creates a motivation loop:
+
+1. You see your WHOOP data → you're aware of your state
+2. A playlist appears that's matched to that state → the insight becomes action
+3. You listen to YOUR songs and enjoy them → the action feels good, not like medicine
+4. You feel like you're making progress toward better recovery → motivation to engage tomorrow
+5. Repeat daily → the habit builds itself because it's rewarding at every step
+
+This is the difference between Attuned and a generic "calming music" app. A calming app feels like medicine — you use it when you "should" and abandon it when you forget. Attuned feels like YOUR music that happens to also be the right music. You're not doing a health intervention. You're just listening to a great playlist. The intervention is invisible.
+
+**Who this works for:** A student heading to class listening to a playlist that grounds them after a rough night's sleep. A professional on their morning commute whose playlist matches their recovery state without them lifting a finger. An athlete whose pre-workout music adapts to whether their body is ready for intensity or needs a lighter day. Anyone who wears a WHOOP and listens to music — which is to say, everyone who wears a WHOOP.
+
 ---
 
 ## 2. What Attuned Does (30 Seconds)
