@@ -21,6 +21,7 @@ COMMANDS = {
     "sync-whoop": "Pull today's WHOOP recovery + sleep data",
     "sync-spotify": "Sync liked songs, top tracks, and fetch metadata from Spotify",
     "sync-all": "Run sync-whoop and sync-spotify",
+    "compute-engagement": "Compute engagement scores for all eligible songs",
     "generate": "Generate today's playlist (not yet implemented)",
 }
 
@@ -41,6 +42,8 @@ def main() -> None:
     elif command == "sync-all":
         _cmd_sync_whoop()
         _cmd_sync_spotify()
+    elif command == "compute-engagement":
+        _cmd_compute_engagement()
     elif command == "sync-whoop-history":
         _cmd_sync_whoop_history()
     elif command == "generate":
@@ -125,6 +128,7 @@ def _cmd_sync_whoop() -> None:
 def _cmd_sync_spotify() -> None:
     from spotify.auth import get_spotify_client
     from spotify.sync import sync_liked_songs, sync_top_tracks, fetch_batch_metadata
+    from spotify.engagement import compute_engagement_scores
 
     conn = get_connection()
     sp = get_spotify_client(conn)
@@ -135,6 +139,47 @@ def _cmd_sync_spotify() -> None:
     print(f"  Liked songs:   {liked:,}")
     print(f"  Top tracks:    {top:,}")
     print(f"  Metadata fetched: {metadata:,}")
+
+    scored = compute_engagement_scores(conn)
+    print(f"  Engagement scored: {scored:,}")
+    conn.close()
+
+
+def _cmd_compute_engagement() -> None:
+    from spotify.engagement import compute_engagement_scores
+
+    conn = get_connection()
+    scored = compute_engagement_scores(conn)
+    print(f"\nEngagement scoring complete: {scored:,} songs scored")
+
+    # Distribution summary
+    rows = conn.execute("""
+        SELECT ROUND(engagement_score, 1) as bucket, COUNT(*) as cnt
+        FROM songs WHERE engagement_score IS NOT NULL
+        GROUP BY bucket ORDER BY bucket
+    """).fetchall()
+    if rows:
+        print("\nScore distribution:")
+        for row in rows:
+            print(f"  {row['bucket']:.1f}: {row['cnt']:,} songs")
+
+    # Top 10
+    top = conn.execute("""
+        SELECT name, artist, play_count, engagement_score
+        FROM songs ORDER BY engagement_score DESC LIMIT 10
+    """).fetchall()
+    if top:
+        print("\nTop 10 by engagement:")
+        for i, row in enumerate(top, 1):
+            print(f"  {i:2d}. {row['name']} — {row['artist']} "
+                  f"(plays: {row['play_count']}, score: {row['engagement_score']:.4f})")
+
+    # Integrity checks
+    bad = conn.execute(
+        "SELECT COUNT(*) as cnt FROM songs WHERE engagement_score < 0 OR engagement_score > 1"
+    ).fetchone()
+    print(f"\nScores outside [0,1]: {bad['cnt']}")
+
     conn.close()
 
 
