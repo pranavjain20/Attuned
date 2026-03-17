@@ -1,0 +1,19 @@
+# Spotify
+spotipy>=2.23,<3.0
+
+# HTTP (WHOOP client)
+httpx>=0.27,<1.0
+
+# Data
+pandas>=2.1,<3.0
+numpy>=1.26,<3.0
+
+# LLM classification
+openai>=1.0,<2.0
+anthropic>=0.30,<1.0
+
+# Config
+python-dotenv>=1.0,<2.0
+
+# Testing
+pytest>=8.0,<9.0
