@@ -216,6 +216,18 @@ def upsert_whoop_recovery(
 ) -> None:
     """Insert or update a WHOOP recovery record. Computes ln_rmssd on write."""
     ln_rmssd = math.log(hrv_rmssd_milli) if hrv_rmssd_milli and hrv_rmssd_milli > 0 else None
+    # Check if this date already has a recovery from a different cycle
+    existing = conn.execute(
+        "SELECT cycle_id, recovery_score FROM whoop_recovery WHERE date = ?", (date,)
+    ).fetchone()
+
+    if existing and existing["cycle_id"] != cycle_id:
+        # Same date, different cycle — keep the one with higher recovery score
+        if (recovery_score or 0) <= (existing["recovery_score"] or 0):
+            return  # existing is better or equal, skip
+        # New one is better — delete old, insert new
+        conn.execute("DELETE FROM whoop_recovery WHERE cycle_id = ?", (existing["cycle_id"],))
+
     conn.execute(
         """INSERT INTO whoop_recovery
                (cycle_id, date, recovery_score, hrv_rmssd_milli, ln_rmssd,
@@ -268,6 +280,14 @@ def upsert_whoop_sleep(
     sleep_needed_nap_ms: int | None = None,
 ) -> None:
     """Insert or update a WHOOP sleep record."""
+    # Null out FK if referenced cycle doesn't exist (deduplicated during full sync)
+    if recovery_cycle_id is not None:
+        exists = conn.execute(
+            "SELECT 1 FROM whoop_recovery WHERE cycle_id = ?", (recovery_cycle_id,)
+        ).fetchone()
+        if not exists:
+            recovery_cycle_id = None
+
     conn.execute(
         """INSERT INTO whoop_sleep
                (sleep_id, date, recovery_cycle_id, deep_sleep_ms, rem_sleep_ms,

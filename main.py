@@ -41,6 +41,8 @@ def main() -> None:
     elif command == "sync-all":
         _cmd_sync_whoop()
         _cmd_sync_spotify()
+    elif command == "sync-whoop-history":
+        _cmd_sync_whoop_history()
     elif command == "generate":
         print("Not yet implemented — playlist generation comes Day 5-6.")
     elif command == "auth-whoop":
@@ -86,6 +88,21 @@ def _cmd_ingest_history() -> None:
         "SELECT COUNT(*) as cnt FROM songs WHERE play_count >= 10"
     ).fetchone()
     print(f"  songs (10+ plays):  {row['cnt']:,}")
+    conn.close()
+
+
+def _cmd_sync_whoop_history() -> None:
+    from whoop.sync import sync_full_history
+    from db.queries import count_rows
+
+    conn = get_connection()
+    result = sync_full_history(conn)
+    print(f"\nWHOOP full history sync complete:")
+    print(f"  Recovery records: {result['recovery']:,}")
+    print(f"  Sleep records:    {result['sleep']:,}")
+    print(f"\nDatabase totals:")
+    print(f"  whoop_recovery: {count_rows(conn, 'whoop_recovery'):,}")
+    print(f"  whoop_sleep:    {count_rows(conn, 'whoop_sleep'):,}")
     conn.close()
 
 

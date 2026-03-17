@@ -49,7 +49,7 @@ SPOTIFY_BATCH_SIZE = 50
 # Engagement scoring
 # ---------------------------------------------------------------------------
 MIN_PLAY_DURATION_MS = 30_000
-MIN_MEANINGFUL_LISTENS = 5
+MIN_MEANINGFUL_LISTENS = 3
 
 # ---------------------------------------------------------------------------
 # Intelligence thresholds (used in later days)
