@@ -38,19 +38,23 @@ def get_top_tracks(sp: Any, time_range: str = "medium_term") -> list[dict[str, A
 
 
 def get_tracks_metadata(sp: Any, track_ids: list[str]) -> list[dict[str, Any]]:
-    """Fetch track metadata (including duration_ms) for a batch of track IDs.
+    """Fetch track metadata (including duration_ms) for a list of track IDs.
 
-    track_ids should be Spotify track IDs (not full URIs). Max 50 per call.
+    Fetches one at a time — Spotify's batch /v1/tracks endpoint returns 403
+    for new apps, but the single track endpoint works.
     """
     if not track_ids:
         return []
-    results = sp.tracks(track_ids)
     parsed = []
-    for track in results.get("tracks", []):
-        if track:
-            p = _parse_track(track)
-            if p:
-                parsed.append(p)
+    for track_id in track_ids:
+        try:
+            track = sp.track(track_id, market="from_token")
+            if track:
+                p = _parse_track(track)
+                if p:
+                    parsed.append(p)
+        except Exception:
+            logger.warning("Failed to fetch metadata for track %s", track_id)
     return parsed
 
 

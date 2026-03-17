@@ -249,7 +249,7 @@ def get_recovery_by_date(conn: sqlite3.Connection, date: str) -> dict[str, Any] 
 
 def upsert_whoop_sleep(
     conn: sqlite3.Connection,
-    sleep_id: int,
+    sleep_id: int | str,
     date: str,
     recovery_cycle_id: int | None = None,
     deep_sleep_ms: int | None = None,

@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS whoop_recovery (
 );
 
 CREATE TABLE IF NOT EXISTS whoop_sleep (
-    sleep_id            INTEGER PRIMARY KEY,
+    sleep_id            TEXT PRIMARY KEY,         -- UUID in v2 API
     date                TEXT NOT NULL,             -- YYYY-MM-DD, derived from sleep end time
     recovery_cycle_id   INTEGER,
     deep_sleep_ms       INTEGER,

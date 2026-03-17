@@ -65,9 +65,9 @@ class TestGetTopTracks:
 
 
 class TestGetTracksMetadata:
-    def test_fetches_batch(self, sample_spotify_track):
+    def test_fetches_single_tracks(self, sample_spotify_track):
         sp = type("MockSp", (), {
-            "tracks": lambda self, ids: {"tracks": [sample_spotify_track]},
+            "track": lambda self, track_id, market=None: sample_spotify_track,
         })()
         results = get_tracks_metadata(sp, ["xyz789"])
         assert len(results) == 1
@@ -77,10 +77,10 @@ class TestGetTracksMetadata:
         sp = type("MockSp", (), {})()
         assert get_tracks_metadata(sp, []) == []
 
-    def test_handles_none_in_results(self):
-        sp = type("MockSp", (), {
-            "tracks": lambda self, ids: {"tracks": [None]},
-        })()
+    def test_handles_failed_track(self):
+        def raise_error(track_id, market=None):
+            raise Exception("Not found")
+        sp = type("MockSp", (), {"track": raise_error})()
         results = get_tracks_metadata(sp, ["xyz789"])
         assert results == []
 

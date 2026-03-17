@@ -189,9 +189,20 @@ def fetch_batch_metadata(conn: sqlite3.Connection, sp: Any) -> int:
     Returns count of songs updated.
     """
     from spotify.client import get_tracks_metadata
-    from config import SPOTIFY_BATCH_SIZE
+    from config import SPOTIFY_BATCH_SIZE, MIN_MEANINGFUL_LISTENS
 
-    missing = queries.get_songs_missing_duration(conn)
+    # Only fetch metadata for songs with enough plays to matter
+    all_missing = queries.get_songs_missing_duration(conn)
+    engaged = {
+        r["spotify_uri"]
+        for r in conn.execute(
+            "SELECT spotify_uri FROM songs WHERE play_count >= ?",
+            (MIN_MEANINGFUL_LISTENS,),
+        ).fetchall()
+    }
+    missing = [uri for uri in all_missing if uri in engaged]
+    logger.info("%d songs missing duration_ms (%d engaged, %d total)",
+                len(missing), len(engaged), len(all_missing))
     if not missing:
         logger.info("All songs already have duration_ms")
         return 0

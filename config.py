@@ -101,4 +101,4 @@ def get_spotify_client_secret() -> str:
 
 
 def get_spotify_redirect_uri() -> str:
-    return os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost:8080/spotify/callback")
+    return os.getenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8080/spotify/callback")
