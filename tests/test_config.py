@@ -23,7 +23,7 @@ class TestConstants:
         assert config.MIN_PLAY_DURATION_MS == 30_000
 
     def test_min_meaningful_listens(self):
-        assert config.MIN_MEANINGFUL_LISTENS == 5
+        assert config.MIN_MEANINGFUL_LISTENS == 3
 
     def test_baseline_window_days(self):
         assert config.BASELINE_WINDOW_DAYS == 30
