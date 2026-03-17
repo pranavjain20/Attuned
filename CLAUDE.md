@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Attuned — a personal system that connects WHOOP recovery data to Spotify using neuroscience research on how music affects the autonomic nervous system. Reads morning WHOOP data (HRV, sleep architecture, trends), classifies physiological state into one of five categories, then generates a Spotify playlist of 15-20 songs from your own library whose acoustic properties are scientifically matched to what your body needs.
+Attuned — a personal system that connects WHOOP recovery data to Spotify using neuroscience research on how music affects the autonomic nervous system. Reads morning WHOOP data (HRV, sleep architecture, trends), classifies physiological state into one of six states, then generates a Spotify playlist of 15-20 songs from your own library whose acoustic properties are scientifically matched to what your body needs.
 
 Single-user, runs locally. Not a company — a personal tool.
 
@@ -65,7 +65,7 @@ attuned/
 │   ├── baselines.py           # Personal rolling averages, standard deviations, CVs
 │   ├── trends.py              # 7-day HRV/RHR slopes, sleep debt trajectory
 │   ├── sleep_analysis.py      # Deep/REM/light ratios vs personal norms
-│   └── state_classifier.py    # Composite state detection (5 states)
+│   └── state_classifier.py    # Composite state detection (6 states)
 ├── classification/
 │   ├── llm_classifier.py      # LLM song classification (BPM, key, energy, valence, etc.)
 │   └── profiler.py            # Neurological impact scoring per song
@@ -79,30 +79,32 @@ attuned/
 
 ## Database Tables
 
-- **songs** — Every unique song. Key: spotify_uri. Track name, artist, album, duration, source.
+- **songs** — Every unique song. Key: spotify_uri. Track name, artist, album, duration, sources (JSON list). Engagement columns: play_count, completion_rate, active_play_rate, skip_rate, engagement_score, first_played, last_played.
 - **whoop_recovery** — One row per day. Recovery score, HRV, RHR, SpO2, skin temp.
 - **whoop_sleep** — One row per sleep session. Stage durations (deep/REM/light/awake), quality metrics, sleep_needed breakdown.
-- **listening_history** — Every play event. spotify_uri, played_at, duration_played. Unique on (spotify_uri, played_at).
+- **listening_history** — Every play event. spotify_uri, played_at, ms_played, reason_start, reason_end, skipped, shuffle, platform. Unique on (spotify_uri, played_at).
 - **song_classifications** — One row per song. LLM properties (BPM, key, mode, energy, valence, acousticness, danceability, mood_tags) + neurological scores. Classification source + raw response.
 - **generated_playlists** — Log of every playlist created. Date, detected state, reasoning, WHOOP metrics, track URIs, Spotify description.
 
-## Five Composite States
+## Six Composite States
 
 1. **Accumulated Fatigue** — HRV declining 3+ days AND RHR rising AND sleep debt accumulating
-2. **Single Bad Night** — Low recovery today but 7-day HRV trend stable/rising
-3. **Physical Recovery Deficit** — Deep sleep significantly below norm, REM adequate
-4. **Emotional Processing Deficit** — REM below norm, deep sleep adequate
-5. **Peak Readiness** — Green recovery, HRV at/above 30-day average, good sleep, low debt
+2. **Physical Recovery Deficit** — Deep sleep significantly below norm, REM adequate
+3. **Emotional Processing Deficit** — REM below norm, deep sleep adequate
+4. **Single Bad Night** — Low recovery today but 7-day HRV trend stable/rising
+5. **Baseline** — Yellow zone, no strong deficit signals
+6. **Peak Readiness** — Green recovery, HRV at/above 30-day average, good sleep, low debt
 
 ## Key Constraints
 
-- **Small library:** ~113 liked songs, ~300-400 after expansion. Matching engine must progressively relax filters when too few songs match. Log when relaxation happens.
+- **Library size:** 679 tracks with 5+ meaningful listens, 366 with 10+. Extended history: 33,427 records, 5,701 unique tracks. Matching engine must progressively relax filters when too few songs match. Log when relaxation happens.
+- **Extended streaming history:** Already contains spotify_track_uri — no search API resolution needed. 58% of plays are <=30s (skips/noise) — filter to >30s for engagement scoring.
 - **Spotify audio features API is deprecated** — classification is entirely LLM-based (then Essentia later)
 - **Spotify playlist descriptions:** 300 character limit
 - **WHOOP tokens:** Expire after 1 hour — must use offline scope for refresh tokens
 - **WHOOP pagination:** 25 records per page using nextToken
 - **WHOOP timestamps:** ISO 8601 with timezone offsets — careful date derivation
-- **LLM classification:** Batch 30-50 songs per call, request ONLY valid JSON (no markdown). Provider-agnostic wrapper so switching OpenAI → Anthropic is a config change.
+- **LLM classification:** Batch 5 songs per call, 679 songs = ~136 calls, ~$0.68. Provider-agnostic wrapper so switching OpenAI → Anthropic is a config change.
 - **Each playlist is a new dated playlist** — not overwriting a standing one. Name includes date + detected state. Description includes reasoning.
 
 ## Key Concepts

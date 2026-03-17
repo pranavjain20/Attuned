@@ -1,6 +1,6 @@
 # Attuned — Product Document
 
-**Version:** 2.0
+**Version:** 2.1
 **Date:** March 16, 2026
 **Author:** Pranav Jain
 **Status:** Planning
@@ -125,38 +125,40 @@ Attuned pulls from three places. Each gives us raw data, and each yields deeper 
 #### What the API Gives Us
 
 - **Saved/liked songs** — Every track I've explicitly saved. Track name, artist, album, Spotify URI.
-- **Recently played** (deferred for v1 — build when extended streaming history arrives ~Mar 20) — Last 50 tracks with exact timestamps.
-- **Extended streaming history** — Requested through spotify.com/account/privacy. Every song ever played since account creation. Includes: track name, artist, timestamp, milliseconds played, skip behavior, whether I chose it or autoplay did, device type, shuffle status. Takes up to 30 days for Spotify to prepare. Arrives as JSON files.
+- **Recently played** (deferred for v1 — extended history provides 6 years of data, making 50-track recent polling unnecessary).
+- **Extended streaming history** — Arrived Mar 16, 2026 (requested Mar 15). Contains 33,427 records spanning Feb 2020 – Mar 2026, with 5,701 unique tracks. Spotify URIs already included in the data — no search API resolution needed. Rich behavioral fields: ms_played, reason_start (clickrow, fwdbtn, trackdone, etc.), reason_end, skipped, shuffle, platform. 58% of plays are <=30s (skips/noise) — filter to >30s for meaningful engagement. 679 tracks have 5+ meaningful listens (>30s), 366 have 10+.
 - **Top items** — Most-played tracks and artists across short-term (~4 weeks), medium-term (~6 months), and long-term (years).
 - **Playlists** — Every playlist I've created or follow, including track listings.
 - **Playlist creation/modification** — Can create playlists, add/remove/replace tracks, set descriptions. This is how the system delivers the output.
 
-**v1 song sources:** Liked songs + top tracks (3 time windows: short/medium/long term). Top artist tracks are deferred because they add globally popular songs the user may never have heard, violating the personal library principle. These can be evaluated after extended streaming history arrives and we can verify actual listening behavior.
+**v1 song sources:** Extended streaming history (primary — 679+ tracks with 5+ meaningful listens) + liked songs + top tracks (3 time windows: short/medium/long term, supplementary engagement signals). Top artist tracks are deferred because they add globally popular songs the user may never have heard, violating the personal library principle.
 
 #### What Intelligence We Can Extract
 
 **The repository.** At the most basic level, Spotify provides every song I can recommend from. The fundamental rule: every recommendation comes from music I've already listened to and presumably liked.
 
-**Genuine preference signals (v1: source-based scoring. Full signals when extended history arrives).** Not all songs in the history are equal:
+**Genuine preference signals (v1: engagement scoring from extended history).** Not all songs in the history are equal:
+- Play count — Songs played dozens of times over years have deep personal significance. Played once = exploratory or incidental. Filtered to meaningful listens (>30s) to exclude skips and noise.
 - Completion rate (ms played / track duration) — Songs listened to in full = genuine preference. Songs skipped at 5 seconds = noise.
-- Play count — Songs played dozens of times over years have deep personal significance. Played once = exploratory or incidental.
-- Active vs. passive — Songs I actively chose (searched, clicked) carry stronger signal than autoplay.
-- Non-skip rate — Even partial listens tell you something. 80% completion is very different from 5%.
+- Active vs. passive — Songs I actively chose (reason_start = clickrow) carry stronger signal than autoplay (reason_start = fwdbtn, trackdone).
+- Skip rate — Tracks where reason_end = fwdbtn or skipped = true indicate weaker preference.
+- Recency — First and last played dates, with more weight toward songs still in rotation.
+- Composite engagement score — Weighted combination of all signals above, computed per song.
 
-The system uses these signals to weight recommendations toward genuinely loved music.
+The system uses these signals to weight recommendations toward genuinely loved music. This replaces the originally planned source-based scoring (liked +3, top track +2) with real behavioral data.
 
-**Temporal listening patterns (deferred — requires extended streaming history).** When I listen to a song matters:
+**Temporal listening patterns (deferred — data available, not quality-blocking for v1).** When I listen to a song matters:
 - Time-of-day patterns — A song consistently played between 6-8 AM has a different role than one played at midnight. The system can learn "morning songs" and "night songs" for me specifically.
 - Sequential patterns — Songs I often play back-to-back have an implicit relationship that informs playlist sequencing.
 
-**Historical correlation with WHOOP data (deferred — requires extended streaming history).** For the overlap period where both datasets exist, the system can discover things neither reveals alone:
+**Historical correlation with WHOOP data (deferred — data available, not quality-blocking for v1).** For the overlap period where both datasets exist, the system can discover things neither reveals alone:
 - Did certain music before bed correlate with better sleep metrics?
 - On low-recovery mornings, what did I naturally gravitate toward? My unconscious choices may reveal what my body instinctively seeks.
 - Did morning music on good recovery days differ systematically from bad recovery days?
 
 This is retrospective analysis that runs once on the full history to find patterns I don't consciously know about.
 
-**Taste profiling (deferred — requires extended streaming history).** Over time, build a picture of my musical identity — genres, artists, language preferences, tempo preferences, emotional range. This ensures recommendations never feel alien even when they're scientifically optimal.
+**Taste profiling (deferred — data available, not quality-blocking for v1).** Over time, build a picture of my musical identity — genres, artists, language preferences, tempo preferences, emotional range. This ensures recommendations never feel alien even when they're scientifically optimal.
 
 ---
 
@@ -261,8 +263,8 @@ Everything the complete system needs. Not all built at once — phasing comes ne
 ### Data Layer
 - WHOOP API integration (OAuth 2.0, token management, data retrieval)
 - Spotify API integration (OAuth 2.0, token management, library access, playlist creation)
-- Extended streaming history ingestion (parse exported JSON)
-- Song metadata database (every unique song with features and classifications)
+- Extended streaming history ingestion (parse exported JSON — arrived Mar 16, 33K records, URIs included)
+- Song metadata database (every unique song with features, classifications, and engagement scores)
 - WHOOP history database (every recovery, sleep, cycle, workout)
 - Listening history database (every play event with timestamp and engagement data)
 - Personal baseline store (rolling averages, trends, norms)
@@ -277,10 +279,10 @@ Everything the complete system needs. Not all built at once — phasing comes ne
 - Song classification pipeline — LLM (broad coverage)
 - Song audio analysis pipeline — Essentia (precision)
 - Neurological impact profiler (song properties → expected ANS effects)
-- Preference signal calculator (v1: source-based scoring. Full signals when extended history arrives)
-- Temporal listening pattern analyzer (deferred — requires extended streaming history)
-- Historical WHOOP-Spotify correlation engine (deferred — requires extended streaming history)
-- Taste profiler (deferred — requires extended streaming history)
+- Engagement score calculator (v1: play count, completion rate, active/passive, skip rate from extended history)
+- Temporal listening pattern analyzer (deferred — data available, not quality-blocking for v1)
+- Historical WHOOP-Spotify correlation engine (deferred — data available, not quality-blocking for v1)
+- Taste profiler (deferred — data available, not quality-blocking for v1)
 
 ### Matching Layer
 - State-to-properties mapper (composite state → target song property ranges)
@@ -304,49 +306,71 @@ Everything the complete system needs. Not all built at once — phasing comes ne
 
 Seven building days. Each phase ends with something testable — you can verify it works before moving on. No building on debt.
 
-### Phase 1 (Days 1-2): Data Foundation
+### Day 1: Project Setup + Extended History Ingestion + First API Pulls
 
 This is the root of everything. If the data is wrong, every layer on top is broken.
 
-**Day 1: Project Setup + API Authentication + First Data Pull.** Create config.py with all constants and thresholds. Design and create the SQLite schema (7 tables including tokens table for OAuth storage). Register apps on both developer dashboards. Get WHOOP OAuth working — authenticate, pull today's recovery and sleep data, confirm real numbers come back. Get Spotify OAuth working — authenticate, pull liked songs (all 113), pull top tracks across all three time windows (short/medium/long term). Deduplicate the song pool — liked songs and top tracks will overlap. Merge into one clean table where each unique song appears once with source tagging (JSON list, e.g. `["liked", "top_track"]`).
+Create config.py with all constants and thresholds. Design and create the SQLite schema (8 tables including tokens table for OAuth storage — songs table includes engagement columns, listening_history includes extended history fields). Parse extended streaming history JSON (33K records). Filter to records with spotify_track_uri only. URIs are already in the data — no Spotify search API resolution needed. Register apps on both developer dashboards. Get WHOOP OAuth working — authenticate, pull today's recovery and sleep data, confirm real numbers come back. Get Spotify OAuth working — authenticate, pull liked songs, pull top tracks across all three time windows (short/medium/long term). These are now supplementary engagement signals, not the primary song pool. Deduplicate: merge all sources into songs table. Each unique song appears once with sources JSON list.
 
-**Day 2: Full WHOOP History + Data Integrity.** Paginate through entire WHOOP recovery and sleep history — every record since I started wearing it. Store with LnRMSSD computed on ingestion. Run data integrity verification: row counts, date ranges, gap detection, source distribution for songs, spot-check a few known dates against the WHOOP app.
+**Testable:** DB populated with listening history, songs table with ~5,700 tracks, WHOOP today's data, integrity checks pass.
 
-**What this delivers:** All data sitting in a local database — every recovery score, every sleep session, every available song. No intelligence yet, just clean verified data.
+### Day 2: Engagement Scoring + Full WHOOP History + Data Integrity
 
-**Constraint driving this phase:** Nothing else can be built without data access. Classification needs songs. Baselines need WHOOP history. Playlists need both.
+Compute per-song engagement scores from listening_history: play_count (meaningful listens >30s), completion_rate, active_play_rate (clickrow vs fwdbtn), skip_rate, first/last played, recency. Composite engagement_score (weighted combination). Paginate through entire WHOOP recovery and sleep history — every record since I started wearing it. Store with LnRMSSD computed on ingestion. Run data integrity verification: row counts, date ranges, gap detection, engagement score distribution, spot-check known songs.
 
-### Phase 2 (Days 3-4): Intelligence — Both Sides
+**Testable:** Every song has engagement score, full WHOOP history in DB, "top 20 songs by engagement" looks right.
 
-**Day 3: WHOOP Personal Intelligence.** Compute personal baselines: 30-day rolling LnRMSSD average, RHR average, typical deep sleep and REM durations with standard deviations. Compute 7-day LnRMSSD rolling average and HRV CV. Compute RHR trend. Compute sleep debt trajectory (7-day rolling cumulative deficit). Compute deep sleep and REM ratios per night plus personal averages. Build the composite state classifier — takes today's data + baselines + trends, outputs one of six states with a human-readable explanation. Uses concrete research-backed thresholds: LnRMSSD >=20% below average for fatigue, >1.5 SD for sleep stage deficits, >5 hours for sleep debt.
+**What Days 1-2 deliver:** All data sitting in a local database — every recovery score, every sleep session, every song with real engagement scores from 6 years of listening data. No intelligence yet, just clean verified data with behavioral signals.
 
-**Day 4: Song Classification.** Build the LLM classification pipeline. Design the prompt for batches of 5 songs, returning structured JSON with BPM (exact integer), key, mode, energy, valence, acousticness, danceability, instrumentalness (all 0.0-1.0), plus mood_tags, genre_tags, and confidence ("high"/"medium"/"low"). Use Structured Outputs with `strict: true` for guaranteed valid JSON, Pydantic validation for 0.0-1.0 range clamping. Run across the full deduplicated library. Build the neurological impact profiler — scores each song's parasympathetic activation potential, sympathetic activation potential, and emotional grounding potential based on its classified properties using the research-backed weight table.
+**Constraint driving these days:** Nothing else can be built without data access. Classification needs songs. Baselines need WHOOP history. Engagement scoring needs listening history. Playlists need all three.
 
-**What this delivers:** The WHOOP side knows my six states with personal context. The music side has every song classified with properties that map to neuroscience research. Both halves of the brain exist independently.
+### Day 3: WHOOP Personal Intelligence
 
-**Constraint driving this phase:** The matching engine (Phase 3) needs both a detected state and classified songs to work.
+Compute personal baselines: 30-day rolling LnRMSSD average, RHR average, typical deep sleep and REM durations with standard deviations. Compute 7-day LnRMSSD rolling average and HRV CV. Compute RHR trend. Compute sleep debt trajectory (7-day rolling cumulative deficit). Compute deep sleep and REM ratios per night plus personal averages. Build the composite state classifier — takes today's data + baselines + trends, outputs one of six states with a human-readable explanation. Uses concrete research-backed thresholds: LnRMSSD >=20% below average for fatigue, >1.5 SD for sleep stage deficits, >5 hours for sleep debt.
 
-### Phase 3 (Days 5-6): Matching Engine + Playlist Generation
+**Testable:** Classify state for any historical date, verify against known good/bad days.
 
-**Day 5: The Matching Engine.** Build the state-to-properties mapper — for each of the six states, define target song property ranges grounded in the research (e.g., Accumulated Fatigue → 50-70 BPM, energy ≤ 0.3, acousticness ≥ 0.7). Build the library query that finds matching songs. Add preference weighting — source-based scoring: liked song +3, top track +2, both sources +5, short-term top track +1 bonus. Add recency penalty for variety: -50% weight if played in yesterday's playlist, -25% if 2 days ago. Progressive filter relaxation when too few songs match.
+### Day 4: LLM Song Classification (679 songs)
 
-**Day 6: Playlist Creation + End-to-End Flow.** Build the Spotify playlist creator — creates or updates a playlist with selected songs. Build the description generator — compact 300-char summary for Spotify (state name, key metrics, target properties), full reasoning stored in database. Wire the full pipeline: manual trigger → pull WHOOP → classify state → match songs → create playlist. Run it end to end and see a real playlist appear in Spotify.
+Build the LLM classification pipeline. Design the prompt for batches of 5 songs, returning structured JSON with BPM (exact integer), key, mode, energy, valence, acousticness, danceability, instrumentalness (all 0.0-1.0), plus mood_tags, genre_tags, and confidence ("high"/"medium"/"low"). Use Structured Outputs with `strict: true` for guaranteed valid JSON, Pydantic validation for 0.0-1.0 range clamping. Classify tier 1: 366 songs with 10+ meaningful listens (~74 calls). Classify tier 2: 313 songs with 5-9 meaningful listens (~63 calls). Total: ~136 calls, ~$0.68, well within budget. Build the neurological impact profiler — scores each song's parasympathetic activation potential, sympathetic activation potential, and emotional grounding potential based on its classified properties using the research-backed weight table.
 
-**What this delivers:** The MVP. Trigger the system, it reads WHOOP, classifies my state, selects songs, and a real Spotify playlist appears with a description explaining why those songs were chosen.
+**Testable:** 679 songs classified, top parasympathetic songs are slow/acoustic/calm, cost <$1.
 
-### Phase 4 (Day 7): Sequencing + Polish + Hardening
+**What Days 3-4 deliver:** The WHOOP side knows my six states with personal context. The music side has 679 songs classified with properties that map to neuroscience research. Both halves of the brain exist independently.
 
-Build playlist sequencing — order songs using the iso principle: first 1-2 songs match detected state (+/- 5 BPM, +/- 0.1 energy), each subsequent song shifts 10-15 BPM and 0.1-0.15 energy toward target, minimum 3 transition songs, 8-10 songs for full mood journey. Test across all six states, verify playlists feel subjectively right. Fix rough edges. Run the full pipeline multiple times across different historical dates to verify consistency. Document the codebase. If time permits, begin WHOOP webhook setup for automatic morning triggering.
+**Constraint driving these days:** The matching engine (Day 5) needs both a detected state and classified songs to work.
+
+### Day 5: Matching Engine (engagement-weighted)
+
+Build the state-to-properties mapper — for each of the six states, define target song property ranges grounded in the research (e.g., Accumulated Fatigue → 50-70 BPM, energy ≤ 0.3, acousticness ≥ 0.7). Build the library query that finds matching songs. Add engagement-weighted selection: selection_weight = property_match_score (0.60) + engagement_score (0.30) + variety_factor (0.10). This replaces the old source-based scoring (liked +3, top track +2) with real behavioral data. Add recency penalty for variety: -50% weight if played in yesterday's playlist, -25% if 2 days ago. Progressive filter relaxation when too few songs match.
+
+**Testable:** For each of 6 states, selected songs make intuitive sense and high-engagement songs appear more.
+
+### Day 6: Playlist Creation + End-to-End Flow
+
+Build the Spotify playlist creator — creates a playlist with selected songs. Build the description generator — compact 300-char summary for Spotify (state name, key metrics, target properties), full reasoning stored in database. Wire the full pipeline: manual trigger → pull WHOOP → classify state → match songs → create playlist. Run it end to end and see a real playlist appear in Spotify.
+
+**Testable:** Real Spotify playlist appears with correct name, description, and songs.
+
+**What Days 5-6 deliver:** The MVP. Trigger the system, it reads WHOOP, classifies my state, selects engagement-weighted songs, and a real Spotify playlist appears with a description explaining why those songs were chosen.
+
+### Day 7: Sequencing + Polish + Hardening
+
+Build playlist sequencing — order songs using the iso principle: first 1-2 songs match detected state (+/- 5 BPM, +/- 0.1 energy), each subsequent song shifts 10-15 BPM and 0.1-0.15 energy toward target, minimum 3 transition songs, 8-10 songs for full mood journey. Test across all six states, verify playlists feel subjectively right. Fix rough edges. Run the full pipeline multiple times across different historical dates to verify consistency. Edge cases, polish, full test suite green.
+
+**Testable:** Sequenced playlists for all 6 states sound right when played.
 
 **What this delivers:** A polished, reliable system that generates well-sequenced playlists consistently across all six states. Ready for daily use.
 
-### Beyond Spring Break
+### Beyond Sprint
 
-- **When extended streaming history arrives:** Ingest the full export, classify all new songs, compute real preference signals (play counts, completion rates, active vs passive), temporal listening patterns, historical WHOOP-Spotify correlations.
-- **Recently played polling:** Build the polling script once extended history provides a baseline for listening behavior analysis.
-- **Day-of-week pattern detection:** Requires months of data + statistical testing to detect significant personal rhythms.
-- **Top artist track expansion:** Evaluate after validating against extended streaming history — only add songs the user has actually listened to.
-- **Essentia audio analysis:** Once library exceeds 500 songs, run Essentia on top tracks for precise BPM, key, energy. Calibrate LLM estimates.
+- **Temporal listening patterns:** Data available from extended history (time-of-day, sequential patterns). Interesting but matching engine already uses acoustic properties — not quality-blocking for v1.
+- **WHOOP-Spotify correlation:** Retrospective analysis across the overlap period. Not needed for core pipeline.
+- **Taste profiling:** Data available but all recs already come from user's own library — deferred.
+- **Recently played polling:** Unnecessary with 6 years of extended history.
+- **Top artist track expansion:** Unnecessary with actual listening behavior data — 679 tracks is a healthy pool.
+- **Day-of-week pattern detection:** Requires months of WHOOP data + statistical testing to detect significant personal rhythms.
+- **Essentia audio analysis:** With 679+ songs in the pool, Essentia precision becomes valuable. Run on top tracks for precise BPM, key, energy. Calibrate LLM estimates.
 - **WHOOP webhook automation:** System generates playlist automatically when recovery is calculated each morning.
 - **Conversational DJ (Feature 2):** Natural language interface for on-demand playlists.
 - **Behavioral feedback loop:** Learn from play/skip behavior on generated playlists to calibrate classifications over time.
@@ -451,17 +475,18 @@ attuned/
 
 ### Database Tables
 
-- **songs** — Every unique song. Key: spotify_uri. Contains track name, artist, album, duration, sources (JSON list, e.g. `["liked", "top_track"]`).
+- **songs** — Every unique song. Key: spotify_uri. Contains track name, artist, album, duration, sources (JSON list, e.g. `["liked", "top_track", "extended_history"]`), and engagement columns: play_count (meaningful listens >30s), completion_rate, active_play_rate, skip_rate, engagement_score (composite), first_played, last_played.
 - **whoop_recovery** — One row per day. Key: cycle_id. Contains recovery_score, hrv_rmssd_milli, resting_heart_rate, spo2, skin_temp.
 - **whoop_sleep** — One row per sleep session. Contains all stage durations in ms (deep, REM, light, awake), sleep quality metrics (efficiency, performance, consistency, respiratory rate, disturbance count, cycle count), and sleep_needed breakdown (baseline, debt, strain, nap offset).
-- **listening_history** — Every play event. Contains spotify_uri, played_at timestamp, duration played. Unique on (spotify_uri, played_at).
+- **listening_history** — Every play event. Contains spotify_uri, played_at timestamp, ms_played, reason_start, reason_end, skipped, shuffle, platform. Unique on (spotify_uri, played_at).
 - **song_classifications** — One row per song. Contains LLM-derived properties (bpm, key, mode, energy, valence, acousticness, danceability, instrumentalness — all 0.0-1.0 — plus mood_tags, genre_tags, confidence) and computed neurological scores (parasympathetic, sympathetic, grounding). Also stores classification source and raw response.
 - **generated_playlists** — Log of every playlist created. Contains spotify_playlist_id, date, detected state, reasoning, all WHOOP metrics at time of generation, track URIs, and the description written to Spotify.
 - **tokens** — OAuth token storage. Contains provider (whoop/spotify), access_token, refresh_token, expires_at.
 
 ### Key Constraints Claude Code Should Know
 
-- **Small initial library:** Only ~113 liked songs on Spotify. Expanded by pulling top tracks (3 time windows × 50). Total after deduplication will be roughly ~160-250 songs. The matching engine must handle this gracefully — if fewer than 15 songs match a state's criteria, progressively relax filters (widen BPM range, lower acousticness threshold, etc.) until enough songs qualify. Log when relaxation happens.
+- **Library size:** 679 tracks with 5+ meaningful listens (>30s), 366 with 10+. Total unique tracks from extended history: ~5,700. The matching engine classifies and selects from the 679-track engaged pool. If fewer than 15 songs match a state's criteria, progressively relax filters (widen BPM range, lower acousticness threshold, etc.) until enough songs qualify. Log when relaxation happens.
+- **Extended streaming history:** Already contains spotify_track_uri — no search API resolution needed. 58% of plays are <=30s (skips/noise) — filter to >30s for meaningful engagement scoring.
 - **WHOOP recovery score is secondary** — use raw metrics (HRV, RHR, sleep stages) as primary classifier inputs. Recovery score is a proprietary black box used only for confirmation.
 - **Need 14+ days of WHOOP data** before personal baselines are reliable. Use rolling 30-day window for computation.
 - **WHOOP OAuth scopes needed:** read:recovery, read:cycles, read:sleep, read:profile, read:body_measurement, offline
@@ -471,4 +496,4 @@ attuned/
 - WHOOP access tokens expire after 1 hour — must request the `offline` scope to get a refresh token
 - Spotify playlist descriptions have a 300 character limit
 - Spotify audio features and recommendations endpoints are deprecated for new apps — do not attempt to use them
-- **LLM classification:** Batch 5 songs per call for optimal accuracy. Use Structured Outputs with `response_format: { type: "json_schema" }` and `strict: true` for guaranteed valid JSON. Pydantic validation for 0.0-1.0 range enforcement. Should stay under $1 total for the full library. Have $5 in OpenAI credits. Provider-agnostic wrapper so switching to Anthropic is a config change.
+- **LLM classification:** Batch 5 songs per call for optimal accuracy. 679 songs = ~136 calls, ~$0.68. Use Structured Outputs with `response_format: { type: "json_schema" }` and `strict: true` for guaranteed valid JSON. Pydantic validation for 0.0-1.0 range enforcement. Have $5 in OpenAI credits. Provider-agnostic wrapper so switching to Anthropic is a config change.
