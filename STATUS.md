@@ -1,22 +1,43 @@
 # Attuned — Current Status
 
 **Last updated:** Mar 17, 2026
-**Current phase:** Pre-build. All specification gaps resolved. Documents updated with audit findings. Ready for Day 1.
-**Next action:** Register WHOOP + Spotify developer apps, then begin Day 1.
+**Current phase:** Day 1 complete (Tier 1 + Tier 2). Extended history ingested. API clients built and tested with mocks.
+**Next action:** Register WHOOP + Spotify developer apps, add credentials to `.env`, run Tier 3 integration.
 
 ---
 
-## What Exists
+## What's Done (Day 1)
 
-- Project structure created (all directories)
-- docs/PRD.md — v2.1, rephased for extended streaming history (arrived Mar 16: 33,427 records, 5,701 unique tracks, 679 with 5+ meaningful listens)
-- docs/RESEARCH.md — full research analysis with audit updates: sigmoid scoring (parasympathetic/sympathetic), SWC-based HRV thresholds, evidence-informed characterization, Karageorghis reference, acousticness/danceability caveats, Weightless annotation
-- docs/SYSTEM_LOGIC.md — comprehensive system design with audit updates: sigmoid formulas, SWC thresholds, property match score formula, engagement score formula, iso starting profiles, terminal fallback, confidence multiplier, evidence-informed note, softened causal language
-- docs/PRD.md — v2.2 with audit updates: schema fixes (date columns, ln_rmssd, FKs, indexes), engagement/property match formulas, starting profiles, classification pool boundary, terminal fallback, confidence multiplier, cycle-to-date mapping, SWC thresholds, multi-user note
-- CLAUDE.md — engineering guidelines, updated for 6 states + engagement scoring
-- tasks/todo.md + tasks/lessons.md — tracking
-- .env.example, .gitignore, requirements.txt — initial versions
-- Spotify extended streaming history JSON files (arrived Mar 16)
+### Tier 1 — Offline, fully tested
+- `config.py` — all constants, thresholds, lazy env var loaders
+- `db/schema.py` — 7 tables + indexes, WAL mode, foreign keys
+- `db/queries.py` — all CRUD functions (listening_history, songs, whoop_recovery, whoop_sleep, tokens)
+- `spotify/sync.py` — extended history ingestion: parses 33,311 valid audio records → 32,729 unique history rows, 5,701 songs, 676 with 5+ meaningful plays
+- `main.py` — CLI with `ingest-history`, `sync-whoop`, `sync-spotify`, `sync-all`, `auth-whoop`, `auth-spotify`, `generate` (stub)
+
+### Tier 2 — API clients, tested with mocks
+- `whoop/auth.py` — OAuth flow, token storage/refresh with 5-min expiry buffer
+- `whoop/client.py` — recovery/sleep API calls, pagination, response parsing, timezone-aware date derivation
+- `whoop/sync.py` — orchestration: get token → call client → store in DB
+- `spotify/auth.py` — custom Spotipy CacheHandler backed by SQLite tokens table
+- `spotify/client.py` — liked songs, top tracks, batch metadata extraction
+
+### Tests
+- **120 tests, all passing** across 8 test files
+- Coverage: config (15), schema (8), queries (25), spotify_sync (20), whoop_auth (10), whoop_client (22), whoop_sync (3), spotify_auth (4), spotify_client (13)
+
+### Audit findings fixed
+- SQL injection in `count_rows()` — added allowlist validation
+- SQL injection in `_compute_basic_song_stats()` — switched to parameterized query
+- DRY violation in song source/date merging — extracted `_merge_sources`, `_earlier_date`, `_later_date` helpers
+
+## What's Left (Tier 3 — needs API keys)
+
+1. Register WHOOP + Spotify apps, add credentials to `.env`
+2. Run OAuth flows (`python main.py auth-whoop`, `python main.py auth-spotify`)
+3. Pull today's WHOOP data (`python main.py sync-whoop`)
+4. Sync liked songs + top tracks + batch metadata (`python main.py sync-spotify`)
+5. Verify full DB populated with real data
 
 ## Blockers
 
@@ -27,4 +48,4 @@
 
 - WHOOP: not yet (need to register app)
 - Spotify: not yet (need to register app)
-- OpenAI: has $5 credits (for song classification, Day 4 — 679 songs ~$0.68)
+- OpenAI: has $5 credits (for song classification, Day 4 — 676 songs ~$0.68)
