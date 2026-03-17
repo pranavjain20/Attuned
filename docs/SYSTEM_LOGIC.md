@@ -6,7 +6,34 @@ Read this document and you'll understand the full chain from "you wake up" to "a
 
 ---
 
-## 1. What Attuned Does (30 Seconds)
+## 1. The Goal — Why You Need This
+
+You wake up. WHOOP says 42% recovery. You know you feel off — but what do you DO about it?
+
+WHOOP is brilliant at diagnosis. It tells you your HRV is down, your deep sleep was short, your resting heart rate crept up. But it stops there. It gives you the reading and says "good luck." You see the red or yellow and... then what? You can't will your nervous system into recovery. You can't decide to have better HRV.
+
+Meanwhile, you reach for Spotify. And you instinctively make a choice — something calmer on a rough morning, something with more energy on a good one. You're already doing this. You're already using music to modulate how you feel. You're just doing it manually, imprecisely, without any connection to what your body actually needs.
+
+**The goal of Attuned is autonomic alignment — pushing your nervous system toward its optimal state from wherever it currently is, using music as the tool.**
+
+It's not "a calming app." It's not "a hype playlist." It's not trying to make you perform better (though that's a side effect). The goal changes every day based on what your body needs:
+
+| Your Body's State | What You Need | What Attuned Does |
+|---|---|---|
+| Depleted across multiple days | Parasympathetic restoration | Slow, acoustic, instrumental music that lets your nervous system down-regulate |
+| Body didn't physically recover | Physical calming, mind can stay engaged | Gentle music with some engagement — your body rests while your mind stays present |
+| Mind didn't emotionally process | Emotional grounding | Warm, familiar, comforting songs — voices and lyrics that feel like home |
+| One bad night, baseline is fine | Light support, don't overreact | Easy-listening mix, gently calming without being aggressive |
+| Normal day | Nothing specific | A good, varied playlist from your library — no intervention needed |
+| Fully recovered and ready | Match your energy | Your bangers — high-energy, positive, full intensity |
+
+**The analogy:** Attuned is a thermostat, not an air conditioner. An air conditioner always cools. A thermostat reads the room and decides whether to cool, heat, or do nothing. Attuned reads your nervous system and decides which direction to push — or whether to push at all.
+
+**The gap it fills:** WHOOP identifies the problem but doesn't act on it. Your Spotify library has the remedy but doesn't know which one you need today. Attuned closes the loop — it takes the diagnosis and applies the right intervention, automatically, every morning.
+
+---
+
+## 2. What Attuned Does (30 Seconds)
 
 Every morning, WHOOP measures your body while you sleep — heart rate variability, resting heart rate, sleep stages, recovery. Attuned reads that data, figures out what your autonomic nervous system needs right now, and generates a Spotify playlist of 15-20 songs from your own library whose acoustic properties are scientifically matched to that need.
 
@@ -14,7 +41,7 @@ Not generic spa music. YOUR songs — ones you've listened to dozens of times �
 
 ---
 
-## 2. The Core Insight — Why This Works
+## 3. The Core Insight — Why This Works
 
 Three facts make Attuned possible:
 
@@ -31,7 +58,7 @@ Research shows that familiar, personally meaningful music triggers stronger dopa
 
 ---
 
-## 3. The End-to-End Flow
+## 4. The End-to-End Flow
 
 Here's exactly what happens, step by step:
 
@@ -75,7 +102,7 @@ The classifier takes today's data + baselines + trends and assigns one of six co
 5. **Baseline** — yellow zone, nothing stands out
 6. **Peak Readiness** — everything is great
 
-Each state maps to specific song property targets (detailed in Section 7).
+Each state maps to specific song property targets (detailed in Section 8).
 
 ### Step 6: Song Matching
 The matching engine searches your classified song library for songs whose properties fall within the target ranges for your detected state. Songs are ranked by a weighted combination:
@@ -106,7 +133,7 @@ Each playlist is a new dated playlist, not one standing playlist that gets overw
 
 ---
 
-## 4. Reading Your Body — The WHOOP Side
+## 5. Reading Your Body — The WHOOP Side
 
 ### 4.1 Why Personal Baselines Matter More Than Absolute Numbers
 
@@ -273,7 +300,7 @@ Not all metrics are equally important. Here's how they stack up, from most to le
 
 ---
 
-## 5. Understanding Your Music — The Song Side
+## 6. Understanding Your Music — The Song Side
 
 ### 5.1 What Properties Matter and Why
 
@@ -351,7 +378,7 @@ We have extended streaming history: 33,427 play records spanning 6 years, 5,701 
 
 ---
 
-## 6. The Three Neurological Scores
+## 7. The Three Neurological Scores
 
 Every classified song gets three scores that quantify what it does to the autonomic nervous system. Each score is 0.0 to 1.0.
 
@@ -425,7 +452,7 @@ This is better than hard cutoffs because it gives partial credit. A song at 72 B
 
 ---
 
-## 7. The Six States — The Complete Bridge from Body to Music
+## 8. The Six States — The Complete Bridge from Body to Music
 
 This is where everything connects. Each state shows: what WHOOP data triggers it, what's happening in your body, what song properties are targeted and WHY (traced back to the specific research), and what the resulting playlist sounds like.
 
@@ -547,7 +574,7 @@ The classifier evaluates states top-to-bottom and returns the first match. This 
 
 ---
 
-## 8. How Songs Get Selected (The Matching Engine)
+## 9. How Songs Get Selected (The Matching Engine)
 
 ### 8.1 The Selection Formula
 
@@ -565,7 +592,7 @@ selection_weight = property_match_score * 0.60
 
 **Variety factor (10%):** Preference for songs not played in recent playlists. Recency penalty: -50% if played in yesterday's playlist, -25% if 2 days ago. This prevents the system from generating the same 15 songs every day.
 
-**Why these percentages:** The science has to come first — a song with perfect engagement but wrong properties defeats the purpose. But within the set of scientifically appropriate songs, engagement should heavily influence selection because familiar, loved music amplifies the physiological effect (Section 5.3). Variety gets the smallest weight because it matters less than getting the right songs, but it prevents staleness.
+**Why these percentages:** The science has to come first — a song with perfect engagement but wrong properties defeats the purpose. But within the set of scientifically appropriate songs, engagement should heavily influence selection because familiar, loved music amplifies the physiological effect (Section 6.3). Variety gets the smallest weight because it matters less than getting the right songs, but it prevents staleness.
 
 ### 8.2 Progressive Filter Relaxation
 
@@ -583,13 +610,13 @@ The relaxation order is deliberate: BPM is relaxed first because a song at 80 BP
 ### 8.3 Why 15-20 Songs
 
 - Clinical music therapy guidelines suggest 8-10 songs for a full mood journey
-- The iso principle (Section 9) needs at least 3 transition songs
+- The iso principle (Section 10) needs at least 3 transition songs
 - Total target: 15-30 minutes of music
 - 15-20 songs provides enough for the iso transition arc while keeping the playlist a reasonable length
 
 ---
 
-## 9. How Songs Get Ordered (The Iso Principle)
+## 10. How Songs Get Ordered (The Iso Principle)
 
 ### 9.1 What the Iso Principle Is
 
@@ -624,7 +651,7 @@ Think of it like this: if someone is anxious (high sympathetic activation, fast 
 
 ---
 
-## 10. The Output — What the Playlist Looks Like
+## 11. The Output — What the Playlist Looks Like
 
 ### 10.1 Naming and Description
 
@@ -645,7 +672,7 @@ The `generated_playlists` table logs everything: the date, detected state, all W
 
 ---
 
-## 11. System Design Properties
+## 12. System Design Properties
 
 ### 11.1 Graceful Degradation
 
@@ -683,7 +710,7 @@ This prevents a serious multi-day decline from being misclassified as "just a ba
 
 ---
 
-## 12. What's Deferred (And Why It's OK)
+## 13. What's Deferred (And Why It's OK)
 
 These features use available data but aren't needed for v1:
 
