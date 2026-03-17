@@ -222,24 +222,41 @@ WHOOP provides `sleep_needed` breakdown (baseline + debt component + strain comp
 
 ---
 
-## 5. WHOOP Recovery Score — Use with Caution
+## 5. WHOOP Metric Importance — What Drives Accurate State Classification
 
-### 5.1 Why Not Use It as Primary Input
+Our state classifier needs to distinguish between six physiological states. The research below informed which WHOOP metrics carry the most weight and why.
 
-- **medRxiv systematic review (2024):** Recovery correlated with subjective fatigue at r = 0.68 in healthy adults, but r = 0.31 for insomnia patients and r = 0.22 for diabetics.
-- **Independent research:** Strain and Recovery "showed no relationship with any metabolic or stress variables measured."
-- The exact algorithm is proprietary and not reproducible. It's a black box.
+### 5.1 Raw HRV (RMSSD) — The Strongest Individual Signal
 
-### 5.2 What to Use Instead
+HRV is the most direct, well-validated measure of autonomic nervous system state available from consumer wearables.
 
-Use the raw metrics that WHOOP provides: HRV (RMSSD), RHR, sleep stage durations, sleep efficiency, sleep performance, respiratory rate, SpO2, skin temperature. Apply the evidence-based thresholds documented above.
+- **WHOOP HRV accuracy:** 99% agreement with clinical-grade ECG during sleep (Antwerp University Hospital validation), ICC of 0.99 in earlier studies. The raw measurement is highly reliable.
+- **Plews et al., 2012:** 7-day rolling LnRMSSD averages are superior to single-day measurements for detecting overreaching and recovery status in athletes. Single-day values are noisy; trends are robust.
+- **Lundstrom et al., 2024 (Int J Sports Science & Coaching):** Studied 23 elite NCAA swimmers during peak training. Raw HRV correlated significantly with sport-specific stress (r = -0.462) and total stress (r = -0.459), confirming HRV as a reliable stress/recovery indicator.
 
-### 5.3 Where Recovery Score Is Still Useful
+### 5.2 Raw HRV vs. Composite Recovery Score
 
-- As a sanity check: if the classifier says "Peak Readiness" but recovery is red, something is off
-- For the Baseline and Peak Readiness states, which are less precisely defined by raw metrics: green recovery (>=67%) supports Peak Readiness classification, yellow (34-66%) supports Baseline
+The question of whether WHOOP's composite Recovery Score adds value beyond raw metrics has been studied directly.
 
-**Design decision:** Raw metrics are primary. Recovery score is secondary — used for Peak Readiness/Baseline confirmation and as a sanity check.
+- **Recovery score composition (publicly known):** ~65% HRV (RMSSD), ~20% RHR, ~15% respiratory rate, plus contributions from sleep duration, SpO2, and skin temperature. All values normalized against the user's 30-day rolling baseline, then passed through a proprietary non-linear transformation with dynamic weighting.
+- **Healthy adult correlation:** r = 0.68 with subjective fatigue (Journal of Science and Medicine in Sport, 2023). This is a meaningful moderate-to-strong correlation — the score does reflect something real about how a healthy person feels. However, most of that predictive power comes from HRV itself, which accounts for ~65% of the score's weight.
+- **Clinical populations:** Correlation drops to r = 0.31 (insomnia) and r = 0.22 (diabetics), populations where HRV is chronically suppressed (medRxiv 2024 systematic review, Khodr et al.).
+- **The swimmer study comparison:** In the same Lundstrom 2024 study, raw HRV correlated significantly with validated stress measures — but the Recovery Score showed no correlation with any RESTQ stress/recovery variable (r values of -0.05, -0.18, -0.03, -0.01). The composite algorithm lost a signal that existed in the raw data.
+- **Performance correlations:** WHOOP-conducted studies found Recovery Score correlated with basketball shooting accuracy (NCAA Div I case study) and baseball fastball velocity/exit bat speed (230 MLB minor league players, 2016). These are directionally meaningful but were not peer-reviewed or independently replicated.
+
+### 5.3 Why Multi-Dimensional Metrics Matter for State Classification
+
+- **Doherty, Lambe, Altini et al., 2025 (Translational Exercise Biomedicine):** Evaluated 14 composite health scores across 10 wearable manufacturers. Found "significant discrepancies in data collection timeframes, metric weighting, and proprietary scoring methodologies." None provided full validation studies. Composite scores collapse multiple dimensions into one number, losing the distinctions needed for specific state classification.
+- **Altini (HRV4Training):** Composite scores often mix behavioral inputs (sleep duration, activity) with physiological outputs (HRV, RHR), confounding cause and effect. For state classification, we need the physiological response directly.
+- **Our specific need:** Distinguishing "Physical Recovery Deficit" (low deep sleep, adequate REM) from "Emotional Processing Deficit" (low REM, adequate deep sleep) requires the individual sleep stage metrics. A single composite number cannot make this distinction. Similarly, "Accumulated Fatigue" (multi-day HRV decline + RHR rise + sleep debt) requires trend data across multiple metrics that a single-night composite flattens.
+
+### 5.4 Where Recovery Score Adds Value
+
+- **Sanity check:** If the classifier says "Peak Readiness" but Recovery is red, something needs investigation.
+- **Peak Readiness and Baseline confirmation:** Green recovery (>=67%) supports Peak Readiness alongside raw metrics. Yellow (34-66%) supports Baseline.
+- **Practical sports science use:** Professional teams across MLB, NBA, and NFL use Recovery Score dashboards. For coaches managing rosters, the green/yellow/red simplification has practical value as a quick heuristic — it just isn't granular enough for our six-state classification.
+
+**Design decision:** The state classifier uses raw metrics (HRV, RHR, sleep stages, sleep debt) as primary inputs because they provide the multi-dimensional signal needed to distinguish between six states. Recovery Score is used as a complementary signal — confirming Peak Readiness/Baseline classification and flagging disagreements between the classifier and WHOOP's own assessment.
 
 ---
 
@@ -433,9 +450,13 @@ Research-backed target ranges for the matching engine. Each state maps to an ide
 - NCBI StatPearls — Physiology, Sleep Stages
 - Sleep Foundation — Deep Sleep, Stages of Sleep, Sleep Debt
 
-### WHOOP Validation
-- medRxiv, 2024 — Systematic Review of WHOOP Accuracy
+### WHOOP Validation and Metric Importance
+- medRxiv, 2024 — Systematic Review of WHOOP Accuracy (Khodr et al.)
 - PMC, 2022 — Validation of Six Wearable Devices
+- Lundstrom et al., 2024 — Raw HRV vs Recovery Score in NCAA Swimmers (Int J Sports Science & Coaching)
+- Doherty, Lambe, Altini et al., 2025 — Composite Health Scores in Consumer Wearables (Translational Exercise Biomedicine)
+- Altini, M. — Measurements vs Made Up Scores (HRV4Training / Substack)
+- Antwerp University Hospital — WHOOP HRV Accuracy Validation (PMC)
 
 ### LLM Classification
 - Yang et al., 2025 — LLMs for Automated Music Emotion Annotation (arXiv)
