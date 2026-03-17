@@ -2,7 +2,7 @@
 
 **Last updated:** Mar 16, 2026
 **Current phase:** Pre-build. PRD v2.1 updated with extended streaming history data. Ready for Day 1.
-**Next action:** Pranav registers WHOOP + Spotify developer apps, then we begin Day 1.
+**Next action:** Pranav reads PRD v2.1 + RESEARCH.md, then registers WHOOP + Spotify developer apps, then we begin Day 1.
 
 ---
 

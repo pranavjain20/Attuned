@@ -7,19 +7,29 @@
 - [x] Deep research: music-ANS, HRV sports science, sleep architecture, LLM classification, iso principle
 - [x] Write docs/RESEARCH.md with findings, formulas, and citations
 - [x] Update PRD to v2.0 (6 states, 0.0-1.0 scales, concrete thresholds, research-backed decisions)
-- [ ] Pranav reviews PRD v2.0 + RESEARCH.md
+- [x] Rephase sprint for extended streaming history (PRD v2.1, CLAUDE.md, STATUS.md updated)
+- [ ] Pranav reads PRD v2.1 + RESEARCH.md
 - [ ] Register WHOOP developer app
 - [ ] Register Spotify developer app
 - [ ] Set up .env with credentials
 
-## Phase 1: Data Foundation (Days 1-2)
+## Day 1: Project Setup + Extended History Ingestion + First API Pulls
 _Not started_
 
-## Phase 2: Intelligence (Days 3-4)
+## Day 2: Engagement Scoring + Full WHOOP History + Data Integrity
 _Not started_
 
-## Phase 3: Matching + Playlist Generation (Days 5-6)
+## Day 3: WHOOP Personal Intelligence
 _Not started_
 
-## Phase 4: Sequencing + Polish (Day 7)
+## Day 4: LLM Song Classification (679 songs)
+_Not started_
+
+## Day 5: Matching Engine (engagement-weighted)
+_Not started_
+
+## Day 6: Playlist Creation + End-to-End Flow
+_Not started_
+
+## Day 7: Sequencing + Polish + Hardening
 _Not started_
