@@ -72,7 +72,7 @@ Attuned pulls from three places. Each gives us raw data, and each yields deeper 
 #### What the API Gives Us
 
 **Recovery (calculated once each morning):**
-- Recovery score (0-100%) — WHOOP's composite readiness number. Green (67-100%), Yellow (34-66%), Red (0-33%). Used as a secondary/confirmatory signal, not a primary classifier input. A medRxiv 2024 systematic review found weak correlations between recovery and objective physiological markers (r = 0.31 for insomnia, r = 0.22 for diabetics). The exact algorithm is proprietary. Raw metrics are more reliable.
+- Recovery score (0-100%) — WHOOP's composite readiness number. Green (67-100%), Yellow (34-66%), Red (0-33%). Correlates moderately with subjective fatigue in healthy adults (r = 0.68), though most of that signal comes from HRV which we already use directly. The exact algorithm is proprietary (~65% HRV, ~20% RHR, ~15% respiratory rate, plus sleep/SpO2/skin temp). Used alongside raw metrics — particularly valuable as a sanity check and for the Peak Readiness state where it confirms raw metric signals.
 - HRV (hrv_rmssd_milli) — Root mean square of successive differences between heartbeats, measured during sleep. All HRV computations use LnRMSSD (natural log of RMSSD), per Plews/Buchheit methodology. WHOOP gives raw `hrv_rmssd_milli`; we log-transform on storage. This is the gold standard for autonomic nervous system balance. Higher = parasympathetic dominant (recovered, resilient). Lower = sympathetic dominant (stressed, depleted). This is the single most important metric because it directly reflects the system that music modulates.
 - Resting heart rate — Measured during deepest sleep. Lower = better recovered. Upward trends over days signal stress or illness.
 - SpO2 — Blood oxygen saturation. Normally 95-100%. Drops below baseline can indicate illness or altitude.
@@ -487,7 +487,7 @@ attuned/
 
 - **Library size:** 679 tracks with 5+ meaningful listens (>30s), 366 with 10+. Total unique tracks from extended history: ~5,700. The matching engine classifies and selects from the 679-track engaged pool. If fewer than 15 songs match a state's criteria, progressively relax filters (widen BPM range, lower acousticness threshold, etc.) until enough songs qualify. Log when relaxation happens.
 - **Extended streaming history:** Already contains spotify_track_uri — no search API resolution needed. 58% of plays are <=30s (skips/noise) — filter to >30s for meaningful engagement scoring.
-- **WHOOP recovery score is secondary** — use raw metrics (HRV, RHR, sleep stages) as primary classifier inputs. Recovery score is a proprietary black box used only for confirmation.
+- **WHOOP recovery score complements raw metrics** — the state classifier primarily uses raw HRV, RHR, and sleep stages (which allow distinguishing between specific deficit types), with recovery score as a confirmatory signal and sanity check.
 - **Need 14+ days of WHOOP data** before personal baselines are reliable. Use rolling 30-day window for computation.
 - **WHOOP OAuth scopes needed:** read:recovery, read:cycles, read:sleep, read:profile, read:body_measurement, offline
 - **Spotify OAuth scopes needed:** user-library-read, user-read-recently-played, user-top-read, playlist-modify-private, user-read-private
