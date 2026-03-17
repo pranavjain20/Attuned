@@ -1,10 +1,32 @@
 # Attuned — Current Status
 
 **Last updated:** Mar 17, 2026
-**Current phase:** Day 1 complete (Tier 1 + Tier 2). Extended history ingested. API clients built and tested with mocks.
-**Next action:** Register WHOOP + Spotify developer apps, add credentials to `.env`, run Tier 3 integration.
+**Current phase:** Day 2 complete. Engagement scoring implemented, tested, audited.
+**Next action:** Run `python main.py sync-spotify` to fetch remaining `duration_ms` for ~137 songs, then `python main.py compute-engagement` on real data + spot-check top 10.
 
 ---
+
+## What's Done (Day 2)
+
+### Engagement Scoring
+- `spotify/engagement.py` — 5-signal engagement scoring (completion_rate, active_play_rate, skip_rate, log-normalized play count, recency decay)
+- Weighted formula: `log_play*0.35 + completion*0.25 + active*0.20 + (1-skip)*0.10 + recency*0.10`
+- Songs missing `duration_ms` scored with redistributed weights (no completion_rate component)
+- Songs below `MIN_MEANINGFUL_LISTENS` (3) excluded
+- `main.py` — `compute-engagement` CLI command with distribution summary + top 10 display
+- Engagement scoring auto-runs at end of `sync-spotify`
+
+### Tests
+- **177 tests, all passing** across 9 test files
+- New: `test_engagement.py` — 57 tests covering all signals, edge cases, boundaries, idempotency, weight redistribution, timezone handling, orphan data, NULL fallbacks
+
+### Staff audit findings (all fixed)
+- `_parse_date` timezone bug — `.replace(tzinfo=utc)` → `.astimezone(utc)` for non-UTC offsets
+- `duration_ms = 0` wrong branch — now routes to redistributed-weight path
+- Recency component unclamped for future dates — added `min(1.0, ...)` clamp
+- Docstring contradicted code on eligibility criteria — corrected
+- Weak test assertion on completion_rate cap — strengthened to `pytest.approx(1.0)`
+- Unused import removed
 
 ## What's Done (Day 1)
 
@@ -13,7 +35,7 @@
 - `db/schema.py` — 7 tables + indexes, WAL mode, foreign keys
 - `db/queries.py` — all CRUD functions (listening_history, songs, whoop_recovery, whoop_sleep, tokens)
 - `spotify/sync.py` — extended history ingestion: parses 33,311 valid audio records → 32,729 unique history rows, 5,701 songs, 676 with 5+ meaningful plays
-- `main.py` — CLI with `ingest-history`, `sync-whoop`, `sync-spotify`, `sync-all`, `auth-whoop`, `auth-spotify`, `generate` (stub)
+- `main.py` — CLI with `ingest-history`, `sync-whoop`, `sync-spotify`, `sync-all`, `auth-whoop`, `auth-spotify`, `compute-engagement`, `generate` (stub)
 
 ### Tier 2 — API clients, tested with mocks
 - `whoop/auth.py` — OAuth flow, token storage/refresh with 5-min expiry buffer
@@ -22,30 +44,23 @@
 - `spotify/auth.py` — custom Spotipy CacheHandler backed by SQLite tokens table
 - `spotify/client.py` — liked songs, top tracks, batch metadata extraction
 
-### Tests
-- **120 tests, all passing** across 8 test files
-- Coverage: config (15), schema (8), queries (25), spotify_sync (20), whoop_auth (10), whoop_client (22), whoop_sync (3), spotify_auth (4), spotify_client (13)
+## What's Left
 
-### Audit findings fixed
-- SQL injection in `count_rows()` — added allowlist validation
-- SQL injection in `_compute_basic_song_stats()` — switched to parameterized query
-- DRY violation in song source/date merging — extracted `_merge_sources`, `_earlier_date`, `_later_date` helpers
+### Day 2 remaining
+1. Run `python main.py sync-spotify` to fetch `duration_ms` for ~137 songs still missing it
+2. Run `python main.py compute-engagement` on real data
+3. Spot-check top 10 songs — verify they're recognizable favorites
+4. Run integrity SQL queries (distribution, out-of-range check, WHOOP gap check)
 
-## What's Left (Tier 3 — needs API keys)
-
-1. Register WHOOP + Spotify apps, add credentials to `.env`
-2. Run OAuth flows (`python main.py auth-whoop`, `python main.py auth-spotify`)
-3. Pull today's WHOOP data (`python main.py sync-whoop`)
-4. Sync liked songs + top tracks + batch metadata (`python main.py sync-spotify`)
-5. Verify full DB populated with real data
-
-## Blockers
-
-- WHOOP developer app: needs to be registered at developer.whoop.com
-- Spotify developer app: needs to be registered at developer.spotify.com
+### Day 3+
+- Day 3: WHOOP personal intelligence (baselines, trends, sleep analysis, state classifier)
+- Day 4: LLM song classification (~1,006 songs)
+- Day 5: Matching engine (engagement-weighted)
+- Day 6: Playlist creation + end-to-end flow
+- Day 7: Sequencing + polish + hardening
 
 ## API Keys Status
 
-- WHOOP: not yet (need to register app)
-- Spotify: not yet (need to register app)
-- OpenAI: has $5 credits (for song classification, Day 4 — 676 songs ~$0.68)
+- WHOOP: registered, OAuth working, full history synced (823 recovery, 907 sleep)
+- Spotify: registered, OAuth working, liked songs + top tracks synced
+- OpenAI: has $5 credits (for song classification, Day 4)
