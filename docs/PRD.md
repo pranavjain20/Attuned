@@ -1,7 +1,7 @@
 # Attuned — Product Document
 
-**Version:** 2.1
-**Date:** March 16, 2026
+**Version:** 2.2
+**Date:** March 17, 2026
 **Author:** Pranav Jain
 **Status:** Planning
 
@@ -98,7 +98,7 @@ Attuned pulls from three places. Each gives us raw data, and each yields deeper 
 - Rolling averages for resting heart rate, deep sleep duration, REM duration, total sleep, sleep efficiency — each gets a personal baseline.
 
 **Trend detection.** Single-day numbers are noisy. Multi-day trends reveal the real picture:
-- HRV trend — >=10% below 30-day LnRMSSD average = caution (common during high-strain periods). >=20% below, sustained 3+ days = concern (predicts illness or non-functional overreaching). 7+ consecutive days below baseline = red flag regardless of magnitude. 7-day rolling LnRMSSD averages are superior to single-day measurements (Plews 2012).
+- HRV trend — <0.5 SD below 30-day LnRMSSD mean (Smallest Worthwhile Change) = caution (common during high-strain periods). <1.0 SD below 30-day mean, sustained 3+ days = concern (predicts illness or non-functional overreaching). 7+ consecutive days below baseline = red flag regardless of magnitude. 7-day rolling LnRMSSD averages are superior to single-day measurements (Plews 2012).
 - Resting heart rate trend — +5 bpm above 30-day personal average, sustained 3+ days = caution. +7 bpm = concern. The combination of declining HRV + rising RHR is a strong composite indicator of accumulated fatigue.
 - Sleep debt trajectory — >5 hours cumulative deficit over 7-day rolling window (~45 min/night shortfall) = moderate concern (cognitive impairment detectable in lab conditions). >10 hours cumulative (~1.5h/night deficit) = significant, equivalent to ~1 night of total sleep deprivation. Subjects were unaware of their impairment (Van Dongen & Dinges, 2003).
 
@@ -109,10 +109,10 @@ Attuned pulls from three places. Each gives us raw data, and each yields deeper 
 
 **Composite state classification.** The most useful intelligence layer. Instead of reacting to any single metric, recognize patterns across multiple signals. The classifier evaluates top-to-bottom and returns the first match:
 
-1. **Accumulated Fatigue** — LnRMSSD >=20% below 30-day average, sustained 3+ days AND RHR rising (+5 bpm above baseline) AND sleep debt >5 hours (7-day rolling). Not just a bad morning — the body is trending downward. Music should be genuinely restorative, prioritizing parasympathetic activation.
+1. **Accumulated Fatigue** — LnRMSSD <1.0 SD below 30-day mean, sustained 3+ days AND RHR rising (+5 bpm above baseline) AND sleep debt >5 hours (7-day rolling). Not just a bad morning — the body is trending downward. Music should be genuinely restorative, prioritizing parasympathetic activation.
 2. **Physical Recovery Deficit** — Deep sleep >1.5 SD below personal mean AND REM adequate (within 1.0 SD of personal mean). Body needs physical restoration, mind is relatively clear. Music should be soothing to the body (slow tempo, acoustic) but can be emotionally engaging.
 3. **Emotional Processing Deficit** — REM >1.5 SD below personal mean AND deep sleep adequate (within 1.0 SD of personal mean). Body is physically recovered but emotional regulation may be impaired. Music should be emotionally grounding — familiar, warm, comforting.
-4. **Single Bad Night** — Today's recovery is low (LnRMSSD >=10% below average or recovery <50%) but 7-day LnRMSSD trend is stable or rising. Temporary dip from one poor night. Body's baseline is strong. Music can be moderately calming without being aggressive about it.
+4. **Single Bad Night** — Today's recovery is low (LnRMSSD <0.5 SD below 30-day mean or recovery <50%) but 7-day LnRMSSD trend is stable or rising. Temporary dip from one poor night. Body's baseline is strong. Music can be moderately calming without being aggressive about it.
 5. **Baseline** — Recovery adequate but not exceptional (yellow zone, 34-66%), no strong deficit signal detected by the above states. No significant HRV decline, no sleep architecture deficits exceeding 1.5 SD. Music should be varied and mood-appropriate — widest property ranges.
 6. **Peak Readiness** — Green recovery (>=67%), LnRMSSD at or above 30-day average, good sleep architecture (deep and REM within 1.0 SD), low sleep debt (<3 hours). Recovery score is used here as confirmation alongside raw metrics. Autonomic system is balanced. Anything goes — high energy, fast tempo, full intensity.
 
@@ -143,7 +143,24 @@ Attuned pulls from three places. Each gives us raw data, and each yields deeper 
 - Active vs. passive — Songs I actively chose (reason_start = clickrow) carry stronger signal than autoplay (reason_start = fwdbtn, trackdone).
 - Skip rate — Tracks where reason_end = fwdbtn or skipped = true indicate weaker preference.
 - Recency — First and last played dates, with more weight toward songs still in rotation.
-- Composite engagement score — Weighted combination of all signals above, computed per song.
+- Composite engagement score — Weighted combination of all signals above, computed per song:
+
+```
+engagement_score = (
+    log_normalized_play_count  * 0.35 +
+    completion_rate            * 0.25 +
+    active_play_rate           * 0.20 +
+    (1.0 - skip_rate)          * 0.10 +
+    recency_score              * 0.10
+)
+```
+
+Where:
+- **play_count:** Log-normalized — `log(play_count + 1) / log(max_play_count + 1)`. Prevents a song with 200 plays from dominating.
+- **completion_rate:** Average ms_played / track_duration (0.0-1.0).
+- **active_play_rate:** Proportion of plays where reason_start = clickrow.
+- **skip_rate:** Proportion of plays where reason_end = fwdbtn or skipped = true. Inverted: lower skip = higher score.
+- **recency_score:** Days since last played, normalized with decay — more recent = higher.
 
 The system uses these signals to weight recommendations toward genuinely loved music. This replaces the originally planned source-based scoring (liked +3, top track +2) with real behavioral data.
 
@@ -228,7 +245,7 @@ Three computed scores per song:
 - Sympathetic activation potential — fast tempo, high energy, strong beat. These increase arousal and alertness.
 - Emotional grounding potential — high familiarity, moderate tempo, warm timbre. These support emotional regulation.
 
-See docs/RESEARCH.md for full scoring formulas.
+**Scoring approach:** Parasympathetic and sympathetic scores use sigmoid functions for tempo and energy (modeling monotonic relationships — slower is calmer, faster is more activating). The grounding score uses Gaussian (true peak at ~75 BPM). See docs/RESEARCH.md Section 7 for full formulas.
 
 **Matching specificity.** Not "calm song for bad recovery" but "60-80 BPM, major key, acousticness > 0.7, valence > 0.6, from liked songs or frequent top tracks." Precise multi-dimensional matching.
 
@@ -238,6 +255,17 @@ See docs/RESEARCH.md for full scoring formulas.
 - Minimum 3 transition songs (Saarikallio 2021: 2 is too abrupt)
 - 8-10 songs for a full mood journey (clinical practice guideline)
 - Total playlist duration: 15-30 minutes
+
+**Starting profiles by state** (where the listener probably is upon waking):
+
+| State | Starting BPM | Starting Energy | Rationale |
+|---|---|---|---|
+| Accumulated Fatigue | 80 | 0.35 | Fatigued but awake, normal morning arousal |
+| Physical Recovery Deficit | 80 | 0.35 | Body tired, mind normal |
+| Emotional Processing Deficit | 80 | 0.40 | Body fine, mind foggy |
+| Single Bad Night | 85 | 0.40 | Slightly off but baseline is strong |
+| Baseline | 85 | 0.45 | Normal morning |
+| Peak Readiness | 80 | 0.40 | Just woke up — start moderate, build up |
 
 **Behavioral calibration.** Once the system is running, play/skip behavior on generated playlists feeds back. If a song classified as "calm" keeps getting skipped on low-recovery mornings, it's not calm for me. The system learns from usage.
 
@@ -310,7 +338,7 @@ Seven building days. Each phase ends with something testable — you can verify 
 
 This is the root of everything. If the data is wrong, every layer on top is broken.
 
-Create config.py with all constants and thresholds. Design and create the SQLite schema (8 tables including tokens table for OAuth storage — songs table includes engagement columns, listening_history includes extended history fields). Parse extended streaming history JSON (33K records). Filter to records with spotify_track_uri only. URIs are already in the data — no Spotify search API resolution needed. Register apps on both developer dashboards. Get WHOOP OAuth working — authenticate, pull today's recovery and sleep data, confirm real numbers come back. Get Spotify OAuth working — authenticate, pull liked songs, pull top tracks across all three time windows (short/medium/long term). These are now supplementary engagement signals, not the primary song pool. Deduplicate: merge all sources into songs table. Each unique song appears once with sources JSON list.
+Create config.py with all constants and thresholds. Design and create the SQLite schema (8 tables including tokens table for OAuth storage — songs table includes engagement columns, listening_history includes extended history fields). Parse extended streaming history JSON (33K records). Filter to records with spotify_track_uri only. URIs are already in the data — no Spotify search API resolution needed. Register apps on both developer dashboards. Get WHOOP OAuth working — authenticate, pull today's recovery and sleep data, confirm real numbers come back. Get Spotify OAuth working — authenticate, pull liked songs, pull top tracks across all three time windows (short/medium/long term). These are now supplementary engagement signals, not the primary song pool. Fetch track metadata from Spotify API batch endpoint (up to 50 tracks per request) for duration_ms — needed for completion rate calculation in engagement scoring. Deduplicate: merge all sources into songs table. Each unique song appears once with sources JSON list.
 
 **Testable:** DB populated with listening history, songs table with ~5,700 tracks, WHOOP today's data, integrity checks pass.
 
@@ -326,7 +354,7 @@ Compute per-song engagement scores from listening_history: play_count (meaningfu
 
 ### Day 3: WHOOP Personal Intelligence
 
-Compute personal baselines: 30-day rolling LnRMSSD average, RHR average, typical deep sleep and REM durations with standard deviations. Compute 7-day LnRMSSD rolling average and HRV CV. Compute RHR trend. Compute sleep debt trajectory (7-day rolling cumulative deficit). Compute deep sleep and REM ratios per night plus personal averages. Build the composite state classifier — takes today's data + baselines + trends, outputs one of six states with a human-readable explanation. Uses concrete research-backed thresholds: LnRMSSD >=20% below average for fatigue, >1.5 SD for sleep stage deficits, >5 hours for sleep debt.
+Compute personal baselines: 30-day rolling LnRMSSD average, RHR average, typical deep sleep and REM durations with standard deviations. Compute 7-day LnRMSSD rolling average and HRV CV. Compute RHR trend. Compute sleep debt trajectory (7-day rolling cumulative deficit). Compute deep sleep and REM ratios per night plus personal averages. Build the composite state classifier — takes today's data + baselines + trends, outputs one of six states with a human-readable explanation. Uses concrete research-backed thresholds: LnRMSSD <1.0 SD below 30-day mean for fatigue, >1.5 SD for sleep stage deficits, >5 hours for sleep debt.
 
 **Testable:** Classify state for any historical date, verify against known good/bad days.
 
@@ -342,7 +370,24 @@ Build the LLM classification pipeline. Design the prompt for batches of 5 songs,
 
 ### Day 5: Matching Engine (engagement-weighted)
 
-Build the state-to-properties mapper — for each of the six states, define target song property ranges grounded in the research (e.g., Accumulated Fatigue → 50-70 BPM, energy ≤ 0.3, acousticness ≥ 0.7). Build the library query that finds matching songs. Add engagement-weighted selection: selection_weight = property_match_score (0.60) + engagement_score (0.30) + variety_factor (0.10). This replaces the old source-based scoring (liked +3, top track +2) with real behavioral data. Add recency penalty for variety: -50% weight if played in yesterday's playlist, -25% if 2 days ago. Progressive filter relaxation when too few songs match.
+Build the state-to-properties mapper — for each of the six states, define target song property ranges grounded in the research (e.g., Accumulated Fatigue → 50-70 BPM, energy ≤ 0.3, acousticness ≥ 0.7). Build the library query that finds matching songs. Add engagement-weighted selection: selection_weight = property_match_score (0.60) + engagement_score (0.30) + variety_factor (0.10). This replaces the old source-based scoring (liked +3, top track +2) with real behavioral data. Add recency penalty for variety: -50% weight if played in yesterday's playlist, -25% if 2 days ago.
+
+**Property match score:** For each of the seven properties, compute how well the song fits the state's target range:
+- Inside range: score based on proximity to range center (1.0 at center, 0.7 at edges)
+- Outside range: score decays with distance from nearest edge (sigmoid decay)
+
+Weight each property (tempo 0.35, energy 0.25, acousticness 0.10, instrumentalness 0.10, valence 0.10, mode 0.05, danceability 0.05). Sum to get property_match_score (0.0-1.0).
+
+Note: The neurological scores (parasympathetic/sympathetic/grounding) are used for playlist description and logging, NOT for selection. Selection uses per-property range matching.
+
+**Confidence multiplier in matching:** The LLM confidence field feeds into the property match score — high: 1.0x, medium: 0.8x, low: 0.5x. Songs classified with low confidence have their property match score halved, making them less likely to be selected when strict matching matters.
+
+Progressive filter relaxation when too few songs match:
+- Step 1: Widen BPM range
+- Step 2: Lower acousticness threshold
+- Step 3: Widen energy range
+- Step 4: Relax instrumentalness and valence constraints
+- Step 5 (terminal fallback): Drop all property constraints, select purely by engagement score. Log warning: "Insufficient library coverage for [state] — playlist selected by engagement only"
 
 **Testable:** For each of 6 states, selected songs make intuitive sense and high-engagement songs appear more.
 
@@ -374,6 +419,7 @@ Build playlist sequencing — order songs using the iso principle: first 1-2 son
 - **WHOOP webhook automation:** System generates playlist automatically when recovery is calculated each morning.
 - **Conversational DJ (Feature 2):** Natural language interface for on-demand playlists.
 - **Behavioral feedback loop:** Learn from play/skip behavior on generated playlists to calibrate classifications over time.
+- **Multi-user note:** The current design relies on Spotify's extended streaming history export (requested via privacy settings, delivered in ~days). A multi-user version would need to work with Spotify's API-only data (liked songs, top tracks, recently played — no extended history). This represents a significantly smaller and less rich song pool. The engagement scoring formula would need to be adapted for API-only signals (no ms_played, no reason_start/reason_end, no skip data). This is out of scope for v1 but worth noting as an architectural constraint.
 
 ---
 
@@ -475,17 +521,24 @@ attuned/
 
 ### Database Tables
 
-- **songs** — Every unique song. Key: spotify_uri. Contains track name, artist, album, duration, sources (JSON list, e.g. `["liked", "top_track", "extended_history"]`), and engagement columns: play_count (meaningful listens >30s), completion_rate, active_play_rate, skip_rate, engagement_score (composite), first_played, last_played.
-- **whoop_recovery** — One row per day. Key: cycle_id. Contains recovery_score, hrv_rmssd_milli, resting_heart_rate, spo2, skin_temp.
-- **whoop_sleep** — One row per sleep session. Contains all stage durations in ms (deep, REM, light, awake), sleep quality metrics (efficiency, performance, consistency, respiratory rate, disturbance count, cycle count), and sleep_needed breakdown (baseline, debt, strain, nap offset).
+- **songs** — Every unique song. Key: spotify_uri. Contains track name, artist, album, duration_ms (from Spotify track metadata API — batch endpoint, up to 50 tracks per request), sources (JSON list, e.g. `["liked", "top_track", "extended_history"]`), and engagement columns: play_count (meaningful listens >30s), completion_rate, active_play_rate, skip_rate, engagement_score (composite), first_played, last_played.
+- **whoop_recovery** — One row per day. Key: cycle_id. Contains date (DATE — derived from cycle end time in user's local timezone), recovery_score, hrv_rmssd_milli, ln_rmssd (REAL — natural log of hrv_rmssd_milli, computed on storage), resting_heart_rate, spo2, skin_temp.
+- **whoop_sleep** — One row per sleep session. Contains date (DATE — derived from sleep end time in user's local timezone), recovery_cycle_id (FK to whoop_recovery.cycle_id — links sleep to its recovery day), plus all stage durations in ms (deep, REM, light, awake), sleep quality metrics (efficiency, performance, consistency, respiratory rate, disturbance count, cycle count), and sleep_needed breakdown (baseline, debt, strain, nap offset).
 - **listening_history** — Every play event. Contains spotify_uri, played_at timestamp, ms_played, reason_start, reason_end, skipped, shuffle, platform. Unique on (spotify_uri, played_at).
 - **song_classifications** — One row per song. Contains LLM-derived properties (bpm, key, mode, energy, valence, acousticness, danceability, instrumentalness — all 0.0-1.0 — plus mood_tags, genre_tags, confidence) and computed neurological scores (parasympathetic, sympathetic, grounding). Also stores classification source and raw response.
-- **generated_playlists** — Log of every playlist created. Contains spotify_playlist_id, date, detected state, reasoning, all WHOOP metrics at time of generation, track URIs, and the description written to Spotify.
+- **generated_playlists** — Log of every playlist created. Contains spotify_playlist_id, date, detected state, reasoning, all WHOOP metrics at time of generation, track_uris (JSON array of spotify URIs), and the description written to Spotify.
 - **tokens** — OAuth token storage. Contains provider (whoop/spotify), access_token, refresh_token, expires_at.
+
+### Indexes
+
+- `songs.engagement_score` — for engagement-weighted selection
+- `song_classifications.bpm` — for BPM range queries in matching
+- `song_classifications.energy` — for energy range queries in matching
 
 ### Key Constraints Claude Code Should Know
 
 - **Library size:** 679 tracks with 5+ meaningful listens (>30s), 366 with 10+. Total unique tracks from extended history: ~5,700. The matching engine classifies and selects from the 679-track engaged pool. If fewer than 15 songs match a state's criteria, progressively relax filters (widen BPM range, lower acousticness threshold, etc.) until enough songs qualify. Log when relaxation happens.
+- **Classification pool boundary:** All 679 songs with 5+ meaningful listens are classified and eligible for playlist selection. Liked songs or top tracks that fall outside this pool (fewer than 5 meaningful listens) are included in the songs table for tracking but are NOT classified and NOT eligible for playlist selection in v1.
 - **Extended streaming history:** Already contains spotify_track_uri — no search API resolution needed. 58% of plays are <=30s (skips/noise) — filter to >30s for meaningful engagement scoring.
 - **WHOOP recovery score complements raw metrics** — the state classifier primarily uses raw HRV, RHR, and sleep stages (which allow distinguishing between specific deficit types), with recovery score as a confirmatory signal and sanity check.
 - **Need 14+ days of WHOOP data** before personal baselines are reliable. Use rolling 30-day window for computation.
@@ -493,6 +546,7 @@ attuned/
 - **Spotify OAuth scopes needed:** user-library-read, user-read-recently-played, user-top-read, playlist-modify-private, user-read-private
 - WHOOP API paginates at 25 records per page using nextToken
 - WHOOP timestamps are ISO 8601 with timezone offsets — need careful date derivation
+- **Cycle-to-date mapping:** Each calendar day's data uses the primary sleep cycle (longest duration). Date is derived from the cycle end time in the user's local timezone. If multiple sleep cycles exist for one day (e.g., a nap), the primary (longest) cycle is used for baselines and state classification.
 - WHOOP access tokens expire after 1 hour — must request the `offline` scope to get a refresh token
 - Spotify playlist descriptions have a 300 character limit
 - Spotify audio features and recommendations endpoints are deprecated for new apps — do not attempt to use them

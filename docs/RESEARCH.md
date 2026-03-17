@@ -3,6 +3,10 @@
 **Date:** March 16, 2026
 **Purpose:** Captures the published research that informs Attuned's design decisions. Every threshold, formula, and property range in the system traces back to findings documented here. This is the "why" behind the technical choices.
 
+### A Note on Evidence Quality
+
+This system is **evidence-informed**, not **evidence-based** in the clinical sense. Every design decision traces to published research, and the directional relationships are well-established (slower tempo → more parasympathetic activation, familiar music → stronger dopamine response). However, the mathematical precision of the formulas (specific weights, sigma values, threshold numbers) exceeds what any single study validates. The research tells us *which* properties matter and *in which direction* — our specific numbers are informed starting points that will be calibrated against real-world playlist quality. This is appropriate for a personal tool, but it would be incorrect to claim clinical-grade precision.
+
 ---
 
 ## 1. How Music Affects the Autonomic Nervous System
@@ -23,6 +27,8 @@ Tempo is the single strongest predictor of how music affects the ANS. The relati
 
 - **Dey et al., 2017 (Scientific Reports):** Heart rate modulates toward the acoustic tempo (entrainment). If resting HR < 80, listening to 80 BPM drums raised HR. If resting HR > 80, it lowered HR.
 
+- **Karageorghis & Priest, 2012 (Sports Medicine):** Comprehensive review of music in sport and exercise. Confirmed tempo as the primary driver of psychophysical response, with energy/rhythm as secondary factors. Provided the framework for categorizing music as "sedative" (<80 BPM) vs "stimulative" (>120 BPM).
+
 **Design decision:** Tempo gets the highest weight in neurological scoring (0.35). Recovery states target 50-70 BPM. Energy states target 120-150 BPM.
 
 ### 1.2 Energy / Loudness — Strong Arousal Predictor
@@ -42,6 +48,8 @@ Acoustic instruments (piano, guitar, strings) tend to activate the parasympathet
 - **Scarratt et al., 2023 (PMC):** Sleep and study playlists are characterized by higher acousticness, higher instrumentalness, lower energy, lower tempo, and lower loudness compared to general playlists.
 
 - **Thoma et al., 2013 (PLOS ONE):** Classical/acoustic music effectively reduced cortisol, HR, and BP in a controlled stress paradigm.
+
+**Confounding note:** The Thoma 2013 finding is partially confounded — the classical/acoustic music used in the study was also lower tempo and lower energy than the control conditions. It's difficult to isolate acousticness from the tempo/energy effect. The independent contribution of acousticness to parasympathetic activation is plausible but less cleanly demonstrated than tempo's contribution. This is reflected in its lower weight (0.10 vs 0.35).
 
 **Design decision:** Acousticness gets weight 0.10. Recovery states target >0.7.
 
@@ -104,7 +112,7 @@ No published standard exists for exact BPM-per-song transition rates. However:
 
 - **Li et al., 2024:** Computational implementation generated music traversing the valence-arousal circumplex in 30-second increments across 15-minute sessions.
 
-- "Weightless" (Marconi Union), clinically studied: starts at 60 BPM, slows to ~50 BPM within a single 8-minute track. Reduced anxiety by 65% and physiological resting rates by 35% (MindLab study).
+- "Weightless" (Marconi Union): starts at 60 BPM, slows to ~50 BPM within a single 8-minute track. The MindLab study that reported these numbers (65% anxiety reduction, 35% physiological reduction) was not peer-reviewed and was conducted for a marketing partnership. The directional finding (gradual tempo deceleration within a single track reduces anxiety) is consistent with the broader iso principle literature, but the specific numbers should not be treated as rigorous evidence.
 
 ### 2.3 Derived Algorithm
 
@@ -141,16 +149,18 @@ The field standard is to log-transform RMSSD before computing baselines, rolling
 
 ### 3.2 HRV Decline Thresholds
 
-There is no universal "X% per day" slope threshold. The field uses individual-baseline-relative approaches:
+There is no universal "X% per day" slope threshold. The field uses individual-baseline-relative approaches based on the Smallest Worthwhile Change (SWC = 0.5 × SD):
 
-- **>=10% below 30-day average (LnRMSSD):** Caution. Common during peak training blocks. Not concerning if it recovers.
-- **>=20% below 30-day average, sustained 7+ days:** Concern. Predicts upper-respiratory illness or non-functional overreaching.
-- **>=25% below or inability to recover after deload:** Strong overtraining signal.
+- **<0.5 SD below 30-day mean (Smallest Worthwhile Change):** Caution. Common during peak training blocks.
+- **<1.0 SD below 30-day mean, sustained 3+ days:** Concern. Predicts upper-respiratory illness or non-functional overreaching. Triggers Accumulated Fatigue composite.
+- **<1.5 SD below 30-day mean:** Significant. Strong overtraining signal.
 - **7+ consecutive days below baseline:** Red flag regardless of magnitude.
+
+This approach follows what Plews and Buchheit actually recommend: using the individual's own standard deviation as the ruler, rather than fixed percentages. A 20% decline means something very different for someone with an SD of 2ms vs 10ms. The SWC (0.5 × SD) adapts to individual HRV variability.
 
 **Source:** Plews et al. 2012 found that in a non-functionally over-reached triathlete, the CV of 7-day rolling LnRMSSD showed "large linear reductions towards NFOR at -0.65%/week."
 
-**Design decision:** State classifier uses >=20% below 30-day LnRMSSD average as the primary trigger for Accumulated Fatigue. >=10% flags caution.
+**Design decision:** State classifier uses LnRMSSD < (30-day mean - 1.0 × SD), sustained 3+ days, as the primary trigger for Accumulated Fatigue. <0.5 SD flags caution.
 
 ### 3.3 HRV Coefficient of Variation (CV)
 
@@ -312,11 +322,28 @@ Based on cumulative evidence from Section 1:
 | Mode (major/minor) | 0.05 | Detectable but small physiological effect (Khalfa 2002, Zhang 2024) |
 | Danceability | 0.05 | Rhythm regularity, sense of control |
 
+**Note on danceability:** The 0.05 weight for danceability reflects that its direct ANS evidence is the weakest of all seven properties. The rationale (rhythmic regularity provides a sense of predictability and control) is grounded in music psychology but lacks direct autonomic measurement studies comparable to tempo or energy. It's included because rhythm regularity is a meaningful perceptual quality, but its weight reflects the evidence gap.
+
 ### 7.2 Score Formulas (Starting Points — Tune on Real Data)
+
+Sigmoid for parasympathetic/sympathetic (monotonic relationship), Gaussian for grounding (true peak).
+
+**Function definitions:**
+
+```
+sigmoid_decay(x, plateau_below, decay_above) = 1.0 / (1.0 + exp((x - midpoint) / steepness))
+  where midpoint = (plateau_below + decay_above) / 2, steepness = (decay_above - plateau_below) / 6
+
+sigmoid_rise(x, decay_below, plateau_above) = 1.0 / (1.0 + exp(-(x - midpoint) / steepness))
+  where midpoint = (decay_below + plateau_above) / 2, steepness = (plateau_above - decay_below) / 6
+
+gaussian(x, center, sigma) = exp(-0.5 * ((x - center) / sigma)^2)
+  — peaks at 1.0 when x = center, decays smoothly
+```
 
 **Parasympathetic activation score** (0.0-1.0, higher = more calming):
 ```
-tempo_score     = gaussian(bpm, center=60, sigma=15)    * 0.35
+tempo_score     = sigmoid_decay(bpm, plateau_below=60, decay_above=90) * 0.35
 energy_score    = (1.0 - energy)                        * 0.25
 acoustic_score  = acousticness                          * 0.10
 instrum_score   = instrumentalness                      * 0.10
@@ -329,7 +356,7 @@ parasympathetic = sum of above
 
 **Sympathetic activation score** (0.0-1.0, higher = more energizing):
 ```
-tempo_score     = gaussian(bpm, center=135, sigma=20)   * 0.35
+tempo_score     = sigmoid_rise(bpm, decay_below=100, plateau_above=130) * 0.35
 energy_score    = energy                                * 0.25
 acoustic_score  = (1.0 - acousticness)                  * 0.10
 instrum_score   = (1.0 - instrumentalness)              * 0.10
@@ -353,7 +380,7 @@ dance_score     = gaussian(danceability, center=0.4, sigma=0.2) * 0.05
 grounding = sum of above
 ```
 
-Where `gaussian(x, center, sigma) = exp(-0.5 * ((x - center) / sigma)^2)` — peaks at 1.0 when x = center, decays smoothly.
+**Why sigmoid for parasympathetic/sympathetic, Gaussian for grounding:** Gaussian implies there's a peak and decline — that calming effect peaks at exactly 60 BPM and a song at 55 BPM is less calming. The research doesn't support this. Bretherton 2019 and Kim 2024 show parasympathetic activation increases as tempo decreases — it's monotonic, not bell-curved. A sigmoid correctly models "slower is better" with a plateau (you don't get infinitely calmer at 20 BPM). Same logic for sympathetic: "faster is more activating" plateaus rather than peaking. Grounding keeps Gaussian because 75 BPM is genuinely a centered target — too slow loses engagement, too fast loses calm.
 
 **Note:** These formulas are starting points. They will be calibrated against subjective listening tests ("does this playlist actually feel calming?") and adjusted. The weights and centers are all derived from the research in Sections 1-2 but the exact numbers will evolve.
 
@@ -427,6 +454,7 @@ Research-backed target ranges for the matching engine. Each state maps to an ide
 - Ooishi et al., 2017 — Oxytocin/cortisol and tempo (PLOS ONE)
 - Kim et al., 2024 — Music tempo and HRV during exercise (J Exerc Rehabil)
 - Dey et al., 2017 — Heart rate entrainment to acoustic tempo (Scientific Reports)
+- Karageorghis & Priest, 2012 — Music in Sport and Exercise (Sports Medicine)
 - Khalfa et al., 2002 — Skin conductance and musical emotions (Neuroscience Letters)
 - Zhang et al., 2024 — Major/minor mode physiological responses (Frontiers in Psychology)
 - Chanda & Levitin, 2013 — Neurochemistry of Music (Trends in Cognitive Sciences)

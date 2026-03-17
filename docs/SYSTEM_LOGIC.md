@@ -14,7 +14,7 @@ WHOOP is brilliant at diagnosis. It tells you your HRV is down, your deep sleep 
 
 Meanwhile, you reach for Spotify. And you instinctively make a choice — something calmer on a rough morning, something with more energy on a good one. You're already doing this. You're already using music to modulate how you feel. You're just doing it manually, imprecisely, without any connection to what your body actually needs.
 
-**The goal of Attuned is autonomic alignment — pushing your nervous system toward its optimal state from wherever it currently is, using music as the tool.**
+**The goal of Attuned is autonomic alignment — supporting your nervous system toward its optimal state from wherever it currently is, using music as the tool.**
 
 It's not "a calming app." It's not "a hype playlist." It's not trying to make you perform better (though that's a side effect). The goal changes every day based on what your body needs:
 
@@ -27,7 +27,7 @@ It's not "a calming app." It's not "a hype playlist." It's not trying to make yo
 | Normal day | Nothing specific | A good, varied playlist from your library — no intervention needed |
 | Fully recovered and ready | Match your energy | Your bangers — high-energy, positive, full intensity |
 
-**The analogy:** Attuned is a thermostat, not an air conditioner. An air conditioner always cools. A thermostat reads the room and decides whether to cool, heat, or do nothing. Attuned reads your nervous system and decides which direction to push — or whether to push at all.
+**The analogy:** Attuned is a thermostat, not an air conditioner. An air conditioner always cools. A thermostat reads the room and decides whether to cool, heat, or do nothing. Attuned reads your nervous system and decides which direction to nudge — or whether to nudge at all.
 
 **The gap it fills:** WHOOP identifies the problem but doesn't act on it. Your Spotify library has the remedy but doesn't know which one you need today. Attuned closes the loop — it takes the diagnosis and applies the right intervention, automatically, every morning.
 
@@ -61,7 +61,7 @@ This is the difference between Attuned and a generic "calming music" app. A calm
 
 Every morning, WHOOP measures your body while you sleep — heart rate variability, resting heart rate, sleep stages, recovery. Attuned reads that data, figures out what your autonomic nervous system needs right now, and generates a Spotify playlist of 15-20 songs from your own library whose acoustic properties are scientifically matched to that need.
 
-Not generic spa music. YOUR songs — ones you've listened to dozens of times — selected because their tempo, energy, acousticness, and other measurable properties will push your nervous system in the direction it needs to go.
+Not generic spa music. YOUR songs — ones you've listened to dozens of times — selected because their tempo, energy, acousticness, and other measurable properties support your nervous system in the direction it needs to go.
 
 ---
 
@@ -217,10 +217,13 @@ Not all metrics are equally important. Here's how they stack up, from most to le
 - 3-7 day trend direction matters more than any single day
 
 **Thresholds:**
-- >=10% below 30-day average: caution
-- >=20% below, sustained 3+ days: concern (triggers Accumulated Fatigue with other signals)
+- <0.5 SD below 30-day mean (Smallest Worthwhile Change): caution
+- <1.0 SD below 30-day mean, sustained 3+ days: concern (triggers Accumulated Fatigue with other signals)
+- <1.5 SD below 30-day mean: significant, strong overtraining signal
 - 7+ consecutive days below baseline: red flag regardless of magnitude
 - At or above 30-day average: supports Peak Readiness
+
+These thresholds use the Smallest Worthwhile Change (SWC) framework from Plews/Buchheit — the individual's own standard deviation as the ruler, rather than fixed percentages that mean different things for different people.
 
 **If it reads too high (healthier than reality):** The worst failure mode. You get energizing music when your nervous system needs rest. High-energy music pushes a depleted ANS further into sympathetic overdrive.
 
@@ -372,6 +375,13 @@ Spotify's audio features API is deprecated for new apps — we can't get BPM, en
 - Reference anchors in the prompt calibrate the scale: "Energy 1.0 = 'Killing in the Name' by RATM. Energy 0.1 = 'Clair de Lune.'"
 - Later (when the library exceeds 500 songs): Essentia, an open-source audio analysis library, can extract precise properties from actual audio. We'd compare LLM estimates against Essentia ground truth, identify systematic biases, and apply corrections.
 
+**Confidence multiplier:** The confidence field from LLM classification feeds into the property match score:
+- high confidence: 1.0x (full weight)
+- medium confidence: 0.8x (slight discount)
+- low confidence: 0.5x (heavy discount)
+
+This means a song classified with low confidence has its property match score halved — the system trusts its properties less, so it's less likely to be selected when strict matching matters. In relaxed matching (where property constraints are loosened), confidence matters less because the system is already compromising on precision.
+
 **Why LLM accuracy is "good enough" for now:** With a 679-song library, the matching engine doesn't have enough songs to benefit from razor-sharp precision. The difference between "the LLM says ~80 BPM" and "Essentia measured 82 BPM" doesn't matter when you're picking from a pool this size. Tempo and energy (the two most important properties at 60% combined weight) are also the two most accurately classified by the LLM. The weakest property (valence at 60-70% accuracy) also has the lowest weight (10%).
 
 ### 5.3 Why YOUR Music Matters (The Familiarity Effect)
@@ -400,6 +410,23 @@ We have extended streaming history: 33,427 play records spanning 6 years, 5,701 
 
 **Composite engagement score:** Weighted combination of all the above signals. This replaces the originally planned source-based scoring (liked song +3, top track +2) with actual behavioral data.
 
+```
+engagement_score = (
+    log_normalized_play_count  * 0.35 +
+    completion_rate            * 0.25 +
+    active_play_rate           * 0.20 +
+    (1.0 - skip_rate)          * 0.10 +
+    recency_score              * 0.10
+)
+```
+
+Where:
+- **play_count:** Log-normalized — `log(play_count + 1) / log(max_play_count + 1)`. Prevents a song with 200 plays from dominating one with 30.
+- **completion_rate:** Already 0.0-1.0 (average ms_played / track_duration).
+- **active_play_rate:** Proportion of plays where reason_start = clickrow.
+- **skip_rate:** Proportion of plays where reason_end = fwdbtn or skipped = true. Inverted: lower skip = higher score.
+- **recency_score:** Days since last played, normalized with a decay curve — more recent = higher score.
+
 ---
 
 ## 7. The Three Neurological Scores
@@ -411,7 +438,7 @@ Every classified song gets three scores that quantify what it does to the autono
 The ideal calming song: ~60 BPM, low energy, high acousticness, instrumental, moderate-positive valence, major key, low danceability.
 
 ```
-tempo_score     = gaussian(bpm, center=60, sigma=15)         * 0.35
+tempo_score     = sigmoid_decay(bpm, plateau_below=60, decay_above=90)  * 0.35
 energy_score    = (1.0 - energy)                             * 0.25
 acoustic_score  = acousticness                               * 0.10
 instrum_score   = instrumentalness                           * 0.10
@@ -427,7 +454,7 @@ Used for: Accumulated Fatigue, Physical Recovery Deficit — states where the ne
 The ideal energizing song: ~135 BPM, high energy, electronic/produced, vocals present, high valence, high danceability.
 
 ```
-tempo_score     = gaussian(bpm, center=135, sigma=20)        * 0.35
+tempo_score     = sigmoid_rise(bpm, decay_below=100, plateau_above=130) * 0.35
 energy_score    = energy                                     * 0.25
 acoustic_score  = (1.0 - acousticness)                       * 0.10
 instrum_score   = (1.0 - instrumentalness)                   * 0.10
@@ -458,19 +485,34 @@ Used for: Emotional Processing Deficit, Single Bad Night — states where emotio
 
 Note the different weights: tempo drops from 0.35 to 0.30 (still important but less dominant), acousticness rises from 0.10 to 0.15 (warmth of tone matters more), valence rises from 0.10 to 0.15 (emotional tone matters more). Instrumentalness centers at 0.3 instead of being binary — some vocals are actively helpful for emotional connection.
 
-### 6.4 What the Gaussian Scoring Means (Intuitively)
+### 6.4 What the Scoring Functions Mean (Intuitively)
 
-`gaussian(x, center, sigma) = exp(-0.5 * ((x - center) / sigma)^2)`
+Two types of scoring functions are used, chosen based on the shape of the underlying relationship:
 
-This is a bell curve that peaks at 1.0 when the property equals the ideal center, and decays smoothly as it moves away. The sigma controls how quickly it decays.
+**Sigmoid functions** (parasympathetic and sympathetic tempo scores):
+```
+sigmoid_decay(x, plateau_below, decay_above) = 1.0 / (1.0 + exp((x - midpoint) / steepness))
+sigmoid_rise(x, decay_below, plateau_above) = 1.0 / (1.0 + exp(-(x - midpoint) / steepness))
+  where midpoint = average of the two parameters, steepness = range / 6
+```
 
-**Example:** For parasympathetic tempo scoring, center=60, sigma=15:
-- A song at 60 BPM scores 1.0 (perfect match)
-- A song at 75 BPM scores ~0.61 (decent, still in range)
-- A song at 90 BPM scores ~0.14 (poor match)
+These model monotonic relationships. For parasympathetic tempo: slower is better, plateauing below 60 BPM (you don't get infinitely calmer at 20 BPM) and decaying above 90 BPM. For sympathetic tempo: faster is better, plateauing above 130 BPM and decaying below 100 BPM. The research supports monotonic effects — Bretherton 2019 showed parasympathetic activation increases as tempo decreases, with no evidence of a peak-and-decline pattern.
+
+**Gaussian function** (grounding score and non-tempo properties):
+```
+gaussian(x, center, sigma) = exp(-0.5 * ((x - center) / sigma)^2)
+```
+
+Grounding keeps Gaussian because ~75 BPM is genuinely a centered target — too slow loses engagement, too fast loses calm. This is a true bell-curve relationship, not monotonic.
+
+**Example:** For parasympathetic tempo scoring (sigmoid_decay, plateau_below=60, decay_above=90):
+- A song at 50 BPM scores ~1.0 (plateau zone)
+- A song at 60 BPM scores ~1.0 (still in plateau)
+- A song at 75 BPM scores ~0.73 (transition zone)
+- A song at 90 BPM scores ~0.27 (decay zone)
 - A song at 120 BPM scores ~0.00 (effectively zero)
 
-This is better than hard cutoffs because it gives partial credit. A song at 72 BPM isn't as calming as one at 60 BPM, but it's much better than one at 120 BPM. The gaussian captures that gradient naturally.
+This is better than hard cutoffs because it gives partial credit. A song at 72 BPM isn't as calming as one at 60 BPM, but it's much better than one at 120 BPM. The sigmoid captures that gradient naturally — and unlike a Gaussian, it doesn't penalize songs that are even slower than 60 BPM, which is correct because a 45 BPM song is at least as calming as a 60 BPM song.
 
 **These formulas are starting points.** They will be calibrated against subjective listening tests ("does this playlist actually feel calming?") and adjusted. The weights and centers are derived from the research but the exact numbers will evolve with real use.
 
@@ -484,7 +526,7 @@ The classifier evaluates states top-to-bottom and returns the first match. This 
 
 ### State 1: Accumulated Fatigue
 
-**WHOOP Trigger:** LnRMSSD >=20% below 30-day average, sustained 3+ days AND RHR rising (+5 bpm above baseline) AND sleep debt >5 hours (7-day rolling).
+**WHOOP Trigger:** LnRMSSD <1.0 SD below 30-day mean, sustained 3+ days AND RHR rising (+5 bpm above baseline) AND sleep debt >5 hours (7-day rolling).
 
 **What's happening in your body:** This isn't a bad morning — it's a downward trend across multiple systems over multiple days. Your autonomic nervous system is depleted. The parasympathetic branch (rest/recovery) is suppressed. The requirement for all three signals to align (HRV + RHR + sleep debt) means this is high-confidence — no single bad reading can trigger it.
 
@@ -541,7 +583,7 @@ The classifier evaluates states top-to-bottom and returns the first match. This 
 
 ### State 4: Single Bad Night
 
-**WHOOP Trigger:** Today's LnRMSSD >=10% below average OR recovery <50%, BUT 7-day LnRMSSD trend is stable or rising.
+**WHOOP Trigger:** Today's LnRMSSD <0.5 SD below 30-day mean OR recovery <50%, BUT 7-day LnRMSSD trend is stable or rising.
 
 **What's happening in your body:** One rough night, but your baseline is strong. The 7-day trend being stable or rising means this is a blip, not a pattern. Maybe you ate late, had alcohol, slept somewhere unfamiliar, or just had natural variation. Your body's underlying state is fine.
 
@@ -618,6 +660,15 @@ selection_weight = property_match_score * 0.60
 
 **Why these percentages:** The science has to come first — a song with perfect engagement but wrong properties defeats the purpose. But within the set of scientifically appropriate songs, engagement should heavily influence selection because familiar, loved music amplifies the physiological effect (Section 6.3). Variety gets the smallest weight because it matters less than getting the right songs, but it prevents staleness.
 
+**Property match score formula:**
+For each of the seven properties, compute how well the song fits the state's target range:
+- Inside range: score based on proximity to range center (1.0 at center, 0.7 at edges)
+- Outside range: score decays with distance from nearest edge (sigmoid decay)
+
+Weight each property using the research-backed weights (tempo 0.35, energy 0.25, acousticness 0.10, instrumentalness 0.10, valence 0.10, mode 0.05, danceability 0.05). Sum to get property_match_score (0.0-1.0).
+
+Note: The neurological scores (parasympathetic/sympathetic/grounding from Section 7) are used for playlist description and logging — they tell the story of what the playlist does. Selection uses per-property range matching against the state's target ranges, which is more flexible and allows the matching engine to reason about individual properties during progressive relaxation.
+
 ### 8.2 Progressive Filter Relaxation
 
 With a 679-song library, strict criteria might only return 3-5 matching songs. The engine needs 15-20 for a proper playlist. When too few songs match:
@@ -625,7 +676,10 @@ With a 679-song library, strict criteria might only return 3-5 matching songs. T
 1. First relaxation: widen BPM range by +/-10 BPM
 2. Second relaxation: lower acousticness threshold by 0.1
 3. Third relaxation: widen energy range by +/-0.1
-4. Continue until 15-20 songs qualify
+4. Fourth relaxation: relax instrumentalness and valence constraints
+5. Terminal fallback: drop all property constraints, select purely by engagement score. Log warning: "Insufficient library coverage for [state] — playlist selected by engagement only"
+
+Continue until 15-20 songs qualify.
 
 Every relaxation is logged — the playlist description notes what was relaxed and why. This transparency matters: you should know when the system had to compromise.
 
@@ -666,11 +720,24 @@ Think of it like this: if someone is anxious (high sympathetic activation, fast 
 
 **Baseline:** Less iso principle needed — ranges are already wide. The playlist can be more varied in its ordering.
 
+**Starting profiles by state** (represents "where the listener probably is upon waking"):
+
+| State | Starting BPM | Starting Energy | Rationale |
+|---|---|---|---|
+| Accumulated Fatigue | 80 | 0.35 | Fatigued but awake, normal morning arousal |
+| Physical Recovery Deficit | 80 | 0.35 | Body tired, mind normal — similar starting point |
+| Emotional Processing Deficit | 80 | 0.40 | Body fine, mind foggy — slightly higher physical baseline |
+| Single Bad Night | 85 | 0.40 | Slightly off but baseline is strong |
+| Baseline | 85 | 0.45 | Normal morning — no strong iso transition needed, allow variety |
+| Peak Readiness | 80 | 0.40 | Just woke up — even on great days, start moderate and build up |
+
+The first 2-3 songs in any playlist target the starting profile. The last 3-4 songs target the state's ideal property ranges. The middle transitions between them.
+
 ### 9.4 Research Support
 
 - **Heiderscheit & Madson 2015:** Clinically defined iso principle as matching the fit between person's current state and music properties, then gradually shifting.
 - **Starcke & von Georgi 2024:** Iso-principle-based listening successfully modulated affective state in controlled conditions.
-- **"Weightless" (Marconi Union):** Clinically studied single track that starts at 60 BPM and slows to ~50 BPM over 8 minutes. Reduced anxiety by 65% and physiological resting rates by 35%.
+- **"Weightless" (Marconi Union):** Clinically studied single track that starts at 60 BPM and slows to ~50 BPM over 8 minutes. Reduced anxiety by 65% and physiological resting rates by 35%. Note: The MindLab study was not peer-reviewed and was conducted for a marketing partnership. The directional finding is consistent with the broader iso principle literature, but the specific numbers should not be treated as rigorous evidence.
 - **Li et al. 2024:** Computational implementation traversing the valence-arousal space in 30-second increments across 15-minute sessions.
 
 ---
@@ -697,6 +764,10 @@ The `generated_playlists` table logs everything: the date, detected state, all W
 ---
 
 ## 12. System Design Properties
+
+### 11.0 A Note on Evidence
+
+This system is evidence-informed — every design decision traces to published research, and the directional relationships are well-established. However, the mathematical precision of the formulas exceeds what any single study validates. The research tells us which properties matter and in which direction; our specific weights and thresholds are informed starting points that will be calibrated against real-world playlist quality.
 
 ### 11.1 Graceful Degradation
 
