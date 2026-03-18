@@ -15,5 +15,9 @@ anthropic>=0.30,<1.0
 # Config
 python-dotenv>=1.0,<2.0
 
+# Audio analysis
+essentia>=2.1b6.dev1389
+yt-dlp>=2024.0
+
 # Testing
 pytest>=8.0,<9.0

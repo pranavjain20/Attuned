@@ -29,5 +29,19 @@ Thumbs.db
 *.wav
 *.m4a
 
+# Audio clips (Essentia analysis — redownloadable)
+audio_clips/
+audio_clips_test_a/
+audio_clips_test_b/
+audio_clips_test_c/
+audio_clips_test_d/
+
+# Experiment results (not committed)
+scripts/yt_match_results.json
+scripts/property_eval_results.json
+
+# TempoCNN model files (large, downloadable)
+scripts/models/
+
 # Spotify export data
 streaming_history/

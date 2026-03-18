@@ -12,6 +12,8 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).parent
 DB_PATH = PROJECT_ROOT / "attuned.db"
+AUDIO_CLIPS_DIR = PROJECT_ROOT / "audio_clips"
+AUDIO_CLIP_DURATION_SECONDS = 30
 STREAMING_HISTORY_DIR = os.getenv(
     "STREAMING_HISTORY_DIR",
     str(Path.home() / "Desktop" / "Spotify Extended Streaming History"),
