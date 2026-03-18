@@ -50,6 +50,7 @@ SPOTIFY_BATCH_SIZE = 50
 # ---------------------------------------------------------------------------
 MIN_PLAY_DURATION_MS = 30_000
 MIN_MEANINGFUL_LISTENS = 5
+MIN_CLASSIFICATION_LISTENS = 2
 
 # ---------------------------------------------------------------------------
 # Intelligence thresholds (used in later days)
