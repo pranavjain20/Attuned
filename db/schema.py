@@ -20,6 +20,17 @@ def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
 def create_tables(conn: sqlite3.Connection) -> None:
     """Create all tables and indexes if they don't exist."""
     conn.executescript(_SCHEMA_SQL)
+    _migrate_add_recent_play_ratio(conn)
+
+
+def _migrate_add_recent_play_ratio(conn: sqlite3.Connection) -> None:
+    """Add recent_play_ratio column to songs table if it doesn't exist yet."""
+    try:
+        conn.execute("ALTER TABLE songs ADD COLUMN recent_play_ratio REAL")
+        conn.commit()
+    except sqlite3.OperationalError:
+        # Column already exists — expected for new DBs or re-runs
+        pass
 
 
 _SCHEMA_SQL = """
@@ -34,6 +45,7 @@ CREATE TABLE IF NOT EXISTS songs (
     completion_rate REAL,
     active_play_rate REAL,
     skip_rate       REAL,
+    recent_play_ratio REAL,
     engagement_score REAL,
     first_played    TEXT,                          -- ISO 8601
     last_played     TEXT                           -- ISO 8601

@@ -10,6 +10,7 @@ from spotify.engagement import (
     _compute_active_play_rates,
     _compute_completion_rates,
     _compute_final_scores,
+    _compute_recent_play_ratios,
     _compute_skip_rates,
     _parse_date,
     compute_engagement_scores,
@@ -101,18 +102,19 @@ class TestCompletionRate:
 # ---------------------------------------------------------------------------
 
 class TestActivePlayRate:
-    def test_all_clickrow(self, db_conn):
-        """All plays were intentional clicks → 1.0."""
+    def test_all_intentional(self, db_conn):
+        """All plays were intentional (clickrow/playbtn/remote) → 1.0."""
         _insert_song(db_conn, "uri:1")
         _insert_play(db_conn, "uri:1", "2026-01-01T10:00:00Z", reason_start="clickrow")
-        _insert_play(db_conn, "uri:1", "2026-01-02T10:00:00Z", reason_start="clickrow")
+        _insert_play(db_conn, "uri:1", "2026-01-02T10:00:00Z", reason_start="playbtn")
+        _insert_play(db_conn, "uri:1", "2026-01-03T10:00:00Z", reason_start="remote")
 
         _compute_active_play_rates(db_conn)
 
         song = queries.get_song(db_conn, "uri:1")
         assert song["active_play_rate"] == 1.0
 
-    def test_no_clickrow(self, db_conn):
+    def test_no_intentional(self, db_conn):
         """All plays were autoplay → 0.0."""
         _insert_song(db_conn, "uri:1")
         _insert_play(db_conn, "uri:1", "2026-01-01T10:00:00Z", reason_start="trackdone")
@@ -124,11 +126,11 @@ class TestActivePlayRate:
         assert song["active_play_rate"] == 0.0
 
     def test_mixed(self, db_conn):
-        """3 of 5 plays were clickrow → 0.6."""
+        """3 of 5 plays were intentional → 0.6."""
         _insert_song(db_conn, "uri:1")
-        for i in range(3):
-            _insert_play(db_conn, "uri:1", f"2026-01-0{i+1}T10:00:00Z",
-                         reason_start="clickrow")
+        _insert_play(db_conn, "uri:1", "2026-01-01T10:00:00Z", reason_start="clickrow")
+        _insert_play(db_conn, "uri:1", "2026-01-02T10:00:00Z", reason_start="playbtn")
+        _insert_play(db_conn, "uri:1", "2026-01-03T10:00:00Z", reason_start="remote")
         for i in range(2):
             _insert_play(db_conn, "uri:1", f"2026-01-0{i+4}T10:00:00Z",
                          reason_start="trackdone")
@@ -137,6 +139,28 @@ class TestActivePlayRate:
 
         song = queries.get_song(db_conn, "uri:1")
         assert abs(song["active_play_rate"] - 0.6) < 0.01
+
+    def test_playbtn_counts_as_intentional(self, db_conn):
+        """playbtn (play button press) counts as intentional."""
+        _insert_song(db_conn, "uri:1")
+        _insert_play(db_conn, "uri:1", "2026-01-01T10:00:00Z", reason_start="playbtn")
+        _insert_play(db_conn, "uri:1", "2026-01-02T10:00:00Z", reason_start="trackdone")
+
+        _compute_active_play_rates(db_conn)
+
+        song = queries.get_song(db_conn, "uri:1")
+        assert abs(song["active_play_rate"] - 0.5) < 0.01
+
+    def test_remote_counts_as_intentional(self, db_conn):
+        """remote (Alexa/voice/Spotify Connect) counts as intentional."""
+        _insert_song(db_conn, "uri:1")
+        _insert_play(db_conn, "uri:1", "2026-01-01T10:00:00Z", reason_start="remote")
+        _insert_play(db_conn, "uri:1", "2026-01-02T10:00:00Z", reason_start="trackdone")
+
+        _compute_active_play_rates(db_conn)
+
+        song = queries.get_song(db_conn, "uri:1")
+        assert abs(song["active_play_rate"] - 0.5) < 0.01
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +217,7 @@ class TestLogNormalizedPlayCount:
     def test_max_plays_gets_one(self, db_conn):
         """Song with max plays → log_play ≈ 1.0."""
         _insert_song(db_conn, "uri:max", play_count=100, duration_ms=200000)
-        _insert_song(db_conn, "uri:low", play_count=3, duration_ms=200000)
+        _insert_song(db_conn, "uri:low", play_count=5, duration_ms=200000)
         # Need at least one >30s play for the rate computations to populate
         for uri in ("uri:max", "uri:low"):
             _insert_play(db_conn, uri, f"2026-01-01T10:00:00Z")
@@ -201,6 +225,7 @@ class TestLogNormalizedPlayCount:
         _compute_completion_rates(db_conn)
         _compute_active_play_rates(db_conn)
         _compute_skip_rates(db_conn)
+        _compute_recent_play_ratios(db_conn)
         _compute_final_scores(db_conn)
 
         max_song = queries.get_song(db_conn, "uri:max")
@@ -208,50 +233,65 @@ class TestLogNormalizedPlayCount:
         assert max_song["engagement_score"] > low_song["engagement_score"]
 
 
-class TestRecency:
-    def test_recent_song_scores_higher(self, db_conn):
-        """Song played today scores higher on recency than one played a year ago."""
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        old = (datetime.now(timezone.utc) - timedelta(days=400)).strftime("%Y-%m-%dT%H:%M:%SZ")
+class TestRecentPlayRatio:
+    def test_song_with_all_recent_plays_scores_higher(self, db_conn):
+        """Song with all plays in last 365 days scores higher than one with none recent."""
+        recent_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        old_date = (datetime.now(timezone.utc) - timedelta(days=400)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        _insert_song(db_conn, "uri:new", play_count=5, last_played=today, duration_ms=200000)
-        _insert_song(db_conn, "uri:old", play_count=5, last_played=old, duration_ms=200000)
-        for uri in ("uri:new", "uri:old"):
-            _insert_play(db_conn, uri, f"2026-01-01T10:00:00Z")
+        _insert_song(db_conn, "uri:new", play_count=5, duration_ms=200000)
+        _insert_song(db_conn, "uri:old", play_count=5, duration_ms=200000)
+        # "uri:new" has all plays recent → recent_play_ratio = 1.0
+        for i in range(3):
+            _insert_play(db_conn, "uri:new", f"{recent_date[:-1]}{i}Z")
+        # "uri:old" has all plays old → recent_play_ratio = 0.0
+        for i in range(3):
+            _insert_play(db_conn, "uri:old", f"{old_date[:-1]}{i}Z")
 
         _compute_completion_rates(db_conn)
         _compute_active_play_rates(db_conn)
         _compute_skip_rates(db_conn)
+        _compute_recent_play_ratios(db_conn)
         _compute_final_scores(db_conn)
 
         new_song = queries.get_song(db_conn, "uri:new")
         old_song = queries.get_song(db_conn, "uri:old")
         assert new_song["engagement_score"] > old_song["engagement_score"]
 
-    def test_365_days_ago_is_zero_recency(self, db_conn):
-        """Song played exactly 365+ days ago → recency = 0.0."""
-        old = (datetime.now(timezone.utc) - timedelta(days=366)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _insert_song(db_conn, "uri:old", play_count=5, last_played=old, duration_ms=200000)
-        _insert_play(db_conn, "uri:old", "2026-01-01T10:00:00Z")
+    def test_all_plays_older_than_365_days_gives_zero_ratio(self, db_conn):
+        """Song with all >30s plays older than 365 days → recent_play_ratio = 0.0."""
+        old_date = (datetime.now(timezone.utc) - timedelta(days=400)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        _insert_song(db_conn, "uri:old", play_count=5, duration_ms=200000)
+        _insert_play(db_conn, "uri:old", old_date)
 
-        _compute_completion_rates(db_conn)
-        _compute_active_play_rates(db_conn)
-        _compute_skip_rates(db_conn)
-        _compute_final_scores(db_conn)
+        _compute_recent_play_ratios(db_conn)
 
         song = queries.get_song(db_conn, "uri:old")
-        # With recency=0 and known signals, verify score is reasonable
-        assert song["engagement_score"] is not None
-        assert 0.0 <= song["engagement_score"] <= 1.0
+        assert song["recent_play_ratio"] == pytest.approx(0.0)
+
+    def test_mixed_recent_and_old_plays(self, db_conn):
+        """Song with 2 of 4 plays in last 365 days → recent_play_ratio = 0.5."""
+        recent = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        old = (datetime.now(timezone.utc) - timedelta(days=400)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        _insert_song(db_conn, "uri:mix", play_count=5, duration_ms=200000)
+        _insert_play(db_conn, "uri:mix", f"2026-03-17T10:00:00Z")
+        _insert_play(db_conn, "uri:mix", f"2026-03-17T11:00:00Z")
+        _insert_play(db_conn, "uri:mix", f"2024-01-01T10:00:00Z")
+        _insert_play(db_conn, "uri:mix", f"2024-01-01T11:00:00Z")
+
+        _compute_recent_play_ratios(db_conn)
+
+        song = queries.get_song(db_conn, "uri:mix")
+        assert song["recent_play_ratio"] == pytest.approx(0.5)
 
 
 class TestEngagementScoreFormula:
     def test_known_inputs(self, db_conn):
         """Verify weighted sum with known inputs."""
         # Song with play_count=10, also the max
-        _insert_song(db_conn, "uri:1", play_count=10, duration_ms=200000,
-                     last_played=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
-        # All plays are clickrow, no skips, full completion
+        _insert_song(db_conn, "uri:1", play_count=10, duration_ms=200000)
+        # All plays are recent, clickrow, no skips, full completion
         for i in range(3):
             _insert_play(db_conn, "uri:1", f"2026-01-0{i+1}T10:00:00Z",
                          ms_played=200000, reason_start="clickrow",
@@ -260,12 +300,13 @@ class TestEngagementScoreFormula:
         _compute_completion_rates(db_conn)
         _compute_active_play_rates(db_conn)
         _compute_skip_rates(db_conn)
+        _compute_recent_play_ratios(db_conn)
         _compute_final_scores(db_conn)
 
         song = queries.get_song(db_conn, "uri:1")
         # log_play = log(11)/log(11) = 1.0
-        # completion = 1.0, active = 1.0, skip = 0.0, recency ≈ 1.0
-        # score = 1.0*0.35 + 1.0*0.25 + 1.0*0.20 + 1.0*0.10 + 1.0*0.10 = 1.0
+        # completion = 1.0, active = 1.0, skip = 0.0, recent_play_ratio = 1.0
+        # score = 1.0*0.30 + 1.0*0.25 + 1.0*0.15 + 1.0*0.10 + 1.0*0.20 = 1.0
         assert abs(song["engagement_score"] - 1.0) < 0.02
 
 
@@ -400,8 +441,8 @@ class TestParseDate:
 
 class TestExactlyAtThreshold:
     def test_play_count_exactly_at_min(self, db_conn):
-        """Song with play_count == MIN_MEANINGFUL_LISTENS (3) should be scored."""
-        _insert_song(db_conn, "uri:exact", play_count=3, duration_ms=200000)
+        """Song with play_count == MIN_MEANINGFUL_LISTENS (5) should be scored."""
+        _insert_song(db_conn, "uri:exact", play_count=5, duration_ms=200000)
         _insert_play(db_conn, "uri:exact", "2026-01-01T10:00:00Z")
 
         scored = compute_engagement_scores(db_conn)
@@ -412,7 +453,7 @@ class TestExactlyAtThreshold:
 
     def test_play_count_one_below_min(self, db_conn):
         """Song with play_count == MIN_MEANINGFUL_LISTENS - 1 should NOT be scored."""
-        _insert_song(db_conn, "uri:below", play_count=2, duration_ms=200000)
+        _insert_song(db_conn, "uri:below", play_count=4, duration_ms=200000)
         _insert_play(db_conn, "uri:below", "2026-01-01T10:00:00Z")
 
         scored = compute_engagement_scores(db_conn)
@@ -517,32 +558,32 @@ class TestSkipRateOrBranches:
 
 class TestNullDurationWeightRedistribution:
     def test_redistributed_weights_sum_to_one(self):
-        """The redistributed weights (0.467, 0.267, 0.133, 0.133) must sum to 1.0."""
-        total = 0.467 + 0.267 + 0.133 + 0.133
+        """The redistributed weights (0.400, 0.200, 0.133, 0.267) must sum to 1.0."""
+        total = 0.400 + 0.200 + 0.133 + 0.267
         assert abs(total - 1.0) < 0.001
 
     def test_null_duration_score_matches_formula(self, db_conn):
         """Verify exact score for null-duration song with known signals."""
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _insert_song(db_conn, "uri:nd", play_count=10, duration_ms=None, last_played=today)
-        # All clickrow, no skips
+        _insert_song(db_conn, "uri:nd", play_count=10, duration_ms=None)
+        # All clickrow, no skips, all recent plays
         for i in range(3):
             _insert_play(db_conn, "uri:nd", f"2026-01-0{i+1}T10:00:00Z",
                          reason_start="clickrow", reason_end="trackdone", skipped=0)
 
         _compute_active_play_rates(db_conn)
         _compute_skip_rates(db_conn)
+        _compute_recent_play_ratios(db_conn)
         _compute_final_scores(db_conn)
 
         song = queries.get_song(db_conn, "uri:nd")
         # log_play = log(11)/log(11) = 1.0 (only eligible song, so max)
-        # active = 1.0, skip = 0.0, recency ≈ 1.0
-        # score = 1.0*0.467 + 1.0*0.267 + 1.0*0.133 + 1.0*0.133 = 1.0
+        # active = 1.0, skip = 0.0, recent_play_ratio = 1.0
+        # score = 1.0*0.400 + 1.0*0.200 + 1.0*0.133 + 1.0*0.267 = 1.0
         assert abs(song["engagement_score"] - 1.0) < 0.02
 
     def test_normal_weights_sum_to_one(self):
-        """The normal weights (0.35, 0.25, 0.20, 0.10, 0.10) must sum to 1.0."""
-        total = 0.35 + 0.25 + 0.20 + 0.10 + 0.10
+        """The normal weights (0.30, 0.25, 0.15, 0.10, 0.20) must sum to 1.0."""
+        total = 0.30 + 0.25 + 0.15 + 0.10 + 0.20
         assert abs(total - 1.0) < 0.001
 
 
@@ -550,40 +591,37 @@ class TestNullDurationWeightRedistribution:
 # Recency edge cases
 # ---------------------------------------------------------------------------
 
-class TestRecencyEdgeCases:
-    def test_null_last_played_gets_zero_recency(self, db_conn):
-        """Song with NULL last_played → recency = 0.0, but still scored."""
-        _insert_song(db_conn, "uri:no_date", play_count=5, duration_ms=200000,
-                     last_played=None)
-        _insert_play(db_conn, "uri:no_date", "2026-01-01T10:00:00Z",
-                     ms_played=200000, reason_start="clickrow",
-                     reason_end="trackdone", skipped=0)
+class TestRecentPlayRatioEdgeCases:
+    def test_no_plays_gives_null_ratio_and_zero_default(self, db_conn):
+        """Song with no >30s plays → recent_play_ratio stays NULL, defaults to 0.0 in scoring."""
+        _insert_song(db_conn, "uri:no_plays", play_count=5, duration_ms=200000)
+        # Only a short play — won't count
+        _insert_play(db_conn, "uri:no_plays", "2026-01-01T10:00:00Z", ms_played=5000)
 
         compute_engagement_scores(db_conn)
 
-        song = queries.get_song(db_conn, "uri:no_date")
+        song = queries.get_song(db_conn, "uri:no_plays")
         assert song["engagement_score"] is not None
         assert 0.0 <= song["engagement_score"] <= 1.0
 
-    def test_date_only_last_played_parses(self, db_conn):
-        """last_played as 'YYYY-MM-DD' (date only, no time) still works."""
-        _insert_song(db_conn, "uri:date_only", play_count=5, duration_ms=200000,
-                     last_played="2026-03-15")
-        _insert_play(db_conn, "uri:date_only", "2026-01-01T10:00:00Z",
+    def test_all_recent_plays_gives_ratio_one(self, db_conn):
+        """Song where every >30s play is within 365 days → recent_play_ratio = 1.0."""
+        _insert_song(db_conn, "uri:recent", play_count=5, duration_ms=200000)
+        _insert_play(db_conn, "uri:recent", "2026-01-01T10:00:00Z",
+                     ms_played=200000, reason_start="clickrow",
+                     reason_end="trackdone", skipped=0)
+        _insert_play(db_conn, "uri:recent", "2026-02-01T10:00:00Z",
                      ms_played=200000, reason_start="clickrow",
                      reason_end="trackdone", skipped=0)
 
-        compute_engagement_scores(db_conn)
+        _compute_recent_play_ratios(db_conn)
 
-        song = queries.get_song(db_conn, "uri:date_only")
-        assert song["engagement_score"] is not None
-        assert 0.0 <= song["engagement_score"] <= 1.0
+        song = queries.get_song(db_conn, "uri:recent")
+        assert song["recent_play_ratio"] == pytest.approx(1.0)
 
-    def test_today_gives_near_full_recency(self, db_conn):
-        """Song played today → recency very close to 1.0."""
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _insert_song(db_conn, "uri:today", play_count=5, duration_ms=200000,
-                     last_played=today)
+    def test_all_recent_plays_gives_high_score(self, db_conn):
+        """Song with all recent plays and perfect signals → score near 1.0."""
+        _insert_song(db_conn, "uri:today", play_count=5, duration_ms=200000)
         _insert_play(db_conn, "uri:today", "2026-01-01T10:00:00Z",
                      ms_played=200000, reason_start="clickrow",
                      reason_end="trackdone", skipped=0)
@@ -591,30 +629,41 @@ class TestRecencyEdgeCases:
         _compute_completion_rates(db_conn)
         _compute_active_play_rates(db_conn)
         _compute_skip_rates(db_conn)
+        _compute_recent_play_ratios(db_conn)
         _compute_final_scores(db_conn)
 
         song = queries.get_song(db_conn, "uri:today")
-        # recency = max(0, 1 - 0/365) = 1.0
-        # With all perfect signals: score should be very high
         assert song["engagement_score"] >= 0.9
 
-    def test_exactly_at_365_days(self, db_conn):
-        """Song played exactly 365 days ago → recency = 0.0."""
-        exactly_365 = (datetime.now(timezone.utc) - timedelta(days=365)).strftime(
+    def test_all_old_plays_gives_ratio_zero(self, db_conn):
+        """Song where every >30s play is older than 365 days → recent_play_ratio = 0.0."""
+        old_date = (datetime.now(timezone.utc) - timedelta(days=400)).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
-        _insert_song(db_conn, "uri:365", play_count=5, duration_ms=200000,
-                     last_played=exactly_365)
-        _insert_play(db_conn, "uri:365", "2026-01-01T10:00:00Z")
+        _insert_song(db_conn, "uri:365", play_count=5, duration_ms=200000)
+        _insert_play(db_conn, "uri:365", old_date)
 
-        _compute_completion_rates(db_conn)
-        _compute_active_play_rates(db_conn)
-        _compute_skip_rates(db_conn)
-        _compute_final_scores(db_conn)
+        _compute_recent_play_ratios(db_conn)
 
         song = queries.get_song(db_conn, "uri:365")
-        assert song["engagement_score"] is not None
-        assert 0.0 <= song["engagement_score"] <= 1.0
+        assert song["recent_play_ratio"] == pytest.approx(0.0)
+
+    def test_short_plays_excluded_from_ratio(self, db_conn):
+        """Plays under 30s don't count in recent_play_ratio calculation."""
+        _insert_song(db_conn, "uri:mix", play_count=5, duration_ms=200000)
+        # Recent short play (should not count)
+        _insert_play(db_conn, "uri:mix", "2026-01-01T10:00:00Z", ms_played=5000)
+        # Old long play (should count)
+        old_date = (datetime.now(timezone.utc) - timedelta(days=400)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        _insert_play(db_conn, "uri:mix", old_date, ms_played=200000)
+
+        _compute_recent_play_ratios(db_conn)
+
+        song = queries.get_song(db_conn, "uri:mix")
+        # Only 1 >30s play and it's old → ratio = 0.0
+        assert song["recent_play_ratio"] == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -652,7 +701,7 @@ class TestMultipleSongs:
                          ms_played=200000, reason_start="clickrow",
                          reason_end="trackdone", skipped=0)
         # Song B: low engagement (all autoplay, all skipped, partial completion)
-        _insert_song(db_conn, "uri:b", play_count=3, duration_ms=200000, last_played=today)
+        _insert_song(db_conn, "uri:b", play_count=5, duration_ms=200000, last_played=today)
         for i in range(3):
             _insert_play(db_conn, "uri:b", f"2026-02-0{i+1}T10:00:00Z",
                          ms_played=60000, reason_start="trackdone",
@@ -678,7 +727,7 @@ class TestScoreClamping:
         """Song with worst possible signals → score >= 0.0."""
         old = (datetime.now(timezone.utc) - timedelta(days=500)).strftime("%Y-%m-%dT%H:%M:%SZ")
         # Minimum play count, all skips, no clickrow, poor completion
-        _insert_song(db_conn, "uri:worst", play_count=3, duration_ms=200000, last_played=old)
+        _insert_song(db_conn, "uri:worst", play_count=5, duration_ms=200000, last_played=old)
         for i in range(3):
             _insert_play(db_conn, "uri:worst", f"2026-01-0{i+1}T10:00:00Z",
                          ms_played=40000, reason_start="trackdone",
@@ -734,8 +783,7 @@ class TestReturnValue:
 class TestFinalScoreNullFallbacks:
     def test_null_completion_rate_defaults_to_half(self, db_conn):
         """Song with duration but no >30s plays → completion_rate=NULL → defaults to 0.5."""
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _insert_song(db_conn, "uri:nc", play_count=5, duration_ms=200000, last_played=today)
+        _insert_song(db_conn, "uri:nc", play_count=5, duration_ms=200000)
         # Only short plays, so completion_rate stays NULL
         _insert_play(db_conn, "uri:nc", "2026-01-01T10:00:00Z", ms_played=5000)
 
@@ -743,6 +791,7 @@ class TestFinalScoreNullFallbacks:
         _compute_completion_rates(db_conn)
         _compute_active_play_rates(db_conn)
         _compute_skip_rates(db_conn)
+        _compute_recent_play_ratios(db_conn)
 
         # Verify completion_rate is NULL before final scoring
         song = queries.get_song(db_conn, "uri:nc")
@@ -754,14 +803,14 @@ class TestFinalScoreNullFallbacks:
 
     def test_null_active_play_rate_defaults_to_half(self, db_conn):
         """active_play_rate=NULL in final score defaults to 0.5."""
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _insert_song(db_conn, "uri:na", play_count=5, duration_ms=200000, last_played=today)
+        _insert_song(db_conn, "uri:na", play_count=5, duration_ms=200000)
         # No >30s plays → active_play_rate stays NULL
         _insert_play(db_conn, "uri:na", "2026-01-01T10:00:00Z", ms_played=5000)
 
         _compute_completion_rates(db_conn)
         _compute_active_play_rates(db_conn)
         _compute_skip_rates(db_conn)
+        _compute_recent_play_ratios(db_conn)
 
         song = queries.get_song(db_conn, "uri:na")
         assert song["active_play_rate"] is None
@@ -772,13 +821,13 @@ class TestFinalScoreNullFallbacks:
 
     def test_null_skip_rate_defaults_to_zero(self, db_conn):
         """skip_rate=NULL in final score defaults to 0.0 (benefit of the doubt)."""
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _insert_song(db_conn, "uri:ns", play_count=5, duration_ms=200000, last_played=today)
+        _insert_song(db_conn, "uri:ns", play_count=5, duration_ms=200000)
         _insert_play(db_conn, "uri:ns", "2026-01-01T10:00:00Z", ms_played=5000)
 
         _compute_completion_rates(db_conn)
         _compute_active_play_rates(db_conn)
         _compute_skip_rates(db_conn)
+        _compute_recent_play_ratios(db_conn)
 
         song = queries.get_song(db_conn, "uri:ns")
         assert song["skip_rate"] is None
@@ -796,7 +845,7 @@ class TestSingleEligibleSong:
     def test_single_song_log_play_is_one(self, db_conn):
         """With only one eligible song, log_play = log(n+1)/log(n+1) = 1.0."""
         today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _insert_song(db_conn, "uri:only", play_count=3, duration_ms=200000, last_played=today)
+        _insert_song(db_conn, "uri:only", play_count=5, duration_ms=200000, last_played=today)
         _insert_play(db_conn, "uri:only", "2026-01-01T10:00:00Z",
                      ms_played=200000, reason_start="clickrow",
                      reason_end="trackdone", skipped=0)
@@ -805,7 +854,7 @@ class TestSingleEligibleSong:
 
         song = queries.get_song(db_conn, "uri:only")
         # log_play = log(4)/log(4) = 1.0
-        # completion = 1.0, active = 1.0, skip = 0.0, recency ≈ 1.0
+        # completion = 1.0, active = 1.0, skip = 0.0, recent_play_ratio = 1.0
         # Score should be very close to 1.0
         assert song["engagement_score"] >= 0.95
 
@@ -889,6 +938,7 @@ class TestSubFunctionOrder:
         _compute_completion_rates(db_conn)
         _compute_active_play_rates(db_conn)
         _compute_skip_rates(db_conn)
+        _compute_recent_play_ratios(db_conn)
         _compute_final_scores(db_conn)
 
         score_a = queries.get_song(db_conn, "uri:a")["engagement_score"]
@@ -924,3 +974,77 @@ class TestMixedDuration:
         # with_song gets completion_rate computed, without_song does not
         assert with_song["completion_rate"] is not None
         assert without_song["completion_rate"] is None
+
+
+# ---------------------------------------------------------------------------
+# _compute_recent_play_ratios: cutoff boundary tests
+# ---------------------------------------------------------------------------
+
+class TestRecentPlayRatioCutoffBoundary:
+    def test_play_exactly_at_365_day_cutoff_is_recent(self, db_conn):
+        """A play at exactly 365 days ago should count as recent (played_at >= cutoff)."""
+        # The cutoff is computed as now - 365 days. A play at exactly that boundary
+        # should be >= cutoff and thus counted as recent.
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=365)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        _insert_song(db_conn, "uri:boundary", play_count=5, duration_ms=200000)
+        _insert_play(db_conn, "uri:boundary", cutoff, ms_played=60000)
+
+        _compute_recent_play_ratios(db_conn)
+
+        song = queries.get_song(db_conn, "uri:boundary")
+        assert song["recent_play_ratio"] == pytest.approx(1.0)
+
+    def test_play_one_second_before_cutoff_is_old(self, db_conn):
+        """A play 1 second before the 365-day cutoff is not recent."""
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(days=365)
+        just_before = (cutoff_dt - timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        _insert_song(db_conn, "uri:just_old", play_count=5, duration_ms=200000)
+        _insert_play(db_conn, "uri:just_old", just_before, ms_played=60000)
+
+        _compute_recent_play_ratios(db_conn)
+
+        song = queries.get_song(db_conn, "uri:just_old")
+        assert song["recent_play_ratio"] == pytest.approx(0.0)
+
+    def test_all_plays_exactly_at_365_days(self, db_conn):
+        """Multiple plays exactly at the 365-day boundary all count as recent."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=365))
+        _insert_song(db_conn, "uri:all365", play_count=5, duration_ms=200000)
+        for i in range(3):
+            ts = (cutoff + timedelta(seconds=i)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            _insert_play(db_conn, "uri:all365", ts, ms_played=60000)
+
+        _compute_recent_play_ratios(db_conn)
+
+        song = queries.get_song(db_conn, "uri:all365")
+        assert song["recent_play_ratio"] == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# Schema migration: recent_play_ratio column
+# ---------------------------------------------------------------------------
+
+class TestRecentPlayRatioMigration:
+    def test_column_exists_after_schema_creation(self, db_conn):
+        """The recent_play_ratio column exists in the songs table after schema creation."""
+        # db_conn fixture already calls get_connection which calls create_tables
+        columns = db_conn.execute("PRAGMA table_info(songs)").fetchall()
+        column_names = [col["name"] for col in columns]
+        assert "recent_play_ratio" in column_names
+
+    def test_migration_idempotent(self, db_conn):
+        """Calling the migration twice doesn't error (ALTER TABLE is skipped)."""
+        from db.schema import _migrate_add_recent_play_ratio
+        # First call already happened in get_connection, second should be harmless
+        _migrate_add_recent_play_ratio(db_conn)
+        columns = db_conn.execute("PRAGMA table_info(songs)").fetchall()
+        column_names = [col["name"] for col in columns]
+        assert column_names.count("recent_play_ratio") == 1
+
+    def test_recent_play_ratio_defaults_to_null(self, db_conn):
+        """New songs have recent_play_ratio = NULL by default."""
+        _insert_song(db_conn, "uri:fresh", play_count=5, duration_ms=200000)
+        song = queries.get_song(db_conn, "uri:fresh")
+        assert song["recent_play_ratio"] is None

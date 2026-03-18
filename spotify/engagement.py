@@ -3,7 +3,7 @@
 import logging
 import math
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from config import MIN_MEANINGFUL_LISTENS, MIN_PLAY_DURATION_MS
 
@@ -22,6 +22,7 @@ def compute_engagement_scores(conn: sqlite3.Connection) -> int:
     _compute_completion_rates(conn)
     _compute_active_play_rates(conn)
     _compute_skip_rates(conn)
+    _compute_recent_play_ratios(conn)
     scored = _compute_final_scores(conn)
     logger.info("Computed engagement scores for %d songs", scored)
     return scored
@@ -48,13 +49,19 @@ def _compute_completion_rates(conn: sqlite3.Connection) -> None:
 
 
 def _compute_active_play_rates(conn: sqlite3.Connection) -> None:
-    """Set active_play_rate = fraction of >30s plays started by clickrow."""
+    """Set active_play_rate = fraction of >30s plays started intentionally.
+
+    Intentional starts: clickrow (tap in app), playbtn (play button),
+    remote (Alexa/voice/Spotify Connect). These all represent the user
+    choosing to play the song, just via different devices.
+    """
     conn.execute("""
         UPDATE songs SET active_play_rate = sub.rate
         FROM (
             SELECT
                 spotify_uri,
-                CAST(SUM(CASE WHEN reason_start = 'clickrow' THEN 1 ELSE 0 END) AS REAL)
+                CAST(SUM(CASE WHEN reason_start IN ('clickrow', 'playbtn', 'remote')
+                          THEN 1 ELSE 0 END) AS REAL)
                     / COUNT(*) as rate
             FROM listening_history
             WHERE ms_played >= ?
@@ -83,10 +90,30 @@ def _compute_skip_rates(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _compute_recent_play_ratios(conn: sqlite3.Connection) -> None:
+    """Set recent_play_ratio = plays_last_365_days / total_plays for >30s plays."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=365)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    conn.execute("""
+        UPDATE songs SET recent_play_ratio = sub.ratio
+        FROM (
+            SELECT
+                spotify_uri,
+                CAST(SUM(CASE WHEN played_at >= ? THEN 1 ELSE 0 END) AS REAL)
+                    / COUNT(*) as ratio
+            FROM listening_history
+            WHERE ms_played >= ?
+            GROUP BY spotify_uri
+            HAVING COUNT(*) > 0
+        ) sub
+        WHERE songs.spotify_uri = sub.spotify_uri
+    """, (cutoff, MIN_PLAY_DURATION_MS))
+    conn.commit()
+
+
 def _compute_final_scores(conn: sqlite3.Connection) -> int:
     """Compute weighted engagement_score for eligible songs. Returns count scored."""
-    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
     # Get max play count for log normalization
     row = conn.execute(
         "SELECT MAX(play_count) as max_pc FROM songs WHERE play_count >= ?",
@@ -101,7 +128,7 @@ def _compute_final_scores(conn: sqlite3.Connection) -> int:
 
     eligible = conn.execute("""
         SELECT spotify_uri, play_count, completion_rate, active_play_rate,
-               skip_rate, last_played, duration_ms
+               skip_rate, recent_play_ratio, duration_ms
         FROM songs
         WHERE play_count >= ?
     """, (MIN_MEANINGFUL_LISTENS,)).fetchall()
@@ -110,13 +137,7 @@ def _compute_final_scores(conn: sqlite3.Connection) -> int:
     for song in eligible:
         log_play = math.log(song["play_count"] + 1) / log_max
 
-        # Recency: linear decay over 365 days
-        recency = 0.0
-        if song["last_played"]:
-            last = _parse_date(song["last_played"])
-            if last:
-                days_ago = (datetime.now(timezone.utc) - last).days
-                recency = max(0.0, min(1.0, 1.0 - days_ago / 365))
+        recent_ratio = song["recent_play_ratio"] if song["recent_play_ratio"] is not None else 0.0
 
         has_duration = song["duration_ms"] is not None and song["duration_ms"] > 0
 
@@ -126,22 +147,25 @@ def _compute_final_scores(conn: sqlite3.Connection) -> int:
             skip = song["skip_rate"] if song["skip_rate"] is not None else 0.0
 
             score = (
-                log_play * 0.35
+                log_play * 0.30
                 + completion * 0.25
-                + active * 0.20
+                + active * 0.15
                 + (1 - skip) * 0.10
-                + recency * 0.10
+                + recent_ratio * 0.20
             )
         else:
-            # No duration → can't compute completion_rate. Redistribute 0.25 weight.
+            # No duration → can't compute completion_rate. Redistribute 0.25 weight
+            # across remaining 4 signals (which sum to 0.75).
+            # log_play: 0.30/0.75 = 0.400, active: 0.15/0.75 = 0.200,
+            # (1-skip): 0.10/0.75 = 0.133, recent_ratio: 0.20/0.75 = 0.267
             active = song["active_play_rate"] if song["active_play_rate"] is not None else 0.5
             skip = song["skip_rate"] if song["skip_rate"] is not None else 0.0
 
             score = (
-                log_play * 0.467
-                + active * 0.267
+                log_play * 0.400
+                + active * 0.200
                 + (1 - skip) * 0.133
-                + recency * 0.133
+                + recent_ratio * 0.267
             )
 
         # Clamp to [0.0, 1.0]
