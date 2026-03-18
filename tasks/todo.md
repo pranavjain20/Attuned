@@ -21,7 +21,7 @@
 - [x] tests/conftest.py + tests/fixtures/ — shared fixtures
 - [x] spotify/sync.py — extended history ingestion (20 tests)
 - [x] main.py — CLI with ingest-history command
-- [x] Run ingest-history on real data: 33,311 records → 32,729 history rows, 5,701 songs, 676 with 5+ plays
+- [x] Run ingest-history on real data: 33,311 records → 32,729 history rows, 5,701 songs
 - [x] Verify idempotent re-run (0 new rows)
 - [x] Code audit: fixed SQL injection, DRY violations
 
@@ -39,24 +39,32 @@
 - [x] Sync liked songs + top tracks + batch metadata (sync-spotify)
 - [x] Verified full DB populated with real data
 
-## Day 2: Engagement Scoring + Data Integrity
-### Code (DONE)
-- [x] spotify/engagement.py — 5-signal engagement scoring (~80 lines)
-- [x] tests/test_engagement.py — 57 tests (19 original + 38 from staff tester)
-- [x] main.py — compute-engagement CLI command + auto-trigger in sync-spotify
-- [x] Staff tester audit: 38 additional tests, 1 bug found
-- [x] Staff engineer audit: 6 findings, all fixed
+## Day 2: Engagement Scoring + Data Integrity (DONE)
+### Dedup
+- [x] spotify/dedup.py — duplicate song consolidation (52 tests)
+- [x] 435 groups consolidated, 499 songs merged
+- [x] Staff tester: 52 tests, 0 bugs found
+- [x] Staff auditor: explicit transaction, conflict logging, comment fix, sync-spotify ordering
 
-### Data
-- [ ] Fetch remaining duration_ms for ~137 songs (sync-spotify)
-- [ ] Run compute-engagement on real data
-- [ ] Spot-check top 10 engagement songs with Pranav
-- [ ] Run integrity SQL queries (distribution, bounds, WHOOP gaps)
+### Engagement Scoring
+- [x] spotify/engagement.py — 5-signal scoring with tuned weights (62 tests)
+- [x] db/schema.py — recent_play_ratio column + migration
+- [x] main.py — compute-engagement, dedup-songs CLI commands
+- [x] Iterative formula tuning with Pranav:
+  - recent_play_ratio replaced last-played-date recency
+  - clickrow + playbtn + remote as intentional (Alexa fix)
+  - MIN_MEANINGFUL_LISTENS 3 → 5
+  - Weights: log_play 0.30, completion 0.25, recent 0.20, active 0.15, skip 0.10
+- [x] Staff tester round 1: 38 tests added, 1 bug found (timezone)
+- [x] Staff auditor round 1: 6 findings, all fixed
+- [x] Staff tester round 2: 52 dedup + 6 engagement tests added
+- [x] Staff auditor round 2: 8 findings, all fixed
+- [x] Real data verified: 669 songs scored, top 10 approved by Pranav
 
 ## Day 3: WHOOP Personal Intelligence
 _Not started_
 
-## Day 4: LLM Song Classification (~1,006 songs)
+## Day 4: LLM Song Classification (~669 songs)
 _Not started_
 
 ## Day 5: Matching Engine (engagement-weighted)
