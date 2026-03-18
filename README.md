@@ -8,7 +8,7 @@ Reads your WHOOP data every morning — HRV, resting heart rate, sleep architect
 
 ## How it works
 
-1. **WHOOP → physiological state.** Pulls recovery and sleep data, computes personal baselines (30-day rolling averages), detects multi-day trends, and classifies into one of six states: Accumulated Fatigue, Physical Recovery Deficit, Emotional Processing Deficit, Single Bad Night, Baseline, or Peak Readiness.
+1. **WHOOP → physiological state.** Pulls recovery and sleep data, computes personal baselines (30-day rolling averages), detects multi-day trends, and classifies into one of six states: Accumulated Fatigue, Physical Recovery Deficit, Emotional Processing Deficit, Poor Recovery, Baseline, or Peak Readiness.
 
 2. **Spotify library → classified song pool.** Every song in your library gets classified by properties that affect the autonomic nervous system — tempo, energy, acousticness, instrumentalness, valence, mode, danceability. Classification is LLM-based (GPT-4o-mini), scored using research-backed neurological impact weights.
 

@@ -417,7 +417,7 @@ Research-backed target ranges for the matching engine. Each state maps to an ide
 - Mode: Major preferred
 - **Rationale:** REM was inadequate — emotional regulation may be impaired. Familiar, warm music supports emotional grounding. Vocals are acceptable (emotional connection > cognitive load concern here).
 
-### Single Bad Night (moderately calming, not aggressive)
+### Poor Recovery (moderately calming, not aggressive)
 - BPM: 60-90
 - Energy: 0.2-0.5
 - Acousticness: >0.4

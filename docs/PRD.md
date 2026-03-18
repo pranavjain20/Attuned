@@ -112,7 +112,7 @@ Attuned pulls from three places. Each gives us raw data, and each yields deeper 
 1. **Accumulated Fatigue** — LnRMSSD <1.0 SD below 30-day mean, sustained 3+ days AND RHR rising (+5 bpm above baseline) AND sleep debt >5 hours (7-day rolling). Not just a bad morning — the body is trending downward. Music should be genuinely restorative, prioritizing parasympathetic activation.
 2. **Physical Recovery Deficit** — Deep sleep >1.5 SD below personal mean AND REM adequate (within 1.0 SD of personal mean). Body needs physical restoration, mind is relatively clear. Music should be soothing to the body (slow tempo, acoustic) but can be emotionally engaging.
 3. **Emotional Processing Deficit** — REM >1.5 SD below personal mean AND deep sleep adequate (within 1.0 SD of personal mean). Body is physically recovered but emotional regulation may be impaired. Music should be emotionally grounding — familiar, warm, comforting.
-4. **Single Bad Night** — Today's recovery is low (LnRMSSD <0.5 SD below 30-day mean or recovery <50%) but 7-day LnRMSSD trend is stable or rising. Temporary dip from one poor night. Body's baseline is strong. Music can be moderately calming without being aggressive about it.
+4. **Poor Recovery** — Today's recovery is low (LnRMSSD <0.5 SD below 30-day mean or recovery <50%) but 7-day LnRMSSD trend is stable or rising. Temporary dip from one poor night. Body's baseline is strong. Music can be moderately calming without being aggressive about it.
 5. **Baseline** — Recovery adequate but not exceptional (yellow zone, 34-66%), no strong deficit signal detected by the above states. No significant HRV decline, no sleep architecture deficits exceeding 1.5 SD. Music should be varied and mood-appropriate — widest property ranges.
 6. **Peak Readiness** — Green recovery (>=67%), LnRMSSD at or above 30-day average, good sleep architecture (deep and REM within 1.0 SD), low sleep debt (<3 hours). Recovery score is used here as confirmation alongside raw metrics. Autonomic system is balanced. Anything goes — high energy, fast tempo, full intensity.
 
@@ -263,7 +263,7 @@ Three computed scores per song:
 | Accumulated Fatigue | 80 | 0.35 | Fatigued but awake, normal morning arousal |
 | Physical Recovery Deficit | 80 | 0.35 | Body tired, mind normal |
 | Emotional Processing Deficit | 80 | 0.40 | Body fine, mind foggy |
-| Single Bad Night | 85 | 0.40 | Slightly off but baseline is strong |
+| Poor Recovery | 85 | 0.40 | Slightly off but baseline is strong |
 | Baseline | 85 | 0.45 | Normal morning |
 | Peak Readiness | 80 | 0.40 | Just woke up — start moderate, build up |
 

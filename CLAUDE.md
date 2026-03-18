@@ -86,14 +86,17 @@ attuned/
 - **song_classifications** — One row per song. LLM properties (BPM, key, mode, energy, valence, acousticness, danceability, mood_tags) + neurological scores. Classification source + raw response.
 - **generated_playlists** — Log of every playlist created. Date, detected state, reasoning, WHOOP metrics, track URIs, Spotify description.
 
-## Six Composite States
+## Composite States (priority order)
 
-1. **Accumulated Fatigue** — HRV declining 3+ days AND RHR rising AND sleep debt accumulating
-2. **Physical Recovery Deficit** — Deep sleep significantly below norm, REM adequate
-3. **Emotional Processing Deficit** — REM below norm, deep sleep adequate
-4. **Single Bad Night** — Low recovery today but 7-day HRV trend stable/rising
-5. **Baseline** — Yellow zone, no strong deficit signals
-6. **Peak Readiness** — Green recovery, HRV at/above 30-day average, good sleep, low debt
+If fewer than 14 days of HRV data exist, returns `insufficient_data` — cannot compute baselines.
+
+1. **Accumulated Fatigue** — Recovery < 60% AND ≥3 of last 5 days also < 60% (multi-day pattern)
+2. **Poor Sleep** — Both deep AND REM sleep deficit (any recovery level)
+3. **Physical Recovery Deficit** — Deep sleep deficit, REM not deficit (any recovery level)
+4. **Emotional Processing Deficit** — REM deficit, deep sleep not deficit (any recovery level)
+5. **Poor Recovery** — Recovery < 40% (acute), or < 60% one-off (≤1 recent bad day)
+6. **Peak Readiness** — Recovery ≥ 80%, HRV ≥ baseline mean, no sleep deficits, low debt, trend stable/rising
+7. **Baseline** — Default, no strong signals in either direction
 
 ## Key Constraints
 

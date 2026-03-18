@@ -122,7 +122,7 @@ The classifier takes today's data + baselines + trends and assigns one of six co
 1. **Accumulated Fatigue** — multi-day decline across HRV, RHR, and sleep debt
 2. **Physical Recovery Deficit** — deep sleep significantly low, REM adequate
 3. **Emotional Processing Deficit** — REM significantly low, deep sleep adequate
-4. **Single Bad Night** — today is bad but the 7-day trend is fine
+4. **Poor Recovery** — today is bad but the 7-day trend is fine
 5. **Baseline** — yellow zone, nothing stands out
 6. **Peak Readiness** — everything is great
 
@@ -307,7 +307,7 @@ These thresholds use the Smallest Worthwhile Change (SWC) framework from Plews/B
 
 **Critical nuance:** Very low CV + low HRV looks like "stability" but is actually bad — the system is suppressed and non-responsive, not genuinely stable. Always read CV alongside absolute HRV level.
 
-**CV is most impactful for middle states** (Baseline, Single Bad Night) where ranges are wide and there's room to shift. For extreme states (Accumulated Fatigue, Peak Readiness), ranges are already narrow and CV has little room to modify them.
+**CV is most impactful for middle states** (Baseline, Poor Recovery) where ranges are wide and there's room to shift. For extreme states (Accumulated Fatigue, Peak Readiness), ranges are already narrow and CV has little room to modify them.
 
 **Research note:** Buchheit 2014 found that rising CV over weeks was one of the earliest warning signs of overtraining — it showed up *before* performance dropped. It's a leading indicator.
 
@@ -481,7 +481,7 @@ mode_score      = (1.0 if major else 0.6)                    * 0.05
 dance_score     = gaussian(danceability, center=0.4, sigma=0.2) * 0.05
 ```
 
-Used for: Emotional Processing Deficit, Single Bad Night — states where emotional support matters more than pure physiological intervention.
+Used for: Emotional Processing Deficit, Poor Recovery — states where emotional support matters more than pure physiological intervention.
 
 Note the different weights: tempo drops from 0.35 to 0.30 (still important but less dominant), acousticness rises from 0.10 to 0.15 (warmth of tone matters more), valence rises from 0.10 to 0.15 (emotional tone matters more). Instrumentalness centers at 0.3 instead of being binary — some vocals are actively helpful for emotional connection.
 
@@ -522,7 +522,7 @@ This is better than hard cutoffs because it gives partial credit. A song at 72 B
 
 This is where everything connects. Each state shows: what WHOOP data triggers it, what's happening in your body, what song properties are targeted and WHY (traced back to the specific research), and what the resulting playlist sounds like.
 
-The classifier evaluates states top-to-bottom and returns the first match. This means Accumulated Fatigue (the most serious) is always checked before Single Bad Night (less serious), preventing a multi-day decline from being dismissed as "just one bad night."
+The classifier evaluates states top-to-bottom and returns the first match. This means Accumulated Fatigue (the most serious) is always checked before Poor Recovery (less serious), preventing a multi-day decline from being dismissed as "just one bad night."
 
 ### State 1: Accumulated Fatigue
 
@@ -581,7 +581,7 @@ The classifier evaluates states top-to-bottom and returns the first match. This 
 
 **What this playlist sounds like:** Your comfort songs. The ones you reach for when you need to feel something familiar. Warm vocals, moderate tempo, songs that feel like home.
 
-### State 4: Single Bad Night
+### State 4: Poor Recovery
 
 **WHOOP Trigger:** Today's LnRMSSD <0.5 SD below 30-day mean OR recovery <50%, BUT 7-day LnRMSSD trend is stable or rising.
 
@@ -727,7 +727,7 @@ Think of it like this: if someone is anxious (high sympathetic activation, fast 
 | Accumulated Fatigue | 80 | 0.35 | Fatigued but awake, normal morning arousal |
 | Physical Recovery Deficit | 80 | 0.35 | Body tired, mind normal — similar starting point |
 | Emotional Processing Deficit | 80 | 0.40 | Body fine, mind foggy — slightly higher physical baseline |
-| Single Bad Night | 85 | 0.40 | Slightly off but baseline is strong |
+| Poor Recovery | 85 | 0.40 | Slightly off but baseline is strong |
 | Baseline | 85 | 0.45 | Normal morning — no strong iso transition needed, allow variety |
 | Peak Readiness | 80 | 0.40 | Just woke up — even on great days, start moderate and build up |
 
@@ -797,7 +797,7 @@ States are checked in order of severity:
 1. Accumulated Fatigue (most serious)
 2. Physical Recovery Deficit
 3. Emotional Processing Deficit
-4. Single Bad Night
+4. Poor Recovery
 5. Baseline
 6. Peak Readiness (most positive)
 
