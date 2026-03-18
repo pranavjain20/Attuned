@@ -1,10 +1,53 @@
 # Attuned — Current Status
 
-**Last updated:** Mar 17, 2026
-**Current phase:** Day 3 complete. State classifier redesigned, validated on real data.
+**Last updated:** Mar 18, 2026
+**Current phase:** Day 4 pre-work complete. All classification property evaluations done, strategy decided.
 **Next action:** Day 4 — LLM song classification (~669 songs).
 
 ---
+
+## What's Done (Day 4 Pre-Work: Property Evaluation)
+
+### Property-by-Property Classification Evaluation
+Evaluated all 10 classification properties (BPM, key/mode, energy, danceability, acousticness, instrumentalness, valence, mood_tags, genre_tags) against 24 Strategy D audio files with ground truth from Tunebat/SongBPM.
+
+### Per-Property Results and Decisions
+
+**BPM** — Essentia 33% overall (80% English, 23% Indian). TempoCNN identical. GPT-4o-mini 8/25 with complementary failures. ±10 tolerance safe.
+- **Decision:** Hybrid — Essentia for English, LLM for Indian
+
+**Key/Mode** — Essentia KeyExtractor: 58% exact+enharmonic, 92% musically usable for sequencing. 3/6 "wrong" results are dominant confusion (known HPCP limitation, musically harmless). Ground truth is Spotify's Essentia-based analysis (same algorithm, different audio source). Three profiles (temperley/edma/bgate) agree 21/24 times.
+- **Decision:** Essentia sufficient — 92% musically close is good enough for sequencing
+
+**Energy** — RMS/0.25 broken: 11/24 (46%) clipped at 1.0. Tested alternatives: Loudness, P90 frame energy, sigmoid, percentile, composites (loudness+onset+brightness+BPM). All complex approaches scored worse than simple RMS/0.35 (71% bucket accuracy). Energy is a perceptual property; volume is an imperfect proxy but the simplest thing that works.
+- **Decision:** Essentia with fixed normalization (RMS/0.35). 71% bucket accuracy, zero ceiling songs.
+- **Code change:** `essentia_analyzer.py` line 117: `rms / 0.25` → `rms / 0.35`
+
+**Danceability** — Essentia DFA: 23/24 values above 1.0, ALL clamped to 1.0. Zero discrimination. Even rescaled raw range [0.995, 1.486] gives 42% bucket accuracy (worse than random). DFA measures rhythmic regularity, not danceability — BSB ballad ranks #4, Levitating ranks #17.
+- **Decision:** LLM only — Essentia's algorithm measures the wrong property
+
+**Acousticness** — SpectralCentroidTime: 33% (random). Spectral Flatness: 67%. Rolloff: 33%. Flatness measures tonal vs noise-like spectrum — better proxy for acoustic vs electronic instruments.
+- **Decision:** Essentia with switched algorithm (spectral flatness replaces spectral centroid). 67% bucket accuracy.
+- **Code change:** `essentia_analyzer.py` — replaced SCT inversion with frame-level spectral flatness computation
+
+**Instrumentalness** — ZCR proxy: 11/24 vocal songs scored >0.5 instrumental. ZCR measures high-frequency content, not vocal presence. Would require ML voice detection models (heavy dependency) to fix.
+- **Decision:** LLM only — ZCR is the wrong measurement, all 669 library songs have vocals
+
+**Valence, Mood Tags, Genre Tags** — Not computable from audio signal. These are semantic/perceptual properties.
+- **Decision:** LLM only (by design)
+
+### Classification Architecture Summary
+- **Essentia handles (4 properties):** BPM (English songs), Key/Mode, Energy (RMS/0.35), Acousticness (spectral flatness)
+- **LLM handles (6 properties):** BPM (Indian songs), Danceability, Instrumentalness, Valence, Mood tags, Genre tags
+- 414 tests passing
+
+### BPM Experiment Details (from prior session)
+- Tested 6 audio strategies across 25 songs (5 categories)
+- Strategy D (duration-verified YouTube) gets correct audio 24/25 times
+- Model shootout: GPT-4o-mini > GPT-4o > Claude Sonnet > Claude Opus > GPT-4.1 for BPM recall
+- "Database recall" prompting > "estimate" prompting (9/25 vs 8/25, MAE 13.1 vs 18.8)
+- TempoCNN dropped (115MB dependency, identical accuracy)
+- ±10 BPM tolerance validated safe for state mapper ranges
 
 ## What's Done (Day 3)
 

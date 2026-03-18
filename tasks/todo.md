@@ -78,8 +78,32 @@
 - [x] Staff tester audit: 6 HIGH + 9 MEDIUM gaps found, all fixed
 - [x] Staff auditor review: 1 MUST FIX + 5 SHOULD FIX found, all fixed
 
+## Day 4 Pre-Work: BPM Experiments (DONE)
+- [x] Audio source experiments: Strategies A-D (YouTube variants, Spotify previews, duration-verified YouTube)
+- [x] Strategy D (duration-verified YouTube) confirmed best: 24/25 correct audio files
+- [x] Essentia classical BPM: 8/24 within ±5 BPM. Works for English (4/5), fails on Indian music (3/13)
+- [x] TempoCNN neural BPM: identical accuracy to classical Essentia (8/24). Same Western training bias. Dropped.
+- [x] GPT-4o-mini LLM BPM: 8/25 within ±5. Complementary to Essentia — fails on different songs. Combined = 14/25.
+- [x] Model shootout: GPT-4o (6/25), GPT-4.1 (2/25), Claude Sonnet (7/25), Claude Opus (5/25). Smaller > larger for BPM recall.
+- [x] Prompt engineering: "Database recall" framing best (9/25, MAE 13.1 vs 18.8 baseline)
+- [x] External API hunt: Soundcharts (premium), GetSongBPM (blocked), SongBPM.com (poor), HuggingFace (same Essentia data). No free DB covers Indian music.
+- [x] ±10 BPM tolerance validated: zero state-bucket misrouting
+- [x] Decision: GPT-4o-mini + database-recall prompt + Essentia hybrid (Essentia for English, LLM for Indian)
+- [x] Cleanup: deleted experiment scripts, TempoCNN model/code, fixed .gitignore, cleaned worktrees
+
+## Day 4 Pre-Work: Property Evaluation (DONE)
+- [x] Built `scripts/property_evaluation.py` — comprehensive Essentia analysis on 24 Strategy D files
+- [x] Looked up Tunebat/SongBPM ground truth for key/mode (all 25 songs)
+- [x] Key/Mode: 58% exact, 92% musically usable. Dominant confusion (3/6 wrong) is harmless for sequencing. Decision: Essentia sufficient.
+- [x] Energy: RMS/0.25 broken (46% ceiling). Tested Loudness, P90, sigmoid, percentile, composites — all worse than RMS/0.35 (71%). Decision: Fix normalization to 0.35.
+- [x] Danceability: DFA gives 42% (worse than random). Measures rhythmic regularity, not danceability. Decision: LLM only.
+- [x] Acousticness: SCT 33% (random). Spectral Flatness 67%. Decision: Switch to flatness-based.
+- [x] Instrumentalness: ZCR 46% wrong on vocal songs. Decision: LLM only.
+- [x] Applied code fixes: `essentia_analyzer.py` (energy divisor, acousticness algorithm), updated tests
+- [x] 414 tests passing
+
 ## Day 4: LLM Song Classification (~669 songs)
-_Not started_
+_Next up — informed by property evaluation decisions above_
 
 ## Day 5: Matching Engine (engagement-weighted)
 _Not started_
