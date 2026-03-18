@@ -23,6 +23,7 @@ COMMANDS = {
     "sync-all": "Run sync-whoop and sync-spotify",
     "dedup-songs": "Consolidate duplicate songs (same name+artist, different URIs)",
     "compute-engagement": "Compute engagement scores for all eligible songs",
+    "classify-state": "Classify today's physiological state from WHOOP data",
     "generate": "Generate today's playlist (not yet implemented)",
 }
 
@@ -47,6 +48,8 @@ def main() -> None:
         _cmd_dedup_songs()
     elif command == "compute-engagement":
         _cmd_compute_engagement()
+    elif command == "classify-state":
+        _cmd_classify_state()
     elif command == "sync-whoop-history":
         _cmd_sync_whoop_history()
     elif command == "generate":
@@ -208,6 +211,63 @@ def _cmd_compute_engagement() -> None:
         "SELECT COUNT(*) as cnt FROM songs WHERE engagement_score < 0 OR engagement_score > 1"
     ).fetchone()
     print(f"\nScores outside [0,1]: {bad['cnt']}")
+
+    conn.close()
+
+
+def _cmd_classify_state() -> None:
+    from datetime import date
+
+    from intelligence.state_classifier import classify_state
+
+    # Support --date flag, default to today
+    target_date = date.today().isoformat()
+    if "--date" in sys.argv:
+        idx = sys.argv.index("--date")
+        if idx + 1 < len(sys.argv):
+            target_date = sys.argv[idx + 1]
+
+    conn = get_connection()
+    result = classify_state(conn, target_date)
+
+    state = result["state"].replace("_", " ").title()
+    print(f"\n{'='*50}")
+    print(f"  State: {state}")
+    print(f"  Confidence: {result['confidence']}")
+    print(f"  Date: {target_date}")
+    print(f"{'='*50}")
+
+    if result["reasoning"]:
+        print("\nReasoning:")
+        for r in result["reasoning"]:
+            print(f"  - {r}")
+
+    metrics = result["metrics"]
+    if metrics:
+        print("\nToday's Metrics:")
+        if "recovery_score" in metrics and metrics["recovery_score"] is not None:
+            print(f"  Recovery:  {metrics['recovery_score']:.0f}%")
+        if "hrv_rmssd_milli" in metrics and metrics["hrv_rmssd_milli"] is not None:
+            print(f"  HRV:       {metrics['hrv_rmssd_milli']:.1f} ms")
+        if "resting_heart_rate" in metrics and metrics["resting_heart_rate"] is not None:
+            print(f"  RHR:       {metrics['resting_heart_rate']:.0f} bpm")
+        if "deep_sleep_ms" in metrics and metrics["deep_sleep_ms"] is not None:
+            deep_h = metrics["deep_sleep_ms"] / 3_600_000
+            print(f"  Deep:      {deep_h:.1f}h")
+        if "rem_sleep_ms" in metrics and metrics["rem_sleep_ms"] is not None:
+            rem_h = metrics["rem_sleep_ms"] / 3_600_000
+            print(f"  REM:       {rem_h:.1f}h")
+        if "sleep_debt_hours" in metrics and metrics["sleep_debt_hours"] is not None:
+            print(f"  Debt:      {metrics['sleep_debt_hours']:.1f}h")
+
+    baselines = result.get("baselines", {})
+    if baselines.get("hrv"):
+        hrv = baselines["hrv"]
+        print(f"\nBaselines (30-day):")
+        print(f"  HRV mean:  {hrv['mean']:.3f} (ln), CV: {hrv['cv']:.3f}")
+    if baselines.get("rhr"):
+        rhr = baselines["rhr"]
+        print(f"  RHR mean:  {rhr['mean']:.1f} bpm")
 
     conn.close()
 
