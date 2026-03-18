@@ -120,13 +120,16 @@ def analyze_audio(audio_path: Path) -> dict[str, Any] | None:
         # Low flatness = clear harmonics (acoustic instruments)
         # High flatness = noise-like spectrum (electronic production)
         # Computed as mean flatness across all frames
+        windowing = es.Windowing(type="hann")
+        spectrum = es.Spectrum()
+        flatness = es.Flatness()
         frame_gen = es.FrameGenerator(audio, frameSize=2048, hopSize=1024)
         flatness_values = []
         for frame in frame_gen:
-            windowed = es.Windowing(type="hann")(frame)
-            spec = es.Spectrum()(windowed)
-            if sum(spec) > 0:
-                flatness_values.append(float(es.Flatness()(spec)))
+            windowed = windowing(frame)
+            spec = spectrum(windowed)
+            if spec.sum() > 0:
+                flatness_values.append(float(flatness(spec)))
         avg_flatness = (
             sum(flatness_values) / len(flatness_values)
             if flatness_values else 0.0

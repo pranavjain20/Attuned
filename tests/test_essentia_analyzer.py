@@ -183,6 +183,81 @@ class TestAnalyzeAudio:
         )
         assert result["acousticness"] > 0.9  # 1.0 - 0.002*20 = 0.96
 
+    def test_acousticness_clamps_negative_to_zero(self, tmp_path):
+        """Very high flatness (>0.05) should clamp to 0, not go negative."""
+        audio_path = tmp_path / "noisy.mp3"
+        audio_path.write_bytes(b"fake")
+
+        result = _run_analyze_with_mock(
+            audio_path, _make_es_mock(spectral_flatness=0.08)
+        )
+        assert result["acousticness"] == 0.0  # 1.0 - 0.08*20 = -0.6 → clamped
+
+    def test_acousticness_averages_varying_flatness_across_frames(self, tmp_path):
+        """Flatness values differ per frame — result should be the mean."""
+        audio_path = tmp_path / "varied.mp3"
+        audio_path.write_bytes(b"fake")
+
+        es_mock = _make_es_mock()
+        # Three frames with different flatness values
+        es_mock.Flatness.return_value = MagicMock(
+            side_effect=[0.01, 0.04, 0.01]
+        )
+
+        result = _run_analyze_with_mock(audio_path, es_mock)
+        # mean(0.01, 0.04, 0.01) = 0.02; acousticness = 1.0 - 0.02*20 = 0.6
+        assert abs(result["acousticness"] - 0.6) < 0.01
+
+    def test_acousticness_zero_frames_defaults_to_max(self, tmp_path):
+        """Empty frame list → avg_flatness=0 → acousticness=1.0."""
+        audio_path = tmp_path / "empty_frames.mp3"
+        audio_path.write_bytes(b"fake")
+
+        es_mock = _make_es_mock()
+        es_mock.FrameGenerator.return_value = []  # no frames
+
+        result = _run_analyze_with_mock(audio_path, es_mock)
+        assert result["acousticness"] == 1.0
+
+    def test_acousticness_skips_zero_sum_spectrum_frames(self, tmp_path):
+        """Frames with zero-sum spectrum are skipped in flatness averaging."""
+        audio_path = tmp_path / "partial_silence.mp3"
+        audio_path.write_bytes(b"fake")
+
+        es_mock = _make_es_mock(spectral_flatness=0.01)
+        # Return zero spectrum for all frames — flatness never called
+        es_mock.Spectrum.return_value = MagicMock(
+            return_value=np.zeros(1025, dtype=np.float32)
+        )
+
+        result = _run_analyze_with_mock(audio_path, es_mock)
+        # All frames skipped → avg_flatness=0 → acousticness=1.0
+        assert result["acousticness"] == 1.0
+
+    def test_energy_at_divisor_boundary(self, tmp_path):
+        """RMS exactly at the divisor (0.35) should give energy=1.0."""
+        audio_path = tmp_path / "boundary.mp3"
+        audio_path.write_bytes(b"fake")
+
+        result = _run_analyze_with_mock(audio_path, _make_es_mock(rms=0.35))
+        assert result["energy"] == 1.0
+
+    def test_energy_just_below_divisor(self, tmp_path):
+        """RMS just below divisor should give energy < 1.0."""
+        audio_path = tmp_path / "below.mp3"
+        audio_path.write_bytes(b"fake")
+
+        result = _run_analyze_with_mock(audio_path, _make_es_mock(rms=0.34))
+        assert 0.95 < result["energy"] < 1.0
+
+    def test_energy_midpoint(self, tmp_path):
+        """RMS at half the divisor should give energy=0.5."""
+        audio_path = tmp_path / "mid.mp3"
+        audio_path.write_bytes(b"fake")
+
+        result = _run_analyze_with_mock(audio_path, _make_es_mock(rms=0.175))
+        assert result["energy"] == 0.5
+
 
 class TestAnalyzeAllSongs:
     def _insert_song(self, db_conn, uri, play_count=10):

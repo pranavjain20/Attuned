@@ -129,12 +129,12 @@ class TestDownloadPreview:
 
 
 class TestDownloadFromYoutube:
+    @patch("classification.audio._find_ytdlp_binary", return_value="/usr/bin/yt-dlp")
     @patch("classification.audio.subprocess.run")
-    def test_success(self, mock_run, tmp_path):
+    def test_success(self, mock_run, _mock_binary, tmp_path):
         output = tmp_path / "clip.mp3"
         # Simulate yt-dlp creating the expected temp file
         temp_path = output.with_suffix(".ytdl.mp3")
-        mock_run.return_value = MagicMock(returncode=0, stderr="")
 
         def side_effect(*args, **kwargs):
             temp_path.write_bytes(b"fake audio")
@@ -145,25 +145,26 @@ class TestDownloadFromYoutube:
         assert result is True
         assert output.exists()
 
+    @patch("classification.audio._find_ytdlp_binary", return_value="/usr/bin/yt-dlp")
     @patch("classification.audio.subprocess.run")
-    def test_failure_returns_false(self, mock_run, tmp_path):
+    def test_failure_returns_false(self, mock_run, _mock_binary, tmp_path):
         output = tmp_path / "clip.mp3"
         mock_run.return_value = MagicMock(returncode=1, stderr="Error")
         result = download_from_youtube("Song", "Artist", output)
         assert result is False
 
+    @patch("classification.audio._find_ytdlp_binary", return_value="/usr/bin/yt-dlp")
     @patch("classification.audio.subprocess.run")
-    def test_timeout_returns_false(self, mock_run, tmp_path):
+    def test_timeout_returns_false(self, mock_run, _mock_binary, tmp_path):
         import subprocess
         output = tmp_path / "clip.mp3"
         mock_run.side_effect = subprocess.TimeoutExpired("yt-dlp", 120)
         result = download_from_youtube("Song", "Artist", output)
         assert result is False
 
-    @patch("classification.audio.subprocess.run")
-    def test_ytdlp_not_installed_returns_false(self, mock_run, tmp_path):
+    @patch("classification.audio._find_ytdlp_binary", return_value=None)
+    def test_ytdlp_not_installed_returns_false(self, _mock_binary, tmp_path):
         output = tmp_path / "clip.mp3"
-        mock_run.side_effect = FileNotFoundError("yt-dlp not found")
         result = download_from_youtube("Song", "Artist", output)
         assert result is False
 

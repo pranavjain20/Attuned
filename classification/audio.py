@@ -15,7 +15,6 @@ from typing import Any
 
 import httpx
 
-from config import AUDIO_CLIP_DURATION_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -309,7 +308,6 @@ def _find_ytdlp_output(expected_path: Path) -> Path | None:
     """Find the actual yt-dlp output file, accounting for suffix variations."""
     # yt-dlp sometimes produces .ytdl.mp3, sometimes .ytdl.mp3.mp3, etc.
     parent = expected_path.parent
-    stem = expected_path.stem.replace(".ytdl", "")  # base stem
     for candidate in parent.iterdir():
         if candidate.name.startswith(expected_path.stem) and candidate.suffix == ".mp3":
             return candidate
