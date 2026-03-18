@@ -62,7 +62,21 @@
 - [x] Real data verified: 669 songs scored, top 10 approved by Pranav
 
 ## Day 3: WHOOP Personal Intelligence
-_Not started_
+### Implementation (DONE)
+- [x] config.py — threshold constants (tiers, fatigue window, sleep/baseline)
+- [x] db/queries.py — get_recoveries_in_range, get_sleeps_in_range (8 tests)
+- [x] intelligence/baselines.py — HRV/RHR/sleep stage baselines + sleep debt (26 tests)
+- [x] intelligence/trends.py — 7-day slopes + consecutive day detection (21 tests)
+- [x] intelligence/sleep_analysis.py — deficit/adequacy vs personal norms (13 tests)
+- [x] intelligence/state_classifier.py — 8-state recovery-first classifier (45 tests)
+- [x] main.py — classify-state CLI command with --date flag
+- [x] Fixed multi-sleep-per-date bug in debt + stage baseline calculations
+- [x] Redesigned classifier: recovery-first 5-tier system (replaced weighted scoring)
+- [x] Renamed single_bad_night → poor_recovery across 8 files
+- [x] Fixed _is_debt_low threshold (mean - SD → mean), peak_readiness 25 → 47 days
+- [x] Validated on all 823 real recovery days, last 30 days spot-checked with Pranav
+- [x] Staff tester audit: 6 HIGH + 9 MEDIUM gaps found, all fixed
+- [x] Staff auditor review: 1 MUST FIX + 5 SHOULD FIX found, all fixed
 
 ## Day 4: LLM Song Classification (~669 songs)
 _Not started_
