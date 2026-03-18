@@ -247,6 +247,19 @@ def upsert_whoop_recovery(
     conn.commit()
 
 
+def get_recoveries_in_range(
+    conn: sqlite3.Connection,
+    start_date: str,
+    end_date: str,
+) -> list[dict[str, Any]]:
+    """Get recovery records between start_date and end_date (inclusive), ordered by date ASC."""
+    rows = conn.execute(
+        "SELECT * FROM whoop_recovery WHERE date BETWEEN ? AND ? ORDER BY date ASC",
+        (start_date, end_date),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_recovery_by_date(conn: sqlite3.Connection, date: str) -> dict[str, Any] | None:
     """Get recovery record for a given date (YYYY-MM-DD)."""
     row = conn.execute(
@@ -320,6 +333,19 @@ def upsert_whoop_sleep(
          sleep_needed_strain_ms, sleep_needed_nap_ms),
     )
     conn.commit()
+
+
+def get_sleeps_in_range(
+    conn: sqlite3.Connection,
+    start_date: str,
+    end_date: str,
+) -> list[dict[str, Any]]:
+    """Get sleep records between start_date and end_date (inclusive), ordered by date ASC."""
+    rows = conn.execute(
+        "SELECT * FROM whoop_sleep WHERE date BETWEEN ? AND ? ORDER BY date ASC",
+        (start_date, end_date),
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_sleep_by_date(conn: sqlite3.Connection, date: str) -> dict[str, Any] | None:

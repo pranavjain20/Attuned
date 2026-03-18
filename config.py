@@ -63,6 +63,22 @@ HRV_DECLINE_SD = 1.0
 SLEEP_DEFICIT_SD = 1.5
 CV_ELEVATED = 0.15
 CV_SIGNIFICANT = 0.20
+RHR_ELEVATED_BPM = 5           # RHR above baseline → caution (used in trend detection)
+RHR_PEAK_MAX_BPM = 2           # Max RHR above baseline for Peak Readiness
+SLEEP_DEBT_PEAK_HOURS = 3      # Absolute fallback: max debt for peak (used when debt baseline insufficient)
+DEEP_SLEEP_MIN_RATIO = 0.10    # Absolute floor: <10% = deficit
+DEEP_SLEEP_MIN_MS = 3_600_000  # Absolute floor: <1 hour = deficit
+REM_SLEEP_MIN_RATIO = 0.15     # Absolute floor: <15% = deficit
+SLEEP_ADEQUATE_SD = 1.0        # Within this many SDs of mean = "adequate"
+
+# Recovery tiers (from real experience, not WHOOP's red/yellow/green)
+RECOVERY_TIER_2_MAX = 40       # Definitively bad
+RECOVERY_TIER_3_MAX = 60       # Struggling / stressed
+RECOVERY_TIER_4_MAX = 80       # Functional / okay (above = great)
+
+# Accumulated fatigue detection
+FATIGUE_RECENT_DAYS = 5        # Look back window for multi-day pattern
+FATIGUE_BAD_DAYS_MIN = 3       # Min bad days in window → fatigue
 TOKEN_EXPIRY_BUFFER_SECONDS = 300  # 5-minute buffer before refresh
 
 

@@ -165,6 +165,75 @@ class TestWhoopRecovery:
         assert queries.get_recovery_by_date(db_conn, "2026-01-01") is None
 
 
+class TestGetRecoveriesInRange:
+    def test_returns_records_in_range(self, db_conn):
+        for i, date in enumerate(["2026-03-10", "2026-03-12", "2026-03-14"]):
+            queries.upsert_whoop_recovery(
+                db_conn, cycle_id=i + 1, date=date,
+                recovery_score=70.0, hrv_rmssd_milli=50.0, resting_heart_rate=60.0,
+            )
+        results = queries.get_recoveries_in_range(db_conn, "2026-03-10", "2026-03-13")
+        assert len(results) == 2
+        assert results[0]["date"] == "2026-03-10"
+        assert results[1]["date"] == "2026-03-12"
+
+    def test_inclusive_boundaries(self, db_conn):
+        queries.upsert_whoop_recovery(
+            db_conn, cycle_id=1, date="2026-03-10",
+            recovery_score=70.0, hrv_rmssd_milli=50.0, resting_heart_rate=60.0,
+        )
+        results = queries.get_recoveries_in_range(db_conn, "2026-03-10", "2026-03-10")
+        assert len(results) == 1
+
+    def test_empty_for_no_data(self, db_conn):
+        results = queries.get_recoveries_in_range(db_conn, "2026-03-01", "2026-03-31")
+        assert results == []
+
+    def test_ordered_ascending(self, db_conn):
+        for i, date in enumerate(["2026-03-15", "2026-03-11", "2026-03-13"]):
+            queries.upsert_whoop_recovery(
+                db_conn, cycle_id=i + 1, date=date,
+                recovery_score=70.0, hrv_rmssd_milli=50.0, resting_heart_rate=60.0,
+            )
+        results = queries.get_recoveries_in_range(db_conn, "2026-03-01", "2026-03-31")
+        dates = [r["date"] for r in results]
+        assert dates == ["2026-03-11", "2026-03-13", "2026-03-15"]
+
+
+class TestGetSleepsInRange:
+    def test_returns_records_in_range(self, db_conn):
+        for i, date in enumerate(["2026-03-10", "2026-03-12", "2026-03-14"]):
+            queries.upsert_whoop_sleep(
+                db_conn, sleep_id=i + 100, date=date,
+                deep_sleep_ms=5_000_000, rem_sleep_ms=6_000_000,
+                light_sleep_ms=14_000_000,
+            )
+        results = queries.get_sleeps_in_range(db_conn, "2026-03-10", "2026-03-13")
+        assert len(results) == 2
+
+    def test_inclusive_boundaries(self, db_conn):
+        queries.upsert_whoop_sleep(
+            db_conn, sleep_id=100, date="2026-03-10",
+            deep_sleep_ms=5_000_000,
+        )
+        results = queries.get_sleeps_in_range(db_conn, "2026-03-10", "2026-03-10")
+        assert len(results) == 1
+
+    def test_empty_for_no_data(self, db_conn):
+        results = queries.get_sleeps_in_range(db_conn, "2026-03-01", "2026-03-31")
+        assert results == []
+
+    def test_ordered_ascending(self, db_conn):
+        for i, date in enumerate(["2026-03-15", "2026-03-11", "2026-03-13"]):
+            queries.upsert_whoop_sleep(
+                db_conn, sleep_id=i + 100, date=date,
+                deep_sleep_ms=5_000_000,
+            )
+        results = queries.get_sleeps_in_range(db_conn, "2026-03-01", "2026-03-31")
+        dates = [r["date"] for r in results]
+        assert dates == ["2026-03-11", "2026-03-13", "2026-03-15"]
+
+
 class TestWhoopSleep:
     def test_upsert_inserts(self, db_conn):
         # Need a recovery record for the FK
