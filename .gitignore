@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
+
+# Claude Code project memory (local, not project code)
+.claude/
 venv/
 dist/
 build/
