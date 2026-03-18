@@ -398,6 +398,133 @@ _ALLOWED_TABLES = frozenset({
 })
 
 
+# ---------------------------------------------------------------------------
+# Song classifications
+# ---------------------------------------------------------------------------
+
+def get_unclassified_songs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Return songs eligible for classification that haven't been classified yet.
+
+    Eligible = play_count >= MIN_CLASSIFICATION_LISTENS and not in song_classifications.
+    Ordered by play_count DESC so highest-engagement songs get classified first.
+    """
+    from config import MIN_CLASSIFICATION_LISTENS
+
+    rows = conn.execute(
+        """SELECT s.spotify_uri, s.name, s.artist, s.album, s.duration_ms,
+                  s.play_count, s.engagement_score
+           FROM songs s
+           LEFT JOIN song_classifications sc ON s.spotify_uri = sc.spotify_uri
+           WHERE sc.spotify_uri IS NULL
+             AND s.play_count >= ?
+           ORDER BY s.play_count DESC""",
+        (MIN_CLASSIFICATION_LISTENS,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def upsert_song_classification(conn: sqlite3.Connection, data: dict[str, Any]) -> None:
+    """Insert or update a song classification. JSON-serializes mood_tags and genre_tags."""
+    mood_tags = data.get("mood_tags")
+    genre_tags = data.get("genre_tags")
+    if isinstance(mood_tags, list):
+        mood_tags = json.dumps(mood_tags)
+    if isinstance(genre_tags, list):
+        genre_tags = json.dumps(genre_tags)
+
+    conn.execute(
+        """INSERT INTO song_classifications
+               (spotify_uri, bpm, key, mode, energy, valence, acousticness,
+                danceability, instrumentalness, mood_tags, genre_tags,
+                confidence, parasympathetic, sympathetic, grounding,
+                classification_source, raw_response, classified_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(spotify_uri) DO UPDATE SET
+               bpm = excluded.bpm,
+               key = excluded.key,
+               mode = excluded.mode,
+               energy = excluded.energy,
+               valence = excluded.valence,
+               acousticness = excluded.acousticness,
+               danceability = excluded.danceability,
+               instrumentalness = excluded.instrumentalness,
+               mood_tags = excluded.mood_tags,
+               genre_tags = excluded.genre_tags,
+               confidence = excluded.confidence,
+               parasympathetic = excluded.parasympathetic,
+               sympathetic = excluded.sympathetic,
+               grounding = excluded.grounding,
+               classification_source = excluded.classification_source,
+               raw_response = excluded.raw_response,
+               classified_at = excluded.classified_at""",
+        (
+            data["spotify_uri"],
+            data.get("bpm"),
+            data.get("key"),
+            data.get("mode"),
+            data.get("energy"),
+            data.get("valence"),
+            data.get("acousticness"),
+            data.get("danceability"),
+            data.get("instrumentalness"),
+            mood_tags,
+            genre_tags,
+            data.get("confidence"),
+            data.get("parasympathetic"),
+            data.get("sympathetic"),
+            data.get("grounding"),
+            data.get("classification_source"),
+            data.get("raw_response"),
+            data.get("classified_at"),
+        ),
+    )
+    conn.commit()
+
+
+def get_song_classifications(
+    conn: sqlite3.Connection,
+    uris: list[str],
+) -> list[dict[str, Any]]:
+    """Fetch classifications for specific URIs. Deserializes JSON tags."""
+    if not uris:
+        return []
+
+    placeholders = ",".join("?" for _ in uris)
+    rows = conn.execute(
+        f"SELECT * FROM song_classifications WHERE spotify_uri IN ({placeholders})",  # noqa: S608
+        uris,
+    ).fetchall()
+    results = []
+    for row in rows:
+        d = dict(row)
+        if d.get("mood_tags"):
+            d["mood_tags"] = json.loads(d["mood_tags"])
+        if d.get("genre_tags"):
+            d["genre_tags"] = json.loads(d["genre_tags"])
+        results.append(d)
+    return results
+
+
+def get_all_classified_songs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Fetch all classified songs joined with song metadata for the matching engine."""
+    rows = conn.execute(
+        """SELECT sc.*, s.name, s.artist, s.album, s.duration_ms,
+                  s.play_count, s.engagement_score
+           FROM song_classifications sc
+           JOIN songs s ON sc.spotify_uri = s.spotify_uri
+           ORDER BY s.engagement_score DESC"""
+    ).fetchall()
+    results = []
+    for row in rows:
+        d = dict(row)
+        if d.get("mood_tags"):
+            d["mood_tags"] = json.loads(d["mood_tags"])
+        if d.get("genre_tags"):
+            d["genre_tags"] = json.loads(d["genre_tags"])
+        results.append(d)
+    return results
+
+
 def count_rows(conn: sqlite3.Connection, table: str) -> int:
     """Return the row count of a table."""
     if table not in _ALLOWED_TABLES:

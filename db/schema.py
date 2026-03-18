@@ -21,6 +21,7 @@ def create_tables(conn: sqlite3.Connection) -> None:
     """Create all tables and indexes if they don't exist."""
     conn.executescript(_SCHEMA_SQL)
     _migrate_add_recent_play_ratio(conn)
+    _migrate_add_classified_at(conn)
 
 
 def _migrate_add_recent_play_ratio(conn: sqlite3.Connection) -> None:
@@ -30,6 +31,15 @@ def _migrate_add_recent_play_ratio(conn: sqlite3.Connection) -> None:
         conn.commit()
     except sqlite3.OperationalError:
         # Column already exists — expected for new DBs or re-runs
+        pass
+
+
+def _migrate_add_classified_at(conn: sqlite3.Connection) -> None:
+    """Add classified_at column to song_classifications table if it doesn't exist yet."""
+    try:
+        conn.execute("ALTER TABLE song_classifications ADD COLUMN classified_at TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
         pass
 
 

@@ -287,6 +287,170 @@ class TestTokens:
         assert queries.get_token(db_conn, "nonexistent") is None
 
 
+class TestGetUnclassifiedSongs:
+    def _insert_song(self, db_conn, uri, play_count):
+        queries.upsert_song(db_conn, uri, f"Song {uri}", f"Artist {uri}")
+        db_conn.execute(
+            "UPDATE songs SET play_count = ? WHERE spotify_uri = ?",
+            (play_count, uri),
+        )
+        db_conn.commit()
+
+    def test_returns_eligible_songs(self, db_conn):
+        self._insert_song(db_conn, "uri:1", 10)
+        self._insert_song(db_conn, "uri:2", 5)
+        result = queries.get_unclassified_songs(db_conn)
+        uris = [r["spotify_uri"] for r in result]
+        assert "uri:1" in uris
+        assert "uri:2" in uris
+
+    def test_excludes_low_play_count(self, db_conn):
+        self._insert_song(db_conn, "uri:high", 10)
+        self._insert_song(db_conn, "uri:low", 1)
+        result = queries.get_unclassified_songs(db_conn)
+        uris = [r["spotify_uri"] for r in result]
+        assert "uri:high" in uris
+        assert "uri:low" not in uris
+
+    def test_excludes_already_classified(self, db_conn):
+        self._insert_song(db_conn, "uri:1", 10)
+        self._insert_song(db_conn, "uri:2", 10)
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1", "bpm": 120, "classification_source": "essentia",
+        })
+        result = queries.get_unclassified_songs(db_conn)
+        uris = [r["spotify_uri"] for r in result]
+        assert "uri:1" not in uris
+        assert "uri:2" in uris
+
+    def test_ordered_by_play_count_desc(self, db_conn):
+        self._insert_song(db_conn, "uri:low", 5)
+        self._insert_song(db_conn, "uri:high", 50)
+        self._insert_song(db_conn, "uri:mid", 20)
+        result = queries.get_unclassified_songs(db_conn)
+        uris = [r["spotify_uri"] for r in result]
+        assert uris == ["uri:high", "uri:mid", "uri:low"]
+
+    def test_returns_empty_when_all_classified(self, db_conn):
+        self._insert_song(db_conn, "uri:1", 10)
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1", "bpm": 120, "classification_source": "essentia",
+        })
+        assert queries.get_unclassified_songs(db_conn) == []
+
+
+class TestUpsertSongClassification:
+    def test_inserts_new_classification(self, db_conn):
+        queries.upsert_song(db_conn, "uri:1", "Song", "Artist")
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1",
+            "bpm": 128,
+            "key": "C",
+            "mode": "major",
+            "energy": 0.75,
+            "acousticness": 0.2,
+            "danceability": 0.8,
+            "instrumentalness": 0.1,
+            "classification_source": "essentia",
+            "classified_at": "2026-03-18T10:00:00",
+        })
+        rows = queries.get_song_classifications(db_conn, ["uri:1"])
+        assert len(rows) == 1
+        assert rows[0]["bpm"] == 128
+        assert rows[0]["key"] == "C"
+        assert rows[0]["mode"] == "major"
+
+    def test_updates_existing_classification(self, db_conn):
+        queries.upsert_song(db_conn, "uri:1", "Song", "Artist")
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1", "bpm": 100, "classification_source": "essentia",
+        })
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1", "bpm": 128, "classification_source": "essentia",
+        })
+        rows = queries.get_song_classifications(db_conn, ["uri:1"])
+        assert len(rows) == 1
+        assert rows[0]["bpm"] == 128
+
+    def test_json_roundtrip_for_tags(self, db_conn):
+        queries.upsert_song(db_conn, "uri:1", "Song", "Artist")
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1",
+            "mood_tags": ["melancholy", "introspective"],
+            "genre_tags": ["bollywood", "romantic"],
+            "classification_source": "llm",
+        })
+        rows = queries.get_song_classifications(db_conn, ["uri:1"])
+        assert rows[0]["mood_tags"] == ["melancholy", "introspective"]
+        assert rows[0]["genre_tags"] == ["bollywood", "romantic"]
+
+    def test_null_tags_remain_none(self, db_conn):
+        queries.upsert_song(db_conn, "uri:1", "Song", "Artist")
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1", "bpm": 100, "classification_source": "essentia",
+        })
+        rows = queries.get_song_classifications(db_conn, ["uri:1"])
+        assert rows[0]["mood_tags"] is None
+        assert rows[0]["genre_tags"] is None
+
+
+class TestGetSongClassifications:
+    def test_fetch_by_uris(self, db_conn):
+        for uri in ["uri:1", "uri:2", "uri:3"]:
+            queries.upsert_song(db_conn, uri, f"Song {uri}", "Artist")
+            queries.upsert_song_classification(db_conn, {
+                "spotify_uri": uri, "bpm": 100, "classification_source": "essentia",
+            })
+        results = queries.get_song_classifications(db_conn, ["uri:1", "uri:3"])
+        uris = {r["spotify_uri"] for r in results}
+        assert uris == {"uri:1", "uri:3"}
+
+    def test_empty_list_returns_empty(self, db_conn):
+        assert queries.get_song_classifications(db_conn, []) == []
+
+    def test_missing_uris_not_returned(self, db_conn):
+        results = queries.get_song_classifications(db_conn, ["uri:nonexistent"])
+        assert results == []
+
+
+class TestGetAllClassifiedSongs:
+    def test_joins_song_metadata(self, db_conn):
+        queries.upsert_song(db_conn, "uri:1", "My Song", "My Artist", "My Album")
+        db_conn.execute(
+            "UPDATE songs SET engagement_score = 0.85, play_count = 25 WHERE spotify_uri = 'uri:1'"
+        )
+        db_conn.commit()
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1", "bpm": 120, "energy": 0.7,
+            "classification_source": "essentia",
+        })
+        results = queries.get_all_classified_songs(db_conn)
+        assert len(results) == 1
+        assert results[0]["name"] == "My Song"
+        assert results[0]["artist"] == "My Artist"
+        assert results[0]["bpm"] == 120
+        assert results[0]["engagement_score"] == 0.85
+
+    def test_ordered_by_engagement_desc(self, db_conn):
+        for uri, score in [("uri:1", 0.5), ("uri:2", 0.9), ("uri:3", 0.3)]:
+            queries.upsert_song(db_conn, uri, f"Song {uri}", "Artist")
+            db_conn.execute(
+                "UPDATE songs SET engagement_score = ? WHERE spotify_uri = ?",
+                (score, uri),
+            )
+            queries.upsert_song_classification(db_conn, {
+                "spotify_uri": uri, "bpm": 100, "classification_source": "essentia",
+            })
+        db_conn.commit()
+        results = queries.get_all_classified_songs(db_conn)
+        scores = [r["engagement_score"] for r in results]
+        assert scores == [0.9, 0.5, 0.3]
+
+    def test_empty_when_no_classifications(self, db_conn):
+        queries.upsert_song(db_conn, "uri:1", "Song", "Artist")
+        assert queries.get_all_classified_songs(db_conn) == []
+
+
 class TestCountRows:
     def test_empty_table(self, db_conn):
         assert queries.count_rows(db_conn, "songs") == 0

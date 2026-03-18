@@ -24,6 +24,8 @@ COMMANDS = {
     "dedup-songs": "Consolidate duplicate songs (same name+artist, different URIs)",
     "compute-engagement": "Compute engagement scores for all eligible songs",
     "classify-state": "Classify today's physiological state from WHOOP data",
+    "download-audio": "Download 30-second audio clips (Spotify preview + yt-dlp)",
+    "analyze-audio": "Run Essentia analysis on audio clips",
     "generate": "Generate today's playlist (not yet implemented)",
 }
 
@@ -50,6 +52,10 @@ def main() -> None:
         _cmd_compute_engagement()
     elif command == "classify-state":
         _cmd_classify_state()
+    elif command == "download-audio":
+        _cmd_download_audio()
+    elif command == "analyze-audio":
+        _cmd_analyze_audio()
     elif command == "sync-whoop-history":
         _cmd_sync_whoop_history()
     elif command == "generate":
@@ -269,6 +275,56 @@ def _cmd_classify_state() -> None:
         rhr = baselines["rhr"]
         print(f"  RHR mean:  {rhr['mean']:.1f} bpm")
 
+    conn.close()
+
+
+def _cmd_download_audio() -> None:
+    from config import AUDIO_CLIPS_DIR
+    from db.queries import get_unclassified_songs
+    from spotify.auth import get_spotify_client
+    from classification.audio import acquire_audio_clips
+
+    conn = get_connection()
+    sp = get_spotify_client(conn)
+    songs = get_unclassified_songs(conn)
+
+    if not songs:
+        print("No unclassified songs to download audio for.")
+        conn.close()
+        return
+
+    print(f"Downloading audio clips for {len(songs)} songs...")
+    stats = acquire_audio_clips(sp, songs, AUDIO_CLIPS_DIR)
+
+    print(f"\nAudio download complete:")
+    print(f"  Downloaded:      {stats['downloaded']:,}")
+    print(f"  Already cached:  {stats['already_cached']:,}")
+    print(f"  Failed:          {stats['failed']:,}")
+    print(f"  Spotify preview: {stats['preview_count']:,}")
+    print(f"  yt-dlp fallback: {stats['ytdlp_count']:,}")
+    conn.close()
+
+
+def _cmd_analyze_audio() -> None:
+    from config import AUDIO_CLIPS_DIR
+    from db.queries import count_rows
+    from classification.essentia_analyzer import analyze_all_songs
+
+    conn = get_connection()
+
+    if not AUDIO_CLIPS_DIR.exists():
+        print("No audio_clips/ directory found. Run download-audio first.")
+        conn.close()
+        return
+
+    print("Running Essentia analysis on audio clips...")
+    stats = analyze_all_songs(conn, AUDIO_CLIPS_DIR)
+
+    print(f"\nEssentia analysis complete:")
+    print(f"  Analyzed:  {stats['analyzed']:,}")
+    print(f"  Failed:    {stats['failed']:,}")
+    print(f"  Skipped:   {stats['skipped']:,} (no audio clip)")
+    print(f"\nTotal classifications: {count_rows(conn, 'song_classifications'):,}")
     conn.close()
 
 
