@@ -21,6 +21,7 @@ COMMANDS = {
     "sync-whoop": "Pull today's WHOOP recovery + sleep data",
     "sync-spotify": "Sync liked songs, top tracks, and fetch metadata from Spotify",
     "sync-all": "Run sync-whoop and sync-spotify",
+    "dedup-songs": "Consolidate duplicate songs (same name+artist, different URIs)",
     "compute-engagement": "Compute engagement scores for all eligible songs",
     "generate": "Generate today's playlist (not yet implemented)",
 }
@@ -42,6 +43,8 @@ def main() -> None:
     elif command == "sync-all":
         _cmd_sync_whoop()
         _cmd_sync_spotify()
+    elif command == "dedup-songs":
+        _cmd_dedup_songs()
     elif command == "compute-engagement":
         _cmd_compute_engagement()
     elif command == "sync-whoop-history":
@@ -128,6 +131,7 @@ def _cmd_sync_whoop() -> None:
 def _cmd_sync_spotify() -> None:
     from spotify.auth import get_spotify_client
     from spotify.sync import sync_liked_songs, sync_top_tracks, fetch_batch_metadata
+    from spotify.dedup import consolidate_duplicate_songs
     from spotify.engagement import compute_engagement_scores
 
     conn = get_connection()
@@ -140,15 +144,40 @@ def _cmd_sync_spotify() -> None:
     print(f"  Top tracks:    {top:,}")
     print(f"  Metadata fetched: {metadata:,}")
 
+    result = consolidate_duplicate_songs(conn)
+    if result["groups"] > 0:
+        print(f"  Duplicates consolidated: {result['groups']} groups ({result['songs_merged']} merged)")
+
     scored = compute_engagement_scores(conn)
     print(f"  Engagement scored: {scored:,}")
     conn.close()
 
 
-def _cmd_compute_engagement() -> None:
-    from spotify.engagement import compute_engagement_scores
+def _cmd_dedup_songs() -> None:
+    from spotify.dedup import consolidate_duplicate_songs
 
     conn = get_connection()
+    result = consolidate_duplicate_songs(conn)
+    if result["groups"] > 0:
+        print(f"\nConsolidated {result['groups']} duplicate groups "
+              f"({result['songs_merged']} songs merged)")
+    else:
+        print("\nNo duplicate songs found")
+    conn.close()
+
+
+def _cmd_compute_engagement() -> None:
+    from spotify.engagement import compute_engagement_scores
+    from spotify.dedup import consolidate_duplicate_songs
+
+    conn = get_connection()
+
+    # Consolidate duplicates before scoring — dedup changes play counts
+    result = consolidate_duplicate_songs(conn)
+    if result["groups"] > 0:
+        print(f"Consolidated {result['groups']} duplicate groups "
+              f"({result['songs_merged']} songs merged)")
+
     scored = compute_engagement_scores(conn)
     print(f"\nEngagement scoring complete: {scored:,} songs scored")
 
