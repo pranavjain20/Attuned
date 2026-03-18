@@ -100,7 +100,10 @@
 - [x] Acousticness: SCT 33% (random). Spectral Flatness 67%. Decision: Switch to flatness-based.
 - [x] Instrumentalness: ZCR 46% wrong on vocal songs. Decision: LLM only.
 - [x] Applied code fixes: `essentia_analyzer.py` (energy divisor, acousticness algorithm), updated tests
-- [x] 414 tests passing
+- [x] LLM vs Essentia shootout for energy + acousticness: LLM worse (42%/50% vs 71%/62%). Essentia confirmed for both.
+- [x] Staff engineer audit: 3 MUST FIX + 8 SHOULD FIX, all resolved
+- [x] Staff tester audit: 4 HIGH + 5 MEDIUM gaps, all HIGH resolved, 7 new tests added
+- [x] 421 tests passing, 8 commits pushed to main
 
 ## Day 4: LLM Song Classification (~669 songs)
 _Next up — informed by property evaluation decisions above_

@@ -36,10 +36,18 @@ Evaluated all 10 classification properties (BPM, key/mode, energy, danceability,
 **Valence, Mood Tags, Genre Tags** — Not computable from audio signal. These are semantic/perceptual properties.
 - **Decision:** LLM only (by design)
 
+### LLM vs Essentia Shootout (Energy + Acousticness)
+Tested GPT-4o-mini against Essentia on 25 songs for energy and acousticness. LLM scored worse on both: energy 42% vs Essentia 71%, acousticness 50% vs Essentia 62%. LLM has middle-value bias on continuous 0-1 scales (compresses to 0.4-0.8 range) and weak Indian song knowledge. Confirmed Essentia stays for both.
+
+### Staff Audit (all findings fixed)
+- Staff engineer: 3 MUST FIX (unused import, per-frame algorithm instantiation in loop, mock not testing varying flatness). 8 SHOULD FIX (non-idiomatic numpy, missing boundary tests, dead code, test mock gap).
+- Staff tester: 4 HIGH gaps (energy boundary, varying flatness, zero-sum spectrum, empty frames). 5 MEDIUM gaps.
+- All MUST FIX and HIGH items resolved. 7 new tests added.
+
 ### Classification Architecture Summary
 - **Essentia handles (4 properties):** BPM (English songs), Key/Mode, Energy (RMS/0.35), Acousticness (spectral flatness)
 - **LLM handles (6 properties):** BPM (Indian songs), Danceability, Instrumentalness, Valence, Mood tags, Genre tags
-- 414 tests passing
+- 421 tests passing, all pushed to main
 
 ### BPM Experiment Details (from prior session)
 - Tested 6 audio strategies across 25 songs (5 categories)
