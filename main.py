@@ -26,6 +26,8 @@ COMMANDS = {
     "classify-state": "Classify today's physiological state from WHOOP data",
     "download-audio": "Download 30-second audio clips (Spotify preview + yt-dlp)",
     "analyze-audio": "Run Essentia analysis on audio clips",
+    "classify-songs": "Run LLM classification on unclassified songs",
+    "recompute-scores": "Recompute neuro scores from existing DB data (no API calls)",
     "generate": "Generate today's playlist (not yet implemented)",
 }
 
@@ -56,6 +58,10 @@ def main() -> None:
         _cmd_download_audio()
     elif command == "analyze-audio":
         _cmd_analyze_audio()
+    elif command == "classify-songs":
+        _cmd_classify_songs()
+    elif command == "recompute-scores":
+        _cmd_recompute_scores()
     elif command == "sync-whoop-history":
         _cmd_sync_whoop_history()
     elif command == "generate":
@@ -310,6 +316,8 @@ def _cmd_analyze_audio() -> None:
     from db.queries import count_rows
     from classification.essentia_analyzer import analyze_all_songs
 
+    force = "--force" in sys.argv
+
     conn = get_connection()
 
     if not AUDIO_CLIPS_DIR.exists():
@@ -317,13 +325,131 @@ def _cmd_analyze_audio() -> None:
         conn.close()
         return
 
-    print("Running Essentia analysis on audio clips...")
-    stats = analyze_all_songs(conn, AUDIO_CLIPS_DIR)
+    if force:
+        print("Running Essentia analysis on ALL eligible songs (--force)...")
+    else:
+        print("Running Essentia analysis on audio clips...")
+    stats = analyze_all_songs(conn, AUDIO_CLIPS_DIR, force=force)
 
     print(f"\nEssentia analysis complete:")
     print(f"  Analyzed:  {stats['analyzed']:,}")
     print(f"  Failed:    {stats['failed']:,}")
     print(f"  Skipped:   {stats['skipped']:,} (no audio clip)")
+    print(f"\nTotal classifications: {count_rows(conn, 'song_classifications'):,}")
+    conn.close()
+
+
+def _cmd_recompute_scores() -> None:
+    """Recompute neurological scores from existing DB data. No API calls.
+
+    Reads each song's properties + LLM direct scores from DB, re-runs the
+    formula + blend with current parameters, and updates the scores in-place.
+    Use after changing formula params (sigmoid/gaussian) or blend weights.
+    """
+    import json
+
+    from classification.llm_classifier import _blend_neuro_scores
+    from classification.profiler import compute_neurological_profile
+
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT sc.spotify_uri, s.name, s.artist,
+                  sc.bpm, sc.felt_tempo, sc.energy, sc.acousticness,
+                  sc.instrumentalness, sc.valence, sc.mode, sc.danceability,
+                  sc.genre_tags, sc.raw_response
+           FROM song_classifications sc
+           JOIN songs s ON sc.spotify_uri = s.spotify_uri
+           WHERE sc.valence IS NOT NULL"""
+    ).fetchall()
+
+    updated = 0
+    for row in rows:
+        d = dict(row)
+        genre_tags = json.loads(d["genre_tags"]) if d.get("genre_tags") else None
+
+        # Use felt_tempo for scoring when available
+        scoring_bpm = d.get("felt_tempo") or d.get("bpm")
+
+        # Recompute formula scores
+        neuro = compute_neurological_profile(
+            bpm=scoring_bpm,
+            energy=d.get("energy"),
+            acousticness=d.get("acousticness"),
+            instrumentalness=d.get("instrumentalness"),
+            valence=d.get("valence"),
+            mode=d.get("mode"),
+            danceability=d.get("danceability"),
+        )
+
+        # Extract LLM direct scores from raw_response by matching title/artist.
+        # Each raw_response contains a batch of ~5 songs — must match the right one.
+        llm_para, llm_symp, llm_grounding = None, None, None
+        song_name = (d.get("name") or "").lower().strip()
+        song_artist = (d.get("artist") or "").lower().strip()
+        if d.get("raw_response"):
+            try:
+                raw = json.loads(d["raw_response"])
+                for song_result in raw.get("songs", []):
+                    r_title = str(song_result.get("title", "")).lower().strip()
+                    r_artist = str(song_result.get("artist", "")).lower().strip()
+                    if (r_title == song_name or r_title in song_name or song_name in r_title) and \
+                       (r_artist == song_artist or r_artist in song_artist or song_artist in r_artist):
+                        llm_para = song_result.get("para_score")
+                        llm_symp = song_result.get("symp_score")
+                        llm_grounding = song_result.get("grounding_score")
+                        break
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+        # Ensemble: combine formula + LLM using structural knowledge
+        blended = _blend_neuro_scores(
+            neuro, llm_para, llm_symp, llm_grounding, genre_tags,
+            bpm=d.get("bpm"), energy=d.get("energy"),
+        )
+
+        conn.execute(
+            """UPDATE song_classifications
+               SET parasympathetic = ?, sympathetic = ?, grounding = ?
+               WHERE spotify_uri = ?""",
+            (blended["parasympathetic"], blended["sympathetic"],
+             blended["grounding"], d["spotify_uri"]),
+        )
+        updated += 1
+
+    conn.commit()
+    print(f"Recomputed scores for {updated:,} songs (no API calls)")
+    conn.close()
+
+
+def _cmd_classify_songs() -> None:
+    from db.queries import count_rows
+    from classification.llm_classifier import classify_songs
+
+    # Support --provider flag, default to openai
+    provider = "openai"
+    if "--provider" in sys.argv:
+        idx = sys.argv.index("--provider")
+        if idx + 1 < len(sys.argv):
+            provider = sys.argv[idx + 1]
+    if provider not in ("openai", "anthropic"):
+        print(f"Invalid provider: {provider}. Use 'openai' or 'anthropic'.")
+        sys.exit(1)
+
+    reclassify = "--reclassify" in sys.argv
+
+    conn = get_connection()
+    if reclassify:
+        print(f"Re-classifying ALL songs (provider={provider}, --reclassify)...")
+    else:
+        print(f"Running LLM classification (provider={provider})...")
+    stats = classify_songs(conn, provider=provider, reclassify=reclassify)
+
+    print(f"\nLLM classification complete:")
+    print(f"  Classified:      {stats['classified']:,}")
+    print(f"  Failed:          {stats['failed']:,}")
+    print(f"  Skipped:         {stats['skipped']:,}")
+    print(f"  Low confidence:  {stats['low_confidence']:,}")
+    print(f"  Batches:         {stats['batches']:,}")
     print(f"\nTotal classifications: {count_rows(conn, 'song_classifications'):,}")
     conn.close()
 
