@@ -110,11 +110,13 @@ def analyze_audio(audio_path: Path) -> dict[str, Any] | None:
             key = None
             mode = None
 
-        # Energy — RMS normalized to [0, 1]
-        # Observed RMS range: ~0.05 (quiet classic) to ~0.35 (loud pop)
-        # Divisor 0.35 gives full range utilization (0 songs at ceiling on test set)
-        rms = float(es.RMS()(audio))
-        energy = max(0.0, min(1.0, rms / 0.35))
+        # Energy — onset rate (rhythmic attacks per second)
+        # Onset rate is immune to mastering loudness (unlike RMS which was broken
+        # by loud mastering — e.g. Die For You quiet R&B got energy=0.71).
+        # Range: ~2 onsets/sec (calm acoustic) to ~6+ (tabla, dhol, electronic).
+        # Previous RMS approach: rms = float(es.RMS()(audio)); energy = rms / 0.35
+        onset_rate = float(es.OnsetRate()(audio)[1])
+        energy = max(0.0, min(1.0, (onset_rate - 2.0) / 4.0))
 
         # Acousticness — spectral flatness (tonal vs noise-like)
         # Low flatness = clear harmonics (acoustic instruments)
@@ -166,20 +168,48 @@ def analyze_audio(audio_path: Path) -> dict[str, Any] | None:
         return None
 
 
+def _get_songs_for_analysis(
+    conn: sqlite3.Connection,
+    force: bool = False,
+) -> list[dict[str, Any]]:
+    """Get songs eligible for Essentia analysis.
+
+    Default: unclassified songs only (not in song_classifications).
+    Force: ALL eligible songs (play_count >= threshold), regardless of
+    existing classification. Used to recompute Essentia features (e.g.,
+    after switching from RMS to onset rate energy).
+    """
+    if force:
+        from config import MIN_CLASSIFICATION_LISTENS
+
+        rows = conn.execute(
+            """SELECT s.spotify_uri, s.name, s.artist, s.album, s.duration_ms,
+                      s.play_count, s.engagement_score
+               FROM songs s
+               WHERE s.play_count >= ?
+               ORDER BY s.play_count DESC""",
+            (MIN_CLASSIFICATION_LISTENS,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    return get_unclassified_songs(conn)
+
+
 def analyze_all_songs(
     conn: sqlite3.Connection,
     audio_dir: Path,
+    force: bool = False,
 ) -> dict[str, int]:
-    """Analyze all unclassified songs that have audio clips.
+    """Analyze songs that have audio clips.
 
-    Runs Essentia on each clip and stores results. Skips songs already
-    classified or without audio clips.
+    Default: only unclassified songs.
+    Force: ALL eligible songs, recomputing Essentia features even if
+    previously classified.
 
     Returns summary: {analyzed, failed, skipped}
     """
     stats = {"analyzed": 0, "failed": 0, "skipped": 0}
 
-    unclassified = get_unclassified_songs(conn)
+    unclassified = _get_songs_for_analysis(conn, force=force)
     if not unclassified:
         logger.info("No unclassified songs to analyze")
         return stats

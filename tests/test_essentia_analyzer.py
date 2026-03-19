@@ -20,7 +20,7 @@ def _make_es_mock(
     bpm: float = 120.0,
     key: str = "A",
     scale: str = "minor",
-    rms: float = 0.15,
+    onset_rate: float = 4.0,
     spectral_flatness: float = 0.01,
     danceability: float = 0.65,
     audio_length: int = 44100 * 5,
@@ -38,7 +38,7 @@ def _make_es_mock(
 
     es.RhythmExtractor2013.return_value = MagicMock(return_value=(bpm, [], 0.8, [], []))
     es.KeyExtractor.return_value = MagicMock(return_value=(key, scale, 0.7))
-    es.RMS.return_value = MagicMock(return_value=rms)
+    es.OnsetRate.return_value = MagicMock(return_value=([], onset_rate))
     es.ZeroCrossingRate.return_value = MagicMock(return_value=0.04)
     es.Danceability.return_value = MagicMock(return_value=(danceability, []))
 
@@ -130,18 +130,20 @@ class TestAnalyzeAudio:
         result = _run_analyze_with_mock(audio_path, _make_es_mock(audio_length=100))
         assert result is None
 
-    def test_energy_silence_near_zero(self, tmp_path):
-        audio_path = tmp_path / "silent.mp3"
+    def test_energy_low_onset_near_zero(self, tmp_path):
+        """Low onset rate (calm acoustic) → near-zero energy."""
+        audio_path = tmp_path / "calm.mp3"
         audio_path.write_bytes(b"fake")
 
-        result = _run_analyze_with_mock(audio_path, _make_es_mock(rms=0.001))
-        assert result["energy"] < 0.01
+        result = _run_analyze_with_mock(audio_path, _make_es_mock(onset_rate=2.0))
+        assert result["energy"] == 0.0
 
-    def test_energy_loud_clamped_at_one(self, tmp_path):
-        audio_path = tmp_path / "loud.mp3"
+    def test_energy_high_onset_clamped_at_one(self, tmp_path):
+        """High onset rate (tabla, electronic beats) → clamped at 1.0."""
+        audio_path = tmp_path / "energetic.mp3"
         audio_path.write_bytes(b"fake")
 
-        result = _run_analyze_with_mock(audio_path, _make_es_mock(rms=0.5))
+        result = _run_analyze_with_mock(audio_path, _make_es_mock(onset_rate=7.0))
         assert result["energy"] == 1.0
 
     def test_essentia_not_installed_returns_none(self, tmp_path):
@@ -234,29 +236,37 @@ class TestAnalyzeAudio:
         # All frames skipped → avg_flatness=0 → acousticness=1.0
         assert result["acousticness"] == 1.0
 
-    def test_energy_at_divisor_boundary(self, tmp_path):
-        """RMS exactly at the divisor (0.35) should give energy=1.0."""
+    def test_energy_at_upper_boundary(self, tmp_path):
+        """Onset rate=6.0 → (6-2)/4 = 1.0."""
         audio_path = tmp_path / "boundary.mp3"
         audio_path.write_bytes(b"fake")
 
-        result = _run_analyze_with_mock(audio_path, _make_es_mock(rms=0.35))
+        result = _run_analyze_with_mock(audio_path, _make_es_mock(onset_rate=6.0))
         assert result["energy"] == 1.0
 
-    def test_energy_just_below_divisor(self, tmp_path):
-        """RMS just below divisor should give energy < 1.0."""
+    def test_energy_just_below_upper(self, tmp_path):
+        """Onset rate just below 6.0 → energy < 1.0."""
         audio_path = tmp_path / "below.mp3"
         audio_path.write_bytes(b"fake")
 
-        result = _run_analyze_with_mock(audio_path, _make_es_mock(rms=0.34))
-        assert 0.95 < result["energy"] < 1.0
+        result = _run_analyze_with_mock(audio_path, _make_es_mock(onset_rate=5.8))
+        assert 0.9 < result["energy"] < 1.0
 
     def test_energy_midpoint(self, tmp_path):
-        """RMS at half the divisor should give energy=0.5."""
+        """Onset rate=4.0 → (4-2)/4 = 0.5."""
         audio_path = tmp_path / "mid.mp3"
         audio_path.write_bytes(b"fake")
 
-        result = _run_analyze_with_mock(audio_path, _make_es_mock(rms=0.175))
+        result = _run_analyze_with_mock(audio_path, _make_es_mock(onset_rate=4.0))
         assert result["energy"] == 0.5
+
+    def test_energy_below_floor_clamped(self, tmp_path):
+        """Onset rate below 2.0 → clamped to 0.0."""
+        audio_path = tmp_path / "very_calm.mp3"
+        audio_path.write_bytes(b"fake")
+
+        result = _run_analyze_with_mock(audio_path, _make_es_mock(onset_rate=1.0))
+        assert result["energy"] == 0.0
 
 
 class TestAnalyzeAllSongs:
@@ -382,3 +392,45 @@ class TestAnalyzeAllSongs:
         assert stats["analyzed"] == 1
         assert stats["failed"] == 1
         assert stats["skipped"] == 1
+
+    @patch("classification.essentia_analyzer.analyze_audio")
+    def test_force_reanalyzes_classified_songs(self, mock_analyze, db_conn, tmp_path):
+        """force=True should re-analyze songs that already have classifications."""
+        self._insert_song(db_conn, "uri:1")
+        from classification.audio import uri_to_filename
+        (tmp_path / uri_to_filename("uri:1")).write_bytes(b"audio")
+
+        # First: classify it
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1", "bpm": 100, "energy": 0.5,
+            "classification_source": "essentia",
+        })
+
+        # Without force: already classified, skipped
+        stats_normal = analyze_all_songs(db_conn, tmp_path, force=False)
+        assert stats_normal["analyzed"] == 0
+        mock_analyze.assert_not_called()
+
+        # With force: re-analyzed
+        mock_analyze.return_value = {
+            "bpm": 120, "bpm_confidence": 2.5, "key": "A", "mode": "minor",
+            "energy": 0.7, "acousticness": 0.3,
+            "instrumentalness": 0.2, "danceability": 0.6,
+        }
+        stats_force = analyze_all_songs(db_conn, tmp_path, force=True)
+        assert stats_force["analyzed"] == 1
+
+        # Verify the classification was updated
+        rows = queries.get_song_classifications(db_conn, ["uri:1"])
+        assert rows[0]["energy"] == 0.7  # Updated from 0.5 to 0.7
+
+    @patch("classification.essentia_analyzer.analyze_audio")
+    def test_force_still_skips_low_play_count(self, mock_analyze, db_conn, tmp_path):
+        """force=True should still respect MIN_CLASSIFICATION_LISTENS."""
+        self._insert_song(db_conn, "uri:low", play_count=1)  # Below threshold
+        from classification.audio import uri_to_filename
+        (tmp_path / uri_to_filename("uri:low")).write_bytes(b"audio")
+
+        stats = analyze_all_songs(db_conn, tmp_path, force=True)
+        assert stats["analyzed"] == 0
+        mock_analyze.assert_not_called()
