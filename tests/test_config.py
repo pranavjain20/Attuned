@@ -34,6 +34,21 @@ class TestConstants:
     def test_token_expiry_buffer(self):
         assert config.TOKEN_EXPIRY_BUFFER_SECONDS == 300
 
+    def test_llm_batch_size(self):
+        assert config.LLM_BATCH_SIZE == 5
+
+    def test_llm_max_retries(self):
+        assert config.LLM_MAX_RETRIES == 3
+
+    def test_min_classification_listens(self):
+        assert config.MIN_CLASSIFICATION_LISTENS == 2
+
+    def test_indian_genre_tags_is_frozenset(self):
+        assert isinstance(config.INDIAN_GENRE_TAGS, frozenset)
+        assert "bollywood" in config.INDIAN_GENRE_TAGS
+        assert "hindi" in config.INDIAN_GENRE_TAGS
+        assert "punjabi" in config.INDIAN_GENRE_TAGS
+
 
 class TestEnvVarGetters:
     def test_whoop_client_id_raises_when_missing(self):
@@ -67,3 +82,21 @@ class TestEnvVarGetters:
 
     def test_spotify_redirect_uri_has_default(self):
         assert "127.0.0.1" in config.get_spotify_redirect_uri()
+
+    def test_openai_api_key_raises_when_missing(self):
+        with patch("config.os.getenv", return_value=None):
+            with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
+                config.get_openai_api_key()
+
+    def test_openai_api_key_returns_value(self):
+        with patch("config.os.getenv", return_value="sk-test"):
+            assert config.get_openai_api_key() == "sk-test"
+
+    def test_anthropic_api_key_raises_when_missing(self):
+        with patch("config.os.getenv", return_value=None):
+            with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
+                config.get_anthropic_api_key()
+
+    def test_anthropic_api_key_returns_value(self):
+        with patch("config.os.getenv", return_value="sk-ant-test"):
+            assert config.get_anthropic_api_key() == "sk-ant-test"

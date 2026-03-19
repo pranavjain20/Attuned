@@ -105,8 +105,39 @@
 - [x] Staff tester audit: 4 HIGH + 5 MEDIUM gaps, all HIGH resolved, 7 new tests added
 - [x] 421 tests passing, 8 commits pushed to main
 
-## Day 4: LLM Song Classification (~669 songs)
-_Next up — informed by property evaluation decisions above_
+## Day 4: LLM Song Classification (DONE)
+### Implementation
+- [x] classification/profiler.py — sigmoid/gaussian math + parasympathetic/sympathetic/grounding scoring (62 tests)
+- [x] db/queries.py — get_songs_needing_llm query for hybrid pipeline (10 tests)
+- [x] config.py — LLM constants, Indian genre tags, API key getters (8 tests)
+- [x] classification/llm_classifier.py — LLM classification pipeline with Essentia merge (78 tests)
+- [x] main.py — classify-songs CLI command with --provider flag
+- [x] Staff engineer audit + staff tester audit — all findings fixed
+- [x] Confidence experiment: 25 songs × 3 approaches → rich context wins for obscure songs
+- [x] BPM strategy switch: LLM primary (was Essentia primary) — fixes octave errors
+- [x] Full library classified: 1360 songs, 0 failures, ~$1.36 cost
+- [x] 579 tests passing
+
+### Known Accuracy Gaps (for Day 5 tuning)
+- [x] Devotional BPM: fixed — reclassification with updated prompt, Namo Namo now BPM=80
+- [x] Energy normalization: fixed — switched from RMS to onset rate energy
+- [x] Bucket evaluation too coarse — matching engine will use continuous scores, not buckets
+
+## Day 4b: Accuracy Tuning (DONE)
+- [x] Root cause analysis of 10 failing songs → 3 distinct causes identified
+- [x] `--reclassify` flag for classify-songs, `--force` for analyze-audio
+- [x] `recompute-scores` CLI command (2-second local recompute, no API calls)
+- [x] LLM valence calibration in prompt (sad/devotional songs were over-rated)
+- [x] `felt_tempo` field added to schema + prompt (LLM mostly ignores, but ready)
+- [x] Fixed `has_essentia` exact-match bug (wiped Essentia data during reclassification)
+- [x] GRND tempo gaussian narrowed (sigma 15→10) to reduce gravity well
+- [x] Replaced weighted-average blend with confidence-aware ensemble
+- [x] Added LLM energy/acousticness estimates as fallback when no Essentia
+- [x] Validated on fresh 34-song set (56%→65% after energy fix)
+- [x] Error severity analysis: 93% correct or adjacent, only 7% catastrophic
+- [x] 617 tests passing
+- [ ] **NEXT SESSION FIRST:** Full reclassification with LLM energy/acousticness (`classify-songs --reclassify`)
+- [ ] Staff tester + staff auditor on Day 4b code changes
 
 ## Day 5: Matching Engine (engagement-weighted)
 _Not started_

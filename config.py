@@ -83,6 +83,24 @@ FATIGUE_RECENT_DAYS = 5        # Look back window for multi-day pattern
 FATIGUE_BAD_DAYS_MIN = 3       # Min bad days in window → fatigue
 TOKEN_EXPIRY_BUFFER_SECONDS = 300  # 5-minute buffer before refresh
 
+# ---------------------------------------------------------------------------
+# LLM classification
+# ---------------------------------------------------------------------------
+LLM_BATCH_SIZE = 5
+LLM_MODEL_OPENAI = "gpt-4o-mini"
+LLM_MODEL_ANTHROPIC = "claude-sonnet-4-20250514"
+LLM_MAX_RETRIES = 3
+LLM_RETRY_BASE_SECONDS = 2
+
+# Genre tags that indicate Indian music (BPM from LLM, not Essentia)
+INDIAN_GENRE_TAGS = frozenset({
+    "bollywood", "hindi", "punjabi", "indian", "desi", "bhangra",
+    "sufi", "ghazal", "qawwali", "devotional", "filmi", "indi-pop",
+    "indian pop", "indian classical", "hindustani", "carnatic",
+    "rajasthani", "tamil", "telugu", "bengali", "marathi", "gujarati",
+    "kannada", "malayalam",
+})
+
 
 # ---------------------------------------------------------------------------
 # Environment variable getters — fail loudly when missing
@@ -121,3 +139,17 @@ def get_spotify_client_secret() -> str:
 
 def get_spotify_redirect_uri() -> str:
     return os.getenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8080/spotify/callback")
+
+
+def get_openai_api_key() -> str:
+    val = os.getenv("OPENAI_API_KEY")
+    if not val:
+        raise RuntimeError("OPENAI_API_KEY not set in environment / .env")
+    return val
+
+
+def get_anthropic_api_key() -> str:
+    val = os.getenv("ANTHROPIC_API_KEY")
+    if not val:
+        raise RuntimeError("ANTHROPIC_API_KEY not set in environment / .env")
+    return val
