@@ -137,7 +137,7 @@
 - [x] Error severity analysis: 93% correct or adjacent, only 7% catastrophic
 - [x] 617 tests passing
 - [ ] **NEXT SESSION FIRST:** Full reclassification with LLM energy/acousticness (`classify-songs --reclassify`)
-- [ ] Staff tester + staff auditor on Day 4b code changes
+- [x] Staff tester + staff auditor on Day 4b code changes (2 HIGH + 1 MUST FIX, all fixed)
 
 ## Day 5: Matching Engine (engagement-weighted)
 _Not started_
