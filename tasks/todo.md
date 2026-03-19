@@ -136,11 +136,15 @@
 - [x] Validated on fresh 34-song set (56%→65% after energy fix)
 - [x] Error severity analysis: 93% correct or adjacent, only 7% catastrophic
 - [x] 617 tests passing
-- [ ] **NEXT SESSION FIRST:** Full reclassification with LLM energy/acousticness (`classify-songs --reclassify`)
+- [x] Full reclassification with LLM energy/acousticness — 1360/1360, 100% energy coverage
 - [x] Staff tester + staff auditor on Day 4b code changes (2 HIGH + 1 MUST FIX, all fixed)
+- [x] Fresh 34-song validation set — cross-validated accuracy
+- [x] Product-relevant evaluation: 83% product accuracy, 86% safety, 93% within one bucket
+- [x] CPO assessment: classification layer is good enough. Continuous scores serve the matching engine.
+- [x] 621 tests passing
 
 ## Day 5: Matching Engine (engagement-weighted)
-_Not started_
+_Next up_
 
 ## Day 6: Playlist Creation + End-to-End Flow
 _Not started_

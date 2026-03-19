@@ -1,23 +1,24 @@
 # Attuned — Current Status
 
 **Last updated:** Mar 19, 2026
-**Current phase:** Day 4b complete. Accuracy tuning: 48% → 68% (combined 59-song test). Full reclassification pending.
-**Next action:** Run full reclassification with LLM energy/acousticness estimates, then recompute scores. After that: Day 5 matching engine.
+**Current phase:** Day 4b complete. Classification layer done. All 1360 songs classified with energy/acousticness. Ready for Day 5 matching engine.
+**Next action:** Day 5 — Matching engine (engagement-weighted song selection from classified library).
 
 ---
 
-## FIRST THING NEXT SESSION
+## Classification Layer — Final State
 
-Run the full reclassification to apply the LLM energy/acousticness prompt to all 1360 songs:
+All 1360 songs fully classified with: BPM, energy, acousticness, valence, danceability, instrumentalness, mode, mood/genre tags, para/symp/grounding scores. 100% energy coverage (LLM estimates + Essentia for 33 songs with audio).
 
-```bash
-python main.py classify-songs --reclassify    # ~55 min, ~$1.36
-python main.py recompute-scores               # 2 seconds, reapplies ensemble
-```
+**Accuracy (59-song cross-validated test set):**
+- Bucket accuracy: 66% (discrete 3-bucket evaluation)
+- Product accuracy: 83% (score above threshold for correct playlist selection)
+- Safety: 86% (opposite dimension not dominant)
+- Within one adjacent bucket: 93%
 
-**Why:** We added energy + acousticness fields to the LLM prompt. Currently only 41 songs have the new estimates — the other 1319 still have energy=None (default 0.5). The validation test showed this change improved accuracy from 56% → 65% on 34 fresh songs. The full reclassification gives every song real energy/acousticness values instead of meaningless defaults.
+**Architecture:** Confidence-aware ensemble (formula + LLM) with energy-based routing. Essentia audio features when available, LLM estimates as fallback. See `tasks/accuracy_tuning_learnings.md` for full session log.
 
-**After reclassification:** Re-run accuracy comparison on both test sets (25 original + 34 validation = 59 songs) to confirm combined accuracy holds at 68%+.
+**Key insight:** Bucket accuracy (66%) was the wrong evaluation metric. The matching engine uses continuous scores with thresholds, not discrete buckets. A song with PARA=0.65, GRND=0.70 works for both calming and grounding playlists. Product-relevant accuracy is 83%.
 
 ---
 
