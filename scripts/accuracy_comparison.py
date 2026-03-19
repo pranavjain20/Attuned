@@ -250,7 +250,7 @@ def main() -> None:
             llm_grounding = direct.get("g")
 
             blend_scores = _blend_neuro_scores(
-                new_scores, llm_para, llm_symp, llm_grounding, genre_tags,
+                new_scores, llm_para, llm_symp, llm_grounding,
             )
             blend_bucket = dominant_bucket(blend_scores)
 

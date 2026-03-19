@@ -59,13 +59,15 @@ def _make_llm_result(
     danceability: float = 0.7,
     instrumentalness: float = 0.1,
     valence: float = 0.6,
+    energy: float | None = None,
+    acousticness: float | None = None,
     mood_tags: list | None = None,
     genre_tags: list | None = None,
     para_score: float = 0.2,
     symp_score: float = 0.7,
     grounding_score: float = 0.3,
 ) -> dict:
-    return {
+    result = {
         "title": "Test Song",
         "artist": "Test Artist",
         "bpm": bpm,
@@ -78,6 +80,11 @@ def _make_llm_result(
         "symp_score": symp_score,
         "grounding_score": grounding_score,
     }
+    if energy is not None:
+        result["energy"] = energy
+    if acousticness is not None:
+        result["acousticness"] = acousticness
+    return result
 
 
 def _make_llm_response(results: list[dict]) -> dict:
@@ -352,19 +359,19 @@ class TestBlendNeuroScores:
     def test_no_llm_scores_returns_formula(self):
         """When any LLM direct score is None, return formula unchanged."""
         formula = {"parasympathetic": 0.8, "sympathetic": 0.1, "grounding": 0.4}
-        result = _blend_neuro_scores(formula, None, 0.7, 0.2, ["pop"])
+        result = _blend_neuro_scores(formula, None, 0.7, 0.2)
         assert result == formula
 
     def test_no_llm_scores_all_none(self):
         formula = {"parasympathetic": 0.8, "sympathetic": 0.1, "grounding": 0.4}
-        result = _blend_neuro_scores(formula, None, None, None, ["pop"])
+        result = _blend_neuro_scores(formula, None, None, None)
         assert result == formula
 
     def test_agreement_blends_50_50(self):
         """When formula and LLM agree on dominant bucket, blend 50/50."""
         formula = {"parasympathetic": 0.8, "sympathetic": 0.1, "grounding": 0.3}
         # LLM also says PARA dominant
-        result = _blend_neuro_scores(formula, 0.9, 0.2, 0.4, ["pop"])
+        result = _blend_neuro_scores(formula, 0.9, 0.2, 0.4)
         # 50% * 0.8 + 50% * 0.9 = 0.85
         assert abs(result["parasympathetic"] - 0.85) < 0.01
         # 50% * 0.1 + 50% * 0.2 = 0.15
@@ -375,7 +382,7 @@ class TestBlendNeuroScores:
         formula = {"parasympathetic": 0.4, "sympathetic": 0.1, "grounding": 0.7}
         # LLM says PARA
         result = _blend_neuro_scores(
-            formula, 0.8, 0.2, 0.5, ["bollywood"],
+            formula, 0.8, 0.2, 0.5,
             bpm=80, energy=0.30,
         )
         # 25% * 0.4 + 75% * 0.8 = 0.70 for para
@@ -388,7 +395,7 @@ class TestBlendNeuroScores:
         formula = {"parasympathetic": 0.4, "sympathetic": 0.1, "grounding": 0.7}
         # LLM says PARA
         result = _blend_neuro_scores(
-            formula, 0.8, 0.2, 0.5, ["bollywood"],
+            formula, 0.8, 0.2, 0.5,
             bpm=85, energy=0.50,
         )
         # 70% * 0.7 + 30% * 0.5 = 0.64 for grounding
@@ -401,7 +408,7 @@ class TestBlendNeuroScores:
         formula = {"parasympathetic": 0.1, "sympathetic": 0.8, "grounding": 0.3}
         # LLM says GRND (disagreement, formula says SYMP)
         result = _blend_neuro_scores(
-            formula, 0.2, 0.3, 0.7, ["pop"],
+            formula, 0.2, 0.3, 0.7,
             bpm=130, energy=0.80,
         )
         # 40% * 0.3 + 60% * 0.7 = 0.54 for grounding
@@ -411,7 +418,7 @@ class TestBlendNeuroScores:
         """In bias zone with energy=None → treat as moderate, trust formula."""
         formula = {"parasympathetic": 0.3, "sympathetic": 0.1, "grounding": 0.7}
         result = _blend_neuro_scores(
-            formula, 0.8, 0.1, 0.4, ["hindi"],
+            formula, 0.8, 0.1, 0.4,
             bpm=85, energy=None,
         )
         # 70% formula → GRND should still dominate
@@ -419,7 +426,7 @@ class TestBlendNeuroScores:
 
     def test_scores_rounded_to_four_decimals(self):
         formula = {"parasympathetic": 0.3333, "sympathetic": 0.6666, "grounding": 0.1111}
-        result = _blend_neuro_scores(formula, 0.4444, 0.5555, 0.2222, ["pop"])
+        result = _blend_neuro_scores(formula, 0.4444, 0.5555, 0.2222)
         for val in result.values():
             s = str(val)
             if "." in s:
@@ -428,7 +435,7 @@ class TestBlendNeuroScores:
     def test_all_scores_in_valid_range(self):
         """Output scores should always be in [0, 1]."""
         formula = {"parasympathetic": 0.9, "sympathetic": 0.1, "grounding": 0.5}
-        result = _blend_neuro_scores(formula, 0.9, 0.1, 0.3, ["pop"], bpm=80, energy=0.20)
+        result = _blend_neuro_scores(formula, 0.9, 0.1, 0.3, bpm=80, energy=0.20)
         for val in result.values():
             assert 0.0 <= val <= 1.0
 
@@ -437,11 +444,11 @@ class TestBlendNeuroScores:
         formula = {"parasympathetic": 0.3, "sympathetic": 0.2, "grounding": 0.6}
         # BPM=70, low energy, formula GRND → should trigger bias+quiet rule
         result_70 = _blend_neuro_scores(
-            formula, 0.8, 0.1, 0.3, ["pop"], bpm=70, energy=0.20,
+            formula, 0.8, 0.1, 0.3, bpm=70, energy=0.20,
         )
         # BPM=110, low energy, formula GRND → should trigger bias+quiet rule
         result_110 = _blend_neuro_scores(
-            formula, 0.8, 0.1, 0.3, ["pop"], bpm=110, energy=0.20,
+            formula, 0.8, 0.1, 0.3, bpm=110, energy=0.20,
         )
         # Both should trust LLM → PARA dominates
         assert result_70["parasympathetic"] > result_70["grounding"]
@@ -451,7 +458,7 @@ class TestBlendNeuroScores:
         """BPM=60, formula GRND → outside bias zone, uses default disagreement."""
         formula = {"parasympathetic": 0.3, "sympathetic": 0.2, "grounding": 0.6}
         result = _blend_neuro_scores(
-            formula, 0.8, 0.1, 0.3, ["pop"], bpm=60, energy=0.20,
+            formula, 0.8, 0.1, 0.3, bpm=60, energy=0.20,
         )
         # Default disagreement: 40/60 LLM → PARA should dominate
         assert result["parasympathetic"] > result["grounding"]
@@ -768,6 +775,8 @@ class TestClassifySongs:
                 "title": name,
                 "artist": artist.strip(),
                 "bpm": 120,
+                "energy": 0.65,
+                "acousticness": 0.3,
                 "danceability": 0.7,
                 "instrumentalness": 0.1,
                 "valence": 0.6,
@@ -1138,3 +1147,173 @@ class TestClassifySongs:
             "SELECT felt_tempo FROM song_classifications WHERE spotify_uri = 'uri:0'"
         ).fetchone()
         assert row["felt_tempo"] == 80
+
+
+# ---------------------------------------------------------------------------
+# Additional _blend_neuro_scores boundary tests
+# ---------------------------------------------------------------------------
+
+class TestBlendNeuroScoresBoundary:
+    def test_energy_at_exact_040_threshold(self):
+        """Energy exactly at 0.40 should take the 'moderate energy, trust formula' path.
+
+        0.40 is NOT < 0.40, so we hit the else branch (70% formula / 30% LLM).
+        """
+        formula = {"parasympathetic": 0.3, "sympathetic": 0.1, "grounding": 0.7}
+        # LLM says PARA
+        result = _blend_neuro_scores(
+            formula, 0.8, 0.1, 0.4,
+            bpm=85, energy=0.40,
+        )
+        # 70% * 0.7 + 30% * 0.4 = 0.61 for grounding
+        assert abs(result["grounding"] - 0.61) < 0.01
+        # GRND should dominate (formula trusted at 70%)
+        assert result["grounding"] > result["parasympathetic"]
+
+
+# ---------------------------------------------------------------------------
+# Additional _merge_with_essentia tests
+# ---------------------------------------------------------------------------
+
+class TestMergeWithEssentiaExtra:
+    def test_llm_energy_acousticness_used_without_essentia(self):
+        """When classification_source is NOT essentia, merge uses LLM energy/acousticness."""
+        llm = {"bpm": 120, "valence": 0.6, "danceability": 0.7,
+               "instrumentalness": 0.1, "genre_tags": ["pop"],
+               "mood_tags": ["happy"], "energy": 0.72, "acousticness": 0.31}
+        song = _make_song(classification_source=None)
+        merged = _merge_with_essentia(llm, song)
+        assert merged["energy"] == 0.72
+        assert merged["acousticness"] == 0.31
+        assert merged["classification_source"] == "llm"
+
+    def test_essentia_plus_llm_source_preserves_essentia_data(self):
+        """Song with classification_source='essentia+llm' preserves Essentia key/mode/energy/acousticness."""
+        llm = {"bpm": 120, "valence": 0.6, "danceability": 0.7,
+               "instrumentalness": 0.1, "genre_tags": ["pop"],
+               "mood_tags": ["happy"], "energy": 0.50, "acousticness": 0.50}
+        song = _make_song(
+            essentia_bpm=122, essentia_key="D", essentia_mode="minor",
+            essentia_energy=0.85, essentia_acousticness=0.15,
+            classification_source="essentia+llm",
+        )
+        merged = _merge_with_essentia(llm, song)
+        assert merged["key"] == "D"
+        assert merged["mode"] == "minor"
+        assert merged["energy"] == 0.85
+        assert merged["acousticness"] == 0.15
+        assert merged["classification_source"] == "essentia+llm"
+
+
+# ---------------------------------------------------------------------------
+# Recompute-scores smoke test
+# ---------------------------------------------------------------------------
+
+class TestRecomputeScores:
+    def test_recompute_updates_neuro_scores(self, db_conn):
+        """Smoke test: recompute-scores reads classified songs and updates their scores."""
+        import json
+        from classification.llm_classifier import _blend_neuro_scores
+        from classification.profiler import compute_neurological_profile
+
+        # Seed a song with a classification including raw_response
+        queries.upsert_song(db_conn, "uri:recomp", "Recompute Song", "Recompute Artist")
+        db_conn.execute(
+            "UPDATE songs SET play_count = 10 WHERE spotify_uri = ?", ("uri:recomp",)
+        )
+        db_conn.commit()
+
+        raw_response = json.dumps({"songs": [{
+            "title": "Recompute Song", "artist": "Recompute Artist",
+            "bpm": 85, "energy": 0.35, "acousticness": 0.6,
+            "danceability": 0.4, "instrumentalness": 0.2,
+            "valence": 0.45,
+            "mood_tags": ["reflective"], "genre_tags": ["indie"],
+            "para_score": 0.6, "symp_score": 0.2, "grounding_score": 0.7,
+        }]})
+
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:recomp",
+            "bpm": 85,
+            "energy": 0.35,
+            "acousticness": 0.6,
+            "danceability": 0.4,
+            "instrumentalness": 0.2,
+            "valence": 0.45,
+            "mode": "major",
+            "genre_tags": ["indie"],
+            "mood_tags": ["reflective"],
+            "classification_source": "llm",
+            "raw_response": raw_response,
+            "parasympathetic": 0.0,  # Will be overwritten
+            "sympathetic": 0.0,
+            "grounding": 0.0,
+        })
+
+        # Replicate the recompute logic from main.py
+        rows = db_conn.execute(
+            """SELECT sc.spotify_uri, s.name, s.artist,
+                      sc.bpm, sc.felt_tempo, sc.energy, sc.acousticness,
+                      sc.instrumentalness, sc.valence, sc.mode, sc.danceability,
+                      sc.genre_tags, sc.raw_response
+               FROM song_classifications sc
+               JOIN songs s ON sc.spotify_uri = s.spotify_uri
+               WHERE sc.valence IS NOT NULL"""
+        ).fetchall()
+
+        assert len(rows) == 1
+        d = dict(rows[0])
+        scoring_bpm = d.get("felt_tempo") or d.get("bpm")
+
+        neuro = compute_neurological_profile(
+            bpm=scoring_bpm,
+            energy=d.get("energy"),
+            acousticness=d.get("acousticness"),
+            instrumentalness=d.get("instrumentalness"),
+            valence=d.get("valence"),
+            mode=d.get("mode"),
+            danceability=d.get("danceability"),
+        )
+
+        # Extract LLM scores from raw_response using exact match
+        llm_para, llm_symp, llm_grounding = None, None, None
+        song_name = (d.get("name") or "").lower().strip()
+        song_artist = (d.get("artist") or "").lower().strip()
+        raw = json.loads(d["raw_response"])
+        for song_result in raw.get("songs", []):
+            r_title = str(song_result.get("title", "")).lower().strip()
+            r_artist = str(song_result.get("artist", "")).lower().strip()
+            if r_title == song_name and r_artist == song_artist:
+                llm_para = song_result.get("para_score")
+                llm_symp = song_result.get("symp_score")
+                llm_grounding = song_result.get("grounding_score")
+                break
+
+        assert llm_para == 0.6
+        assert llm_symp == 0.2
+        assert llm_grounding == 0.7
+
+        blended = _blend_neuro_scores(
+            neuro, llm_para, llm_symp, llm_grounding,
+            bpm=d.get("bpm"), energy=d.get("energy"),
+        )
+
+        # Update DB (same as main.py does)
+        db_conn.execute(
+            """UPDATE song_classifications
+               SET parasympathetic = ?, sympathetic = ?, grounding = ?
+               WHERE spotify_uri = ?""",
+            (blended["parasympathetic"], blended["sympathetic"],
+             blended["grounding"], d["spotify_uri"]),
+        )
+        db_conn.commit()
+
+        # Verify scores were updated from the initial 0.0 values
+        updated = queries.get_song_classifications(db_conn, ["uri:recomp"])
+        assert len(updated) == 1
+        assert updated[0]["parasympathetic"] > 0.0
+        assert updated[0]["sympathetic"] > 0.0
+        assert updated[0]["grounding"] > 0.0
+        # All scores should be in [0, 1]
+        for key in ("parasympathetic", "sympathetic", "grounding"):
+            assert 0.0 <= updated[0][key] <= 1.0

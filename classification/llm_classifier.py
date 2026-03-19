@@ -426,7 +426,6 @@ def _blend_neuro_scores(
     llm_para: float | None,
     llm_symp: float | None,
     llm_grounding: float | None,
-    genre_tags: list[str] | None,
     bpm: float | None = None,
     energy: float | None = None,
 ) -> dict[str, float]:
@@ -594,7 +593,6 @@ def classify_songs(
                 merged.get("llm_para_score"),
                 merged.get("llm_symp_score"),
                 merged.get("llm_grounding_score"),
-                merged.get("genre_tags"),
                 bpm=merged.get("bpm"),
                 energy=merged.get("energy"),
             )

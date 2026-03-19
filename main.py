@@ -392,8 +392,7 @@ def _cmd_recompute_scores() -> None:
                 for song_result in raw.get("songs", []):
                     r_title = str(song_result.get("title", "")).lower().strip()
                     r_artist = str(song_result.get("artist", "")).lower().strip()
-                    if (r_title == song_name or r_title in song_name or song_name in r_title) and \
-                       (r_artist == song_artist or r_artist in song_artist or song_artist in r_artist):
+                    if r_title == song_name and r_artist == song_artist:
                         llm_para = song_result.get("para_score")
                         llm_symp = song_result.get("symp_score")
                         llm_grounding = song_result.get("grounding_score")
@@ -401,9 +400,17 @@ def _cmd_recompute_scores() -> None:
             except (json.JSONDecodeError, KeyError):
                 pass
 
+        # Clamp LLM scores to [0.0, 1.0] — they bypass _validate_song_result
+        def _clamp01(v: float | None) -> float | None:
+            return max(0.0, min(1.0, float(v))) if v is not None else None
+
+        llm_para = _clamp01(llm_para)
+        llm_symp = _clamp01(llm_symp)
+        llm_grounding = _clamp01(llm_grounding)
+
         # Ensemble: combine formula + LLM using structural knowledge
         blended = _blend_neuro_scores(
-            neuro, llm_para, llm_symp, llm_grounding, genre_tags,
+            neuro, llm_para, llm_symp, llm_grounding,
             bpm=d.get("bpm"), energy=d.get("energy"),
         )
 
