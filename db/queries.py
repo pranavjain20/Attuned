@@ -423,6 +423,57 @@ def get_unclassified_songs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+def get_songs_needing_llm(
+    conn: sqlite3.Connection,
+    reclassify: bool = False,
+) -> list[dict[str, Any]]:
+    """Return songs that need LLM classification.
+
+    Default mode:
+    - Songs NOT in song_classifications at all (never classified)
+    - Songs IN song_classifications but valence IS NULL (Essentia-only, needs LLM)
+
+    Reclassify mode (reclassify=True):
+    - ALL eligible songs regardless of existing classification, so the LLM
+      pipeline re-runs with updated prompts, new blend weights, etc.
+
+    Returns existing Essentia values (bpm, key, mode, energy, acousticness) so
+    the merge logic knows what to keep. Ordered by play_count DESC.
+    """
+    from config import MIN_CLASSIFICATION_LISTENS
+
+    if reclassify:
+        rows = conn.execute(
+            """SELECT s.spotify_uri, s.name, s.artist, s.album, s.duration_ms,
+                      s.play_count, s.engagement_score,
+                      sc.bpm AS essentia_bpm, sc.key AS essentia_key,
+                      sc.mode AS essentia_mode, sc.energy AS essentia_energy,
+                      sc.acousticness AS essentia_acousticness,
+                      sc.classification_source
+               FROM songs s
+               LEFT JOIN song_classifications sc ON s.spotify_uri = sc.spotify_uri
+               WHERE s.play_count >= ?
+               ORDER BY s.play_count DESC""",
+            (MIN_CLASSIFICATION_LISTENS,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT s.spotify_uri, s.name, s.artist, s.album, s.duration_ms,
+                      s.play_count, s.engagement_score,
+                      sc.bpm AS essentia_bpm, sc.key AS essentia_key,
+                      sc.mode AS essentia_mode, sc.energy AS essentia_energy,
+                      sc.acousticness AS essentia_acousticness,
+                      sc.classification_source
+               FROM songs s
+               LEFT JOIN song_classifications sc ON s.spotify_uri = sc.spotify_uri
+               WHERE s.play_count >= ?
+                 AND (sc.spotify_uri IS NULL OR sc.valence IS NULL)
+               ORDER BY s.play_count DESC""",
+            (MIN_CLASSIFICATION_LISTENS,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def upsert_song_classification(conn: sqlite3.Connection, data: dict[str, Any]) -> None:
     """Insert or update a song classification. JSON-serializes mood_tags and genre_tags."""
     mood_tags = data.get("mood_tags")
@@ -437,8 +488,8 @@ def upsert_song_classification(conn: sqlite3.Connection, data: dict[str, Any]) -
                (spotify_uri, bpm, key, mode, energy, valence, acousticness,
                 danceability, instrumentalness, mood_tags, genre_tags,
                 confidence, parasympathetic, sympathetic, grounding,
-                classification_source, raw_response, classified_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                classification_source, raw_response, classified_at, felt_tempo)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(spotify_uri) DO UPDATE SET
                bpm = excluded.bpm,
                key = excluded.key,
@@ -456,7 +507,8 @@ def upsert_song_classification(conn: sqlite3.Connection, data: dict[str, Any]) -
                grounding = excluded.grounding,
                classification_source = excluded.classification_source,
                raw_response = excluded.raw_response,
-               classified_at = excluded.classified_at""",
+               classified_at = excluded.classified_at,
+               felt_tempo = excluded.felt_tempo""",
         (
             data["spotify_uri"],
             data.get("bpm"),
@@ -476,6 +528,7 @@ def upsert_song_classification(conn: sqlite3.Connection, data: dict[str, Any]) -
             data.get("classification_source"),
             data.get("raw_response"),
             data.get("classified_at"),
+            data.get("felt_tempo"),
         ),
     )
     conn.commit()

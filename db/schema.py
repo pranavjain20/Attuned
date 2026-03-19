@@ -22,6 +22,7 @@ def create_tables(conn: sqlite3.Connection) -> None:
     conn.executescript(_SCHEMA_SQL)
     _migrate_add_recent_play_ratio(conn)
     _migrate_add_classified_at(conn)
+    _migrate_add_felt_tempo(conn)
 
 
 def _migrate_add_recent_play_ratio(conn: sqlite3.Connection) -> None:
@@ -38,6 +39,15 @@ def _migrate_add_classified_at(conn: sqlite3.Connection) -> None:
     """Add classified_at column to song_classifications table if it doesn't exist yet."""
     try:
         conn.execute("ALTER TABLE song_classifications ADD COLUMN classified_at TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
+
+def _migrate_add_felt_tempo(conn: sqlite3.Connection) -> None:
+    """Add felt_tempo column to song_classifications for perceived tempo scoring."""
+    try:
+        conn.execute("ALTER TABLE song_classifications ADD COLUMN felt_tempo REAL")
         conn.commit()
     except sqlite3.OperationalError:
         pass

@@ -339,6 +339,176 @@ class TestGetUnclassifiedSongs:
         assert queries.get_unclassified_songs(db_conn) == []
 
 
+class TestGetSongsNeedingLlm:
+    def _insert_song(self, db_conn, uri, play_count):
+        queries.upsert_song(db_conn, uri, f"Song {uri}", f"Artist {uri}")
+        db_conn.execute(
+            "UPDATE songs SET play_count = ? WHERE spotify_uri = ?",
+            (play_count, uri),
+        )
+        db_conn.commit()
+
+    def test_returns_unclassified_songs(self, db_conn):
+        """Songs not in song_classifications at all should be returned."""
+        self._insert_song(db_conn, "uri:1", 10)
+        self._insert_song(db_conn, "uri:2", 5)
+        result = queries.get_songs_needing_llm(db_conn)
+        uris = [r["spotify_uri"] for r in result]
+        assert "uri:1" in uris
+        assert "uri:2" in uris
+
+    def test_returns_essentia_only_songs(self, db_conn):
+        """Songs with Essentia classification but no valence should be returned."""
+        self._insert_song(db_conn, "uri:1", 10)
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1",
+            "bpm": 120, "key": "A", "mode": "minor",
+            "energy": 0.7, "acousticness": 0.3,
+            "classification_source": "essentia",
+            # No valence — Essentia can't compute it
+        })
+        result = queries.get_songs_needing_llm(db_conn)
+        uris = [r["spotify_uri"] for r in result]
+        assert "uri:1" in uris
+
+    def test_essentia_only_returns_essentia_values(self, db_conn):
+        """Returned rows should include existing Essentia values for merge."""
+        self._insert_song(db_conn, "uri:1", 10)
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1",
+            "bpm": 120, "key": "A", "mode": "minor",
+            "energy": 0.7, "acousticness": 0.3,
+            "classification_source": "essentia",
+        })
+        result = queries.get_songs_needing_llm(db_conn)
+        assert len(result) == 1
+        assert result[0]["essentia_bpm"] == 120
+        assert result[0]["essentia_key"] == "A"
+        assert result[0]["essentia_mode"] == "minor"
+        assert result[0]["essentia_energy"] == 0.7
+        assert result[0]["essentia_acousticness"] == 0.3
+
+    def test_excludes_fully_classified(self, db_conn):
+        """Songs with valence set should NOT be returned (fully classified)."""
+        self._insert_song(db_conn, "uri:1", 10)
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1",
+            "bpm": 120, "valence": 0.6,
+            "classification_source": "essentia+llm",
+        })
+        result = queries.get_songs_needing_llm(db_conn)
+        assert len(result) == 0
+
+    def test_excludes_low_play_count(self, db_conn):
+        self._insert_song(db_conn, "uri:high", 10)
+        self._insert_song(db_conn, "uri:low", 1)
+        result = queries.get_songs_needing_llm(db_conn)
+        uris = [r["spotify_uri"] for r in result]
+        assert "uri:high" in uris
+        assert "uri:low" not in uris
+
+    def test_ordered_by_play_count_desc(self, db_conn):
+        self._insert_song(db_conn, "uri:low", 3)
+        self._insert_song(db_conn, "uri:high", 50)
+        self._insert_song(db_conn, "uri:mid", 20)
+        result = queries.get_songs_needing_llm(db_conn)
+        uris = [r["spotify_uri"] for r in result]
+        assert uris == ["uri:high", "uri:mid", "uri:low"]
+
+    def test_unclassified_has_null_essentia_values(self, db_conn):
+        """Songs never classified should have NULL Essentia columns."""
+        self._insert_song(db_conn, "uri:1", 10)
+        result = queries.get_songs_needing_llm(db_conn)
+        assert result[0]["essentia_bpm"] is None
+        assert result[0]["essentia_key"] is None
+        assert result[0]["classification_source"] is None
+
+    def test_mix_of_unclassified_and_essentia_only(self, db_conn):
+        """Both types should be returned together."""
+        self._insert_song(db_conn, "uri:new", 10)
+        self._insert_song(db_conn, "uri:essentia", 20)
+        self._insert_song(db_conn, "uri:done", 30)
+
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:essentia",
+            "bpm": 120, "energy": 0.7,
+            "classification_source": "essentia",
+        })
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:done",
+            "bpm": 120, "valence": 0.6,
+            "classification_source": "essentia+llm",
+        })
+
+        result = queries.get_songs_needing_llm(db_conn)
+        uris = [r["spotify_uri"] for r in result]
+        assert "uri:essentia" in uris
+        assert "uri:new" in uris
+        assert "uri:done" not in uris
+
+    def test_exact_min_classification_listens_boundary(self, db_conn):
+        """Song at exactly MIN_CLASSIFICATION_LISTENS should be included."""
+        from config import MIN_CLASSIFICATION_LISTENS
+        self._insert_song(db_conn, "uri:at_boundary", MIN_CLASSIFICATION_LISTENS)
+        self._insert_song(db_conn, "uri:below", MIN_CLASSIFICATION_LISTENS - 1)
+        result = queries.get_songs_needing_llm(db_conn)
+        uris = [r["spotify_uri"] for r in result]
+        assert "uri:at_boundary" in uris
+        assert "uri:below" not in uris
+
+    def test_valence_zero_is_not_null(self, db_conn):
+        """Song with valence=0.0 should be excluded (fully classified, not NULL)."""
+        self._insert_song(db_conn, "uri:1", 10)
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1",
+            "bpm": 120, "valence": 0.0,
+            "classification_source": "essentia+llm",
+        })
+        result = queries.get_songs_needing_llm(db_conn)
+        assert len(result) == 0
+
+    def test_reclassify_returns_all_eligible(self, db_conn):
+        """reclassify=True returns ALL eligible songs, including fully classified."""
+        self._insert_song(db_conn, "uri:new", 10)
+        self._insert_song(db_conn, "uri:done", 20)
+        self._insert_song(db_conn, "uri:low", 1)  # Below threshold
+
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:done",
+            "bpm": 120, "valence": 0.6,
+            "classification_source": "essentia+llm",
+        })
+
+        # Default: only uri:new (uri:done has valence, uri:low below threshold)
+        default = queries.get_songs_needing_llm(db_conn, reclassify=False)
+        uris_default = [r["spotify_uri"] for r in default]
+        assert "uri:new" in uris_default
+        assert "uri:done" not in uris_default
+
+        # Reclassify: both uri:new and uri:done (uri:low still excluded)
+        reclass = queries.get_songs_needing_llm(db_conn, reclassify=True)
+        uris_reclass = [r["spotify_uri"] for r in reclass]
+        assert "uri:new" in uris_reclass
+        assert "uri:done" in uris_reclass
+        assert "uri:low" not in uris_reclass
+
+    def test_reclassify_returns_essentia_values(self, db_conn):
+        """Reclassify mode should still return existing Essentia values for merge."""
+        self._insert_song(db_conn, "uri:1", 10)
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1",
+            "bpm": 120, "key": "A", "mode": "minor",
+            "energy": 0.7, "acousticness": 0.3,
+            "valence": 0.6,
+            "classification_source": "essentia+llm",
+        })
+        result = queries.get_songs_needing_llm(db_conn, reclassify=True)
+        assert len(result) == 1
+        assert result[0]["essentia_bpm"] == 120
+        assert result[0]["essentia_key"] == "A"
+        assert result[0]["essentia_energy"] == 0.7
+
+
 class TestUpsertSongClassification:
     def test_inserts_new_classification(self, db_conn):
         queries.upsert_song(db_conn, "uri:1", "Song", "Artist")
@@ -392,6 +562,39 @@ class TestUpsertSongClassification:
         rows = queries.get_song_classifications(db_conn, ["uri:1"])
         assert rows[0]["mood_tags"] is None
         assert rows[0]["genre_tags"] is None
+
+    def test_felt_tempo_stored_and_retrieved(self, db_conn):
+        """Felt tempo should roundtrip through upsert + get."""
+        queries.upsert_song(db_conn, "uri:1", "Song", "Artist")
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1",
+            "bpm": 120, "felt_tempo": 60,
+            "classification_source": "llm",
+        })
+        rows = queries.get_song_classifications(db_conn, ["uri:1"])
+        assert rows[0]["felt_tempo"] == 60
+
+    def test_felt_tempo_null_when_not_set(self, db_conn):
+        queries.upsert_song(db_conn, "uri:1", "Song", "Artist")
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1",
+            "bpm": 120, "classification_source": "llm",
+        })
+        rows = queries.get_song_classifications(db_conn, ["uri:1"])
+        assert rows[0]["felt_tempo"] is None
+
+    def test_felt_tempo_updated_on_reclassify(self, db_conn):
+        """Reclassification should update felt_tempo."""
+        queries.upsert_song(db_conn, "uri:1", "Song", "Artist")
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1", "bpm": 120, "classification_source": "llm",
+        })
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1", "bpm": 120, "felt_tempo": 80,
+            "classification_source": "llm",
+        })
+        rows = queries.get_song_classifications(db_conn, ["uri:1"])
+        assert rows[0]["felt_tempo"] == 80
 
 
 class TestGetSongClassifications:
