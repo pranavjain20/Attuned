@@ -1,0 +1,3614 @@
+{
+  "songs": [
+    {
+      "name": "Levitating (feat. DaBaby)",
+      "artist": "Dua Lipa",
+      "cat": "english",
+      "gt_e": "high",
+      "expected": "SYMP",
+      "formula": {
+        "p": 0.1129,
+        "s": 0.5816,
+        "g": 0.2447
+      },
+      "direct": {
+        "p": 0.1,
+        "s": 0.8,
+        "g": 0.2
+      },
+      "spread": 0.7000000000000001,
+      "db_confidence": 1.0,
+      "genre_tags": [
+        "pop",
+        "dance"
+      ],
+      "is_indian": false,
+      "is_devotional": false
+    },
+    {
+      "name": "Photograph",
+      "artist": "Ed Sheeran",
+      "cat": "english",
+      "gt_e": "low",
+      "expected": "PARA",
+      "formula": {
+        "p": 0.2911,
+        "s": 0.4124,
+        "g": 0.4904
+      },
+      "direct": {
+        "p": 0.7,
+        "s": 0.2,
+        "g": 0.6
+      },
+      "spread": 0.49999999999999994,
+      "db_confidence": 0.7,
+      "genre_tags": [
+        "pop",
+        "acoustic"
+      ],
+      "is_indian": false,
+      "is_devotional": false
+    },
+    {
+      "name": "Blinding Lights",
+      "artist": "The Weeknd",
+      "cat": "english",
+      "gt_e": "high",
+      "expected": "SYMP",
+      "formula": {
+        "p": 0.2479,
+        "s": 0.4475,
+        "g": 0.5097
+      },
+      "direct": {
+        "p": 0.2,
+        "s": 0.7,
+        "g": 0.3
+      },
+      "spread": 0.49999999999999994,
+      "db_confidence": 0.7,
+      "genre_tags": [
+        "pop",
+        "synthwave"
+      ],
+      "is_indian": false,
+      "is_devotional": false
+    },
+    {
+      "name": "Locked out of Heaven",
+      "artist": "Bruno Mars",
+      "cat": "english",
+      "gt_e": "mid",
+      "expected": "GRND",
+      "formula": {
+        "p": 0.1253,
+        "s": 0.8986,
+        "g": 0.2074
+      },
+      "direct": {
+        "p": 0.1,
+        "s": 0.9,
+        "g": 0.2
+      },
+      "spread": 0.8,
+      "db_confidence": 1.0,
+      "genre_tags": [
+        "pop",
+        "funk"
+      ],
+      "is_indian": false,
+      "is_devotional": false
+    },
+    {
+      "name": "Love Yourself",
+      "artist": "Justin Bieber",
+      "cat": "english",
+      "gt_e": "low",
+      "expected": "PARA",
+      "formula": {
+        "p": 0.3249,
+        "s": 0.3982,
+        "g": 0.5617
+      },
+      "direct": {
+        "p": 0.6,
+        "s": 0.3,
+        "g": 0.5
+      },
+      "spread": 0.3,
+      "db_confidence": 1.0,
+      "genre_tags": [
+        "pop"
+      ],
+      "is_indian": false,
+      "is_devotional": false
+    },
+    {
+      "name": "As It Was",
+      "artist": "Harry Styles",
+      "cat": "english",
+      "gt_e": "mid",
+      "expected": "GRND",
+      "formula": {
+        "p": 0.1618,
+        "s": 0.538,
+        "g": 0.4779
+      },
+      "direct": {
+        "p": 0.0,
+        "s": 1.0,
+        "g": 0.1
+      },
+      "spread": 1.0,
+      "db_confidence": 0.7,
+      "genre_tags": [
+        "pop",
+        "indie pop"
+      ],
+      "is_indian": false,
+      "is_devotional": false
+    },
+    {
+      "name": "Die For You",
+      "artist": "The Weeknd",
+      "cat": "english",
+      "gt_e": "low",
+      "expected": "PARA",
+      "formula": {
+        "p": 0.2667,
+        "s": 0.7557,
+        "g": 0.3985
+      },
+      "direct": {
+        "p": 0.5,
+        "s": 0.4,
+        "g": 0.5
+      },
+      "spread": 0.09999999999999998,
+      "db_confidence": 0.7,
+      "genre_tags": [
+        "pop",
+        "r&b"
+      ],
+      "is_indian": false,
+      "is_devotional": false
+    },
+    {
+      "name": "Night Changes",
+      "artist": "One Direction",
+      "cat": "english",
+      "gt_e": "mid",
+      "expected": "GRND",
+      "formula": {
+        "p": 0.3114,
+        "s": 0.6313,
+        "g": 0.4462
+      },
+      "direct": {
+        "p": 0.6,
+        "s": 0.3,
+        "g": 0.6
+      },
+      "spread": 0.3,
+      "db_confidence": 0.7,
+      "genre_tags": [
+        "pop"
+      ],
+      "is_indian": false,
+      "is_devotional": false
+    },
+    {
+      "name": "Namo Namo",
+      "artist": "Amit Trivedi",
+      "cat": "popular_indian",
+      "gt_e": "low",
+      "expected": "PARA",
+      "formula": {
+        "p": 0.2663,
+        "s": 0.6675,
+        "g": 0.3815
+      },
+      "direct": {
+        "p": 0.6,
+        "s": 0.3,
+        "g": 0.5
+      },
+      "spread": 0.3,
+      "db_confidence": 1.0,
+      "genre_tags": [
+        "bollywood",
+        "hindi"
+      ],
+      "is_indian": true,
+      "is_devotional": false
+    },
+    {
+      "name": "Deva Deva (From \"Brahmastra\")",
+      "artist": "Pritam",
+      "cat": "popular_indian",
+      "gt_e": "mid",
+      "expected": "GRND",
+      "formula": {
+        "p": 0.2295,
+        "s": 0.6958,
+        "g": 0.3116
+      },
+      "direct": {
+        "p": 0.5,
+        "s": 0.4,
+        "g": 0.5
+      },
+      "spread": 0.09999999999999998,
+      "db_confidence": 1.0,
+      "genre_tags": [
+        "bollywood",
+        "hindi",
+        "soundtrack"
+      ],
+      "is_indian": true,
+      "is_devotional": false
+    },
+    {
+      "name": "Kajra Re",
+      "artist": "Shankar-Ehsaan-Loy",
+      "cat": "popular_indian",
+      "gt_e": "high",
+      "expected": "SYMP",
+      "formula": {
+        "p": 0.2662,
+        "s": 0.6594,
+        "g": 0.3805
+      },
+      "direct": {
+        "p": 0.5,
+        "s": 0.3,
+        "g": 0.5
+      },
+      "spread": 0.2,
+      "db_confidence": 0.7,
+      "genre_tags": [
+        "bollywood",
+        "hindi"
+      ],
+      "is_indian": true,
+      "is_devotional": false
+    },
+    {
+      "name": "Chedkhaniyaan",
+      "artist": "Shankar-Ehsaan-Loy",
+      "cat": "popular_indian",
+      "gt_e": "mid",
+      "expected": "GRND",
+      "formula": {
+        "p": 0.3246,
+        "s": 0.3722,
+        "g": 0.6002
+      },
+      "direct": {
+        "p": 0.7,
+        "s": 0.2,
+        "g": 0.6
+      },
+      "spread": 0.49999999999999994,
+      "db_confidence": 1.0,
+      "genre_tags": [
+        "bollywood",
+        "hindi"
+      ],
+      "is_indian": true,
+      "is_devotional": false
+    },
+    {
+      "name": "Tere Liye",
+      "artist": "Atif Aslam",
+      "cat": "popular_indian",
+      "gt_e": "mid",
+      "expected": "GRND",
+      "formula": {
+        "p": 0.2802,
+        "s": 0.4962,
+        "g": 0.5854
+      },
+      "direct": {
+        "p": 0.4,
+        "s": 0.3,
+        "g": 0.5
+      },
+      "spread": 0.2,
+      "db_confidence": 0.7,
+      "genre_tags": [
+        "bollywood",
+        "hindi"
+      ],
+      "is_indian": true,
+      "is_devotional": false
+    },
+    {
+      "name": "In Dino",
+      "artist": "Pritam",
+      "cat": "popular_indian",
+      "gt_e": "low-mid",
+      "expected": "PARA",
+      "formula": {
+        "p": 0.7361,
+        "s": 0.2509,
+        "g": 0.8149
+      },
+      "direct": {
+        "p": 0.8,
+        "s": 0.1,
+        "g": 0.7
+      },
+      "spread": 0.7000000000000001,
+      "db_confidence": 0.7,
+      "genre_tags": [
+        "bollywood",
+        "soundtrack"
+      ],
+      "is_indian": true,
+      "is_devotional": false
+    },
+    {
+      "name": "Softly",
+      "artist": "Karan Aujla",
+      "cat": "popular_indian",
+      "gt_e": "mid",
+      "expected": "GRND",
+      "formula": {
+        "p": 0.2383,
+        "s": 0.4435,
+        "g": 0.5058
+      },
+      "direct": {
+        "p": 0.5,
+        "s": 0.3,
+        "g": 0.5
+      },
+      "spread": 0.2,
+      "db_confidence": 1.0,
+      "genre_tags": [
+        "punjabi",
+        "pop"
+      ],
+      "is_indian": true,
+      "is_devotional": false
+    },
+    {
+      "name": "Chunnari Chunnari",
+      "artist": "Abhijeet",
+      "cat": "popular_indian",
+      "gt_e": "high",
+      "expected": "SYMP",
+      "formula": {
+        "p": 0.3933,
+        "s": 0.417,
+        "g": 0.6368
+      },
+      "direct": {
+        "p": 0.6,
+        "s": 0.2,
+        "g": 0.5
+      },
+      "spread": 0.39999999999999997,
+      "db_confidence": 1.0,
+      "genre_tags": [
+        "bollywood",
+        "hindi"
+      ],
+      "is_indian": true,
+      "is_devotional": false
+    },
+    {
+      "name": "Bernie's Chalisa",
+      "artist": "Krishna Das",
+      "cat": "obscure_indian",
+      "gt_e": "low",
+      "expected": "PARA",
+      "formula": {
+        "p": 0.7987,
+        "s": 0.2407,
+        "g": 0.5974
+      },
+      "direct": {
+        "p": 0.8,
+        "s": 0.1,
+        "g": 0.7
+      },
+      "spread": 0.7000000000000001,
+      "db_confidence": 0.7,
+      "genre_tags": [
+        "devotional",
+        "ambient"
+      ],
+      "is_indian": true,
+      "is_devotional": true
+    },
+    {
+      "name": "Shiv Kailash (Live in Mumbai)",
+      "artist": "Rishab Rikhiram Sharma",
+      "cat": "obscure_indian",
+      "gt_e": "low",
+      "expected": "PARA",
+      "formula": {
+        "p": 0.8533,
+        "s": 0.13,
+        "g": 0.5579
+      },
+      "direct": {
+        "p": 0.9,
+        "s": 0.0,
+        "g": 0.8
+      },
+      "spread": 0.9,
+      "db_confidence": 0.7,
+      "genre_tags": [
+        "sufi",
+        "devotional"
+      ],
+      "is_indian": true,
+      "is_devotional": true
+    },
+    {
+      "name": "Hanuman Chalisa (Lo-fi)",
+      "artist": "Rasraj Ji Maharaj",
+      "cat": "obscure_indian",
+      "gt_e": "mid",
+      "expected": "GRND",
+      "formula": {
+        "p": 0.7545,
+        "s": 0.2434,
+        "g": 0.7766
+      },
+      "direct": {
+        "p": 0.7,
+        "s": 0.2,
+        "g": 0.6
+      },
+      "spread": 0.49999999999999994,
+      "db_confidence": 0.7,
+      "genre_tags": [
+        "sufi",
+        "lo-fi"
+      ],
+      "is_indian": true,
+      "is_devotional": true
+    },
+    {
+      "name": "Dhurandhar - Title Track",
+      "artist": "Shashwat Sachdev",
+      "cat": "obscure_indian",
+      "gt_e": "high",
+      "expected": "SYMP",
+      "formula": {
+        "p": 0.1838,
+        "s": 0.5227,
+        "g": 0.3658
+      },
+      "direct": {
+        "p": 0.3,
+        "s": 0.5,
+        "g": 0.4
+      },
+      "spread": 0.2,
+      "db_confidence": 1.0,
+      "genre_tags": [
+        "bollywood",
+        "pop"
+      ],
+      "is_indian": true,
+      "is_devotional": false
+    },
+    {
+      "name": "Haaye Oye (feat. Ash King)",
+      "artist": "QARAN",
+      "cat": "obscure_indian",
+      "gt_e": "mid-high",
+      "expected": "SYMP",
+      "formula": {
+        "p": 0.2109,
+        "s": 0.7195,
+        "g": 0.2674
+      },
+      "direct": {
+        "p": 0.4,
+        "s": 0.4,
+        "g": 0.5
+      },
+      "spread": 0.09999999999999998,
+      "db_confidence": 1.0,
+      "genre_tags": [
+        "bollywood",
+        "pop"
+      ],
+      "is_indian": true,
+      "is_devotional": false
+    },
+    {
+      "name": "Shararat",
+      "artist": "Shashwat Sachdev",
+      "cat": "obscure_indian",
+      "gt_e": "high",
+      "expected": "SYMP",
+      "formula": {
+        "p": 0.1804,
+        "s": 0.5834,
+        "g": 0.2782
+      },
+      "direct": {
+        "p": 0.4,
+        "s": 0.5,
+        "g": 0.5
+      },
+      "spread": 0.09999999999999998,
+      "db_confidence": 0.7,
+      "genre_tags": [
+        "bollywood",
+        "pop"
+      ],
+      "is_indian": true,
+      "is_devotional": false
+    },
+    {
+      "name": "Ishq Jalakar - Karvaan",
+      "artist": "Shashwat Sachdev",
+      "cat": "obscure_indian",
+      "gt_e": "mid",
+      "expected": "GRND",
+      "formula": {
+        "p": 0.1852,
+        "s": 0.7254,
+        "g": 0.2688
+      },
+      "direct": {
+        "p": 0.5,
+        "s": 0.4,
+        "g": 0.5
+      },
+      "spread": 0.09999999999999998,
+      "db_confidence": 1.0,
+      "genre_tags": [
+        "bollywood",
+        "hindi"
+      ],
+      "is_indian": true,
+      "is_devotional": false
+    },
+    {
+      "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+      "artist": "Khesari Lal Yadav",
+      "cat": "obscure_indian",
+      "gt_e": "high",
+      "expected": "SYMP",
+      "formula": {
+        "p": 0.1327,
+        "s": 0.8723,
+        "g": 0.2422
+      },
+      "direct": {
+        "p": 0.1,
+        "s": 0.8,
+        "g": 0.2
+      },
+      "spread": 0.7000000000000001,
+      "db_confidence": 1.0,
+      "genre_tags": [
+        "bollywood",
+        "bhojpuri",
+        "dance"
+      ],
+      "is_indian": true,
+      "is_devotional": false
+    },
+    {
+      "name": "Shankara",
+      "artist": "Rishab Rikhiram Sharma",
+      "cat": "obscure_indian",
+      "gt_e": "low",
+      "expected": "PARA",
+      "formula": {
+        "p": 0.4998,
+        "s": 0.4834,
+        "g": 0.5742
+      },
+      "direct": {
+        "p": 0.8,
+        "s": 0.1,
+        "g": 0.7
+      },
+      "spread": 0.7000000000000001,
+      "db_confidence": 0.7,
+      "genre_tags": [
+        "sufi",
+        "devotional"
+      ],
+      "is_indian": true,
+      "is_devotional": true
+    }
+  ],
+  "strategy_results": {
+    "genre+spread": {
+      "accuracy": 0.68,
+      "correct": 17,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        }
+      ]
+    },
+    "pick_spread_025": {
+      "accuracy": 0.64,
+      "correct": 16,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "PARA",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        }
+      ]
+    },
+    "simple_avg": {
+      "accuracy": 0.6,
+      "correct": 15,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        }
+      ]
+    },
+    "genre_80_20": {
+      "accuracy": 0.6,
+      "correct": 15,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        }
+      ]
+    },
+    "spread_weighted": {
+      "accuracy": 0.6,
+      "correct": 15,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        }
+      ]
+    },
+    "devotional_aware": {
+      "accuracy": 0.6,
+      "correct": 15,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        }
+      ]
+    },
+    "max_confidence": {
+      "accuracy": 0.6,
+      "correct": 15,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        }
+      ]
+    },
+    "weighted_60_40_d": {
+      "accuracy": 0.6,
+      "correct": 15,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        }
+      ]
+    },
+    "normalized_avg": {
+      "accuracy": 0.6,
+      "correct": 15,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        }
+      ]
+    },
+    "direct_only": {
+      "accuracy": 0.56,
+      "correct": 14,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "PARA",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Softly",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "PARA",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        }
+      ]
+    },
+    "genre_70_30": {
+      "accuracy": 0.56,
+      "correct": 14,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        }
+      ]
+    },
+    "pick_spread_030": {
+      "accuracy": 0.56,
+      "correct": 14,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "PARA",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        }
+      ]
+    },
+    "agreement_boost": {
+      "accuracy": 0.56,
+      "correct": 14,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        }
+      ]
+    },
+    "spread_genre_cmb": {
+      "accuracy": 0.56,
+      "correct": 14,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        }
+      ]
+    },
+    "conf_inv": {
+      "accuracy": 0.52,
+      "correct": 13,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        }
+      ]
+    },
+    "normalized_genre": {
+      "accuracy": 0.52,
+      "correct": 13,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        }
+      ]
+    },
+    "formula_only": {
+      "accuracy": 0.48,
+      "correct": 12,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        }
+      ]
+    },
+    "conf_weighted": {
+      "accuracy": 0.48,
+      "correct": 12,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "PARA",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        }
+      ]
+    },
+    "rank_fusion": {
+      "accuracy": 0.44,
+      "correct": 11,
+      "total": 25,
+      "predictions": [
+        {
+          "name": "Levitating (feat. DaBaby)",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Photograph",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Blinding Lights",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Locked out of Heaven",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Love Yourself",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "As It Was",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Die For You",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Night Changes",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Namo Namo",
+          "predicted": "SYMP",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Deva Deva (From \"Brahmastra\")",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Kajra Re",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Chedkhaniyaan",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Tere Liye",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "In Dino",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        },
+        {
+          "name": "Softly",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Chunnari Chunnari",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Bernie's Chalisa",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Shiv Kailash (Live in Mumbai)",
+          "predicted": "PARA",
+          "expected": "PARA",
+          "correct": true
+        },
+        {
+          "name": "Hanuman Chalisa (Lo-fi)",
+          "predicted": "GRND",
+          "expected": "GRND",
+          "correct": true
+        },
+        {
+          "name": "Dhurandhar - Title Track",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Haaye Oye (feat. Ash King)",
+          "predicted": "GRND",
+          "expected": "SYMP",
+          "correct": false
+        },
+        {
+          "name": "Shararat",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Ishq Jalakar - Karvaan",
+          "predicted": "SYMP",
+          "expected": "GRND",
+          "correct": false
+        },
+        {
+          "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+          "predicted": "SYMP",
+          "expected": "SYMP",
+          "correct": true
+        },
+        {
+          "name": "Shankara",
+          "predicted": "GRND",
+          "expected": "PARA",
+          "correct": false
+        }
+      ]
+    }
+  }
+}

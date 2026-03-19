@@ -1,0 +1,1370 @@
+{
+  "approach_a": {
+    "songs": [
+      {
+        "title": "Levitating (feat. DaBaby)",
+        "artist": "Dua Lipa",
+        "bpm": 103,
+        "danceability": 0.8,
+        "instrumentalness": 0.0,
+        "valence": 0.9,
+        "mood_tags": [
+          "happy",
+          "energetic",
+          "uplifting"
+        ],
+        "genre_tags": [
+          "pop",
+          "dance",
+          "disco"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Photograph",
+        "artist": "Ed Sheeran",
+        "bpm": 80,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "nostalgic",
+          "romantic",
+          "sentimental"
+        ],
+        "genre_tags": [
+          "pop",
+          "acoustic"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Blinding Lights",
+        "artist": "The Weeknd",
+        "bpm": 171,
+        "danceability": 0.7,
+        "instrumentalness": 0.0,
+        "valence": 0.8,
+        "mood_tags": [
+          "upbeat",
+          "energetic",
+          "happy"
+        ],
+        "genre_tags": [
+          "synthwave",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Locked out of Heaven",
+        "artist": "Bruno Mars",
+        "bpm": 144,
+        "danceability": 0.8,
+        "instrumentalness": 0.0,
+        "valence": 0.9,
+        "mood_tags": [
+          "energetic",
+          "happy",
+          "fun"
+        ],
+        "genre_tags": [
+          "pop",
+          "reggae"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Love Yourself",
+        "artist": "Justin Bieber",
+        "bpm": 100,
+        "danceability": 0.4,
+        "instrumentalness": 0.0,
+        "valence": 0.5,
+        "mood_tags": [
+          "reflective",
+          "sad",
+          "emotional"
+        ],
+        "genre_tags": [
+          "pop",
+          "R&B"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "As It Was",
+        "artist": "Harry Styles",
+        "bpm": 174,
+        "danceability": 0.7,
+        "instrumentalness": 0.0,
+        "valence": 0.8,
+        "mood_tags": [
+          "upbeat",
+          "nostalgic",
+          "happy"
+        ],
+        "genre_tags": [
+          "pop",
+          "rock"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Die For You",
+        "artist": "The Weeknd",
+        "bpm": 67,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "romantic",
+          "emotional",
+          "melancholic"
+        ],
+        "genre_tags": [
+          "R&B",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Night Changes",
+        "artist": "One Direction",
+        "bpm": 118,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "nostalgic",
+          "romantic",
+          "reflective"
+        ],
+        "genre_tags": [
+          "pop",
+          "rock"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Namo Namo",
+        "artist": "Amit Trivedi",
+        "bpm": 90,
+        "danceability": 0.4,
+        "instrumentalness": 0.0,
+        "valence": 0.5,
+        "mood_tags": [
+          "spiritual",
+          "calm",
+          "uplifting"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "soundtrack"
+        ],
+        "confidence": 0.8
+      },
+      {
+        "title": "Deva Deva (From \"Brahmastra\")",
+        "artist": "Pritam",
+        "bpm": 80,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "spiritual",
+          "uplifting",
+          "calm"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "soundtrack"
+        ],
+        "confidence": 0.8
+      },
+      {
+        "title": "Kajra Re",
+        "artist": "Shankar-Ehsaan-Loy",
+        "bpm": 120,
+        "danceability": 0.7,
+        "instrumentalness": 0.0,
+        "valence": 0.8,
+        "mood_tags": [
+          "festive",
+          "energetic",
+          "happy"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "pop"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "title": "Chedkhaniyaan",
+        "artist": "Shankar-Ehsaan-Loy",
+        "bpm": 100,
+        "danceability": 0.6,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "joyful",
+          "playful",
+          "happy"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "soundtrack"
+        ],
+        "confidence": 0.8
+      },
+      {
+        "title": "Tere Liye",
+        "artist": "Atif Aslam",
+        "bpm": 80,
+        "danceability": 0.4,
+        "instrumentalness": 0.0,
+        "valence": 0.5,
+        "mood_tags": [
+          "romantic",
+          "emotional",
+          "melancholic"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "pop"
+        ],
+        "confidence": 0.8
+      },
+      {
+        "title": "In Dino",
+        "artist": "Pritam",
+        "bpm": 90,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "romantic",
+          "nostalgic",
+          "emotional"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "pop"
+        ],
+        "confidence": 0.8
+      },
+      {
+        "title": "Softly",
+        "artist": "Karan Aujla",
+        "bpm": 75,
+        "danceability": 0.4,
+        "instrumentalness": 0.0,
+        "valence": 0.5,
+        "mood_tags": [
+          "romantic",
+          "emotional",
+          "calm"
+        ],
+        "genre_tags": [
+          "Punjabi",
+          "pop"
+        ],
+        "confidence": 0.7
+      },
+      {
+        "title": "Chunnari Chunnari",
+        "artist": "Abhijeet",
+        "bpm": 120,
+        "danceability": 0.7,
+        "instrumentalness": 0.0,
+        "valence": 0.8,
+        "mood_tags": [
+          "festive",
+          "energetic",
+          "happy"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "pop"
+        ],
+        "confidence": 0.9
+      },
+      {
+        "title": "Bernie's Chalisa",
+        "artist": "Krishna Das",
+        "bpm": 60,
+        "danceability": 0.3,
+        "instrumentalness": 0.0,
+        "valence": 0.4,
+        "mood_tags": [
+          "spiritual",
+          "calm",
+          "meditative"
+        ],
+        "genre_tags": [
+          "devotional",
+          "world"
+        ],
+        "confidence": 0.7
+      },
+      {
+        "title": "Shiv Kailash (Live in Mumbai)",
+        "artist": "Rishab Rikhiram Sharma",
+        "bpm": 70,
+        "danceability": 0.3,
+        "instrumentalness": 0.0,
+        "valence": 0.5,
+        "mood_tags": [
+          "spiritual",
+          "calm",
+          "meditative"
+        ],
+        "genre_tags": [
+          "devotional",
+          "world"
+        ],
+        "confidence": 0.7
+      },
+      {
+        "title": "Hanuman Chalisa (Lo-fi)",
+        "artist": "Rasraj Ji Maharaj",
+        "bpm": 70,
+        "danceability": 0.3,
+        "instrumentalness": 0.0,
+        "valence": 0.5,
+        "mood_tags": [
+          "spiritual",
+          "calm",
+          "meditative"
+        ],
+        "genre_tags": [
+          "devotional",
+          "lo-fi"
+        ],
+        "confidence": 0.7
+      },
+      {
+        "title": "Dhurandhar - Title Track",
+        "artist": "Shashwat Sachdev",
+        "bpm": 90,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "energetic",
+          "happy",
+          "upbeat"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "soundtrack"
+        ],
+        "confidence": 0.8
+      },
+      {
+        "title": "Haaye Oye (feat. Ash King)",
+        "artist": "QARAN",
+        "bpm": 120,
+        "danceability": 0.7,
+        "instrumentalness": 0.0,
+        "valence": 0.8,
+        "mood_tags": [
+          "happy",
+          "energetic",
+          "fun"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "pop"
+        ],
+        "confidence": 0.8
+      },
+      {
+        "title": "Shararat",
+        "artist": "Shashwat Sachdev",
+        "bpm": 100,
+        "danceability": 0.6,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "happy",
+          "upbeat",
+          "energetic"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "soundtrack"
+        ],
+        "confidence": 0.8
+      },
+      {
+        "title": "Ishq Jalakar - Karvaan",
+        "artist": "Shashwat Sachdev",
+        "bpm": 90,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "romantic",
+          "emotional",
+          "nostalgic"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "soundtrack"
+        ],
+        "confidence": 0.8
+      },
+      {
+        "title": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+        "artist": "Khesari Lal Yadav",
+        "bpm": 110,
+        "danceability": 0.6,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "energetic",
+          "happy",
+          "festive"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "pop"
+        ],
+        "confidence": 0.8
+      },
+      {
+        "title": "Shankara",
+        "artist": "Rishab Rikhiram Sharma",
+        "bpm": 80,
+        "danceability": 0.4,
+        "instrumentalness": 0.0,
+        "valence": 0.5,
+        "mood_tags": [
+          "spiritual",
+          "calm",
+          "meditative"
+        ],
+        "genre_tags": [
+          "devotional",
+          "world"
+        ],
+        "confidence": 0.7
+      }
+    ]
+  },
+  "approach_b": {
+    "songs": [
+      {
+        "title": "Levitating (feat. DaBaby)",
+        "artist": "Dua Lipa",
+        "bpm": 104,
+        "danceability": 0.8,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "energetic",
+          "uplifting",
+          "fun"
+        ],
+        "genre_tags": [
+          "pop",
+          "dance",
+          "electropop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Photograph",
+        "artist": "Ed Sheeran",
+        "bpm": 99,
+        "danceability": 0.6,
+        "instrumentalness": 0.0,
+        "valence": 0.8,
+        "mood_tags": [
+          "romantic",
+          "nostalgic",
+          "sentimental"
+        ],
+        "genre_tags": [
+          "pop",
+          "acoustic"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Blinding Lights",
+        "artist": "The Weeknd",
+        "bpm": 86,
+        "danceability": 0.7,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "upbeat",
+          "energetic",
+          "nostalgic"
+        ],
+        "genre_tags": [
+          "synthwave",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Locked out of Heaven",
+        "artist": "Bruno Mars",
+        "bpm": 147,
+        "danceability": 0.9,
+        "instrumentalness": 0.0,
+        "valence": 0.8,
+        "mood_tags": [
+          "energetic",
+          "fun",
+          "upbeat"
+        ],
+        "genre_tags": [
+          "pop",
+          "funk"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Love Yourself",
+        "artist": "Justin Bieber",
+        "bpm": 101,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "reflective",
+          "emotional",
+          "introspective"
+        ],
+        "genre_tags": [
+          "pop",
+          "R&B"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "As It Was",
+        "artist": "Harry Styles",
+        "bpm": 87,
+        "danceability": 0.7,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "upbeat",
+          "nostalgic",
+          "reflective"
+        ],
+        "genre_tags": [
+          "pop",
+          "rock"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Die For You",
+        "artist": "The Weeknd",
+        "bpm": 131,
+        "danceability": 0.6,
+        "instrumentalness": 0.0,
+        "valence": 0.5,
+        "mood_tags": [
+          "emotional",
+          "romantic",
+          "introspective"
+        ],
+        "genre_tags": [
+          "R&B",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Night Changes",
+        "artist": "One Direction",
+        "bpm": 119,
+        "danceability": 0.6,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "nostalgic",
+          "romantic",
+          "reflective"
+        ],
+        "genre_tags": [
+          "pop",
+          "rock"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Namo Namo",
+        "artist": "Amit Trivedi",
+        "bpm": 118,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "spiritual",
+          "uplifting",
+          "calm"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "world"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Deva Deva (From \"Brahmastra\")",
+        "artist": "Pritam",
+        "bpm": 110,
+        "danceability": 0.6,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "spiritual",
+          "uplifting",
+          "calm"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "world"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Kajra Re",
+        "artist": "Shankar-Ehsaan-Loy",
+        "bpm": 96,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "festive",
+          "energetic",
+          "fun"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "world"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Chedkhaniyaan",
+        "artist": "Shankar-Ehsaan-Loy",
+        "bpm": 90,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "romantic",
+          "calm",
+          "reflective"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "world"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Tere Liye",
+        "artist": "Atif Aslam",
+        "bpm": 130,
+        "danceability": 0.6,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "romantic",
+          "uplifting",
+          "emotional"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "In Dino",
+        "artist": "Pritam",
+        "bpm": 106,
+        "danceability": 0.4,
+        "instrumentalness": 0.0,
+        "valence": 0.5,
+        "mood_tags": [
+          "reflective",
+          "calm",
+          "emotional"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "world"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Softly",
+        "artist": "Karan Aujla",
+        "bpm": 93,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "romantic",
+          "emotional",
+          "reflective"
+        ],
+        "genre_tags": [
+          "Punjabi",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Chunnari Chunnari",
+        "artist": "Abhijeet",
+        "bpm": 124,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "festive",
+          "energetic",
+          "fun"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "world"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Bernie's Chalisa",
+        "artist": "Krishna Das",
+        "bpm": 104,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "spiritual",
+          "calm",
+          "uplifting"
+        ],
+        "genre_tags": [
+          "world",
+          "spiritual"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Shiv Kailash (Live in Mumbai)",
+        "artist": "Rishab Rikhiram Sharma",
+        "bpm": 94,
+        "danceability": 0.3,
+        "instrumentalness": 0.0,
+        "valence": 0.5,
+        "mood_tags": [
+          "spiritual",
+          "calm",
+          "reflective"
+        ],
+        "genre_tags": [
+          "world",
+          "spiritual"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Hanuman Chalisa (Lo-fi)",
+        "artist": "Rasraj Ji Maharaj",
+        "bpm": 95,
+        "danceability": 0.4,
+        "instrumentalness": 0.0,
+        "valence": 0.5,
+        "mood_tags": [
+          "spiritual",
+          "calm",
+          "reflective"
+        ],
+        "genre_tags": [
+          "world",
+          "spiritual"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Dhurandhar - Title Track",
+        "artist": "Shashwat Sachdev",
+        "bpm": 110,
+        "danceability": 0.6,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "energetic",
+          "uplifting",
+          "fun"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Haaye Oye (feat. Ash King)",
+        "artist": "QARAN",
+        "bpm": 123,
+        "danceability": 0.7,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "energetic",
+          "fun",
+          "upbeat"
+        ],
+        "genre_tags": [
+          "Punjabi",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Shararat",
+        "artist": "Shashwat Sachdev",
+        "bpm": 130,
+        "danceability": 0.7,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "energetic",
+          "fun",
+          "upbeat"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Ishq Jalakar - Karvaan",
+        "artist": "Shashwat Sachdev",
+        "bpm": 115,
+        "danceability": 0.6,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "romantic",
+          "uplifting",
+          "emotional"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+        "artist": "Khesari Lal Yadav",
+        "bpm": 124,
+        "danceability": 0.8,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "energetic",
+          "fun",
+          "upbeat"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Shankara",
+        "artist": "Rishab Rikhiram Sharma",
+        "bpm": 79,
+        "danceability": 0.3,
+        "instrumentalness": 0.0,
+        "valence": 0.4,
+        "mood_tags": [
+          "spiritual",
+          "calm",
+          "reflective"
+        ],
+        "genre_tags": [
+          "world",
+          "spiritual"
+        ],
+        "confidence": 1.0
+      }
+    ]
+  },
+  "approach_c": {
+    "songs": [
+      {
+        "title": "Levitating (feat. DaBaby)",
+        "artist": "Dua Lipa",
+        "bpm": 104,
+        "danceability": 0.8,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "energetic",
+          "uplifting",
+          "fun"
+        ],
+        "genre_tags": [
+          "pop",
+          "dance",
+          "electropop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Photograph",
+        "artist": "Ed Sheeran",
+        "bpm": 99,
+        "danceability": 0.6,
+        "instrumentalness": 0.0,
+        "valence": 0.8,
+        "mood_tags": [
+          "romantic",
+          "nostalgic",
+          "emotional"
+        ],
+        "genre_tags": [
+          "pop",
+          "acoustic",
+          "singer-songwriter"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Blinding Lights",
+        "artist": "The Weeknd",
+        "bpm": 86,
+        "danceability": 0.7,
+        "instrumentalness": 0.0,
+        "valence": 0.9,
+        "mood_tags": [
+          "upbeat",
+          "energetic",
+          "nostalgic"
+        ],
+        "genre_tags": [
+          "synthwave",
+          "pop",
+          "R&B"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Locked out of Heaven",
+        "artist": "Bruno Mars",
+        "bpm": 147,
+        "danceability": 0.9,
+        "instrumentalness": 0.0,
+        "valence": 0.8,
+        "mood_tags": [
+          "energetic",
+          "fun",
+          "upbeat"
+        ],
+        "genre_tags": [
+          "pop",
+          "funk",
+          "R&B"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Love Yourself",
+        "artist": "Justin Bieber",
+        "bpm": 101,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "reflective",
+          "emotional",
+          "introspective"
+        ],
+        "genre_tags": [
+          "pop",
+          "R&B"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "As It Was",
+        "artist": "Harry Styles",
+        "bpm": 87,
+        "danceability": 0.8,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "upbeat",
+          "nostalgic",
+          "reflective"
+        ],
+        "genre_tags": [
+          "pop",
+          "rock"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Die For You",
+        "artist": "The Weeknd",
+        "bpm": 131,
+        "danceability": 0.6,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "romantic",
+          "emotional",
+          "smooth"
+        ],
+        "genre_tags": [
+          "R&B",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Night Changes",
+        "artist": "One Direction",
+        "bpm": 119,
+        "danceability": 0.6,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "nostalgic",
+          "romantic",
+          "reflective"
+        ],
+        "genre_tags": [
+          "pop",
+          "rock"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Namo Namo",
+        "artist": "Amit Trivedi",
+        "bpm": 118,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "spiritual",
+          "uplifting",
+          "devotional"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "world"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Deva Deva (From \"Brahmastra\")",
+        "artist": "Pritam",
+        "bpm": 110,
+        "danceability": 0.6,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "spiritual",
+          "uplifting",
+          "devotional"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "world"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Kajra Re",
+        "artist": "Shankar-Ehsaan-Loy",
+        "bpm": 96,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "festive",
+          "energetic",
+          "fun"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "world"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Chedkhaniyaan",
+        "artist": "Shankar-Ehsaan-Loy",
+        "bpm": 90,
+        "danceability": 0.4,
+        "instrumentalness": 0.0,
+        "valence": 0.5,
+        "mood_tags": [
+          "romantic",
+          "soft",
+          "melodic"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "world"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Tere Liye",
+        "artist": "Atif Aslam",
+        "bpm": 130,
+        "danceability": 0.7,
+        "instrumentalness": 0.0,
+        "valence": 0.8,
+        "mood_tags": [
+          "romantic",
+          "uplifting",
+          "melodic"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "In Dino",
+        "artist": "Pritam",
+        "bpm": 106,
+        "danceability": 0.4,
+        "instrumentalness": 0.0,
+        "valence": 0.5,
+        "mood_tags": [
+          "soft",
+          "melodic",
+          "reflective"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "world"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Softly",
+        "artist": "Karan Aujla",
+        "bpm": 93,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "romantic",
+          "soft",
+          "melodic"
+        ],
+        "genre_tags": [
+          "Punjabi",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Chunnari Chunnari",
+        "artist": "Abhijeet",
+        "bpm": 124,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "festive",
+          "energetic",
+          "fun"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "world"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Bernie's Chalisa",
+        "artist": "Krishna Das",
+        "bpm": 104,
+        "danceability": 0.5,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "spiritual",
+          "meditative",
+          "uplifting"
+        ],
+        "genre_tags": [
+          "world",
+          "spiritual"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Shiv Kailash (Live in Mumbai)",
+        "artist": "Rishab Rikhiram Sharma",
+        "bpm": 94,
+        "danceability": 0.3,
+        "instrumentalness": 0.0,
+        "valence": 0.4,
+        "mood_tags": [
+          "spiritual",
+          "meditative",
+          "calm"
+        ],
+        "genre_tags": [
+          "world",
+          "spiritual"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Hanuman Chalisa (Lo-fi)",
+        "artist": "Rasraj Ji Maharaj",
+        "bpm": 95,
+        "danceability": 0.4,
+        "instrumentalness": 0.0,
+        "valence": 0.5,
+        "mood_tags": [
+          "spiritual",
+          "meditative",
+          "calm"
+        ],
+        "genre_tags": [
+          "world",
+          "spiritual"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Dhurandhar - Title Track",
+        "artist": "Shashwat Sachdev",
+        "bpm": 110,
+        "danceability": 0.7,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "energetic",
+          "upbeat",
+          "fun"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Haaye Oye (feat. Ash King)",
+        "artist": "QARAN",
+        "bpm": 123,
+        "danceability": 0.7,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "energetic",
+          "fun",
+          "upbeat"
+        ],
+        "genre_tags": [
+          "Punjabi",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Shararat",
+        "artist": "Shashwat Sachdev",
+        "bpm": 130,
+        "danceability": 0.8,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "energetic",
+          "fun",
+          "upbeat"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Ishq Jalakar - Karvaan",
+        "artist": "Shashwat Sachdev",
+        "bpm": 115,
+        "danceability": 0.6,
+        "instrumentalness": 0.0,
+        "valence": 0.6,
+        "mood_tags": [
+          "romantic",
+          "melodic",
+          "soft"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+        "artist": "Khesari Lal Yadav",
+        "bpm": 124,
+        "danceability": 0.8,
+        "instrumentalness": 0.0,
+        "valence": 0.7,
+        "mood_tags": [
+          "energetic",
+          "fun",
+          "upbeat"
+        ],
+        "genre_tags": [
+          "Bollywood",
+          "pop"
+        ],
+        "confidence": 1.0
+      },
+      {
+        "title": "Shankara",
+        "artist": "Rishab Rikhiram Sharma",
+        "bpm": 79,
+        "danceability": 0.3,
+        "instrumentalness": 0.0,
+        "valence": 0.4,
+        "mood_tags": [
+          "spiritual",
+          "meditative",
+          "calm"
+        ],
+        "genre_tags": [
+          "world",
+          "spiritual"
+        ],
+        "confidence": 1.0
+      }
+    ]
+  }
+}

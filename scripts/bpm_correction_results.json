@@ -1,0 +1,648 @@
+{
+  "timestamp": "2026-03-18 21:32:32",
+  "suspicious_songs": [
+    {
+      "index": 8,
+      "name": "Namo Namo",
+      "artist": "Amit Trivedi",
+      "reason": "round BPM (120) + Indian genre; BPM = 120 (most common LLM default)",
+      "original_bpm": 120
+    },
+    {
+      "index": 9,
+      "name": "Deva Deva (From \"Brahmastra\")",
+      "artist": "Pritam",
+      "reason": "round BPM (120) + Indian genre; BPM = 120 (most common LLM default)",
+      "original_bpm": 120
+    },
+    {
+      "index": 10,
+      "name": "Kajra Re",
+      "artist": "Shankar-Ehsaan-Loy",
+      "reason": "round BPM (120) + Indian genre; BPM = 120 (most common LLM default)",
+      "original_bpm": 120
+    },
+    {
+      "index": 11,
+      "name": "Chedkhaniyaan",
+      "artist": "Shankar-Ehsaan-Loy",
+      "reason": "round BPM (100) + Indian genre",
+      "original_bpm": 100
+    },
+    {
+      "index": 15,
+      "name": "Chunnari Chunnari",
+      "artist": "Abhijeet",
+      "reason": "round BPM (110) + Indian genre",
+      "original_bpm": 110
+    },
+    {
+      "index": 19,
+      "name": "Dhurandhar - Title Track",
+      "artist": "Shashwat Sachdev",
+      "reason": "round BPM (100) + Indian genre",
+      "original_bpm": 100
+    },
+    {
+      "index": 20,
+      "name": "Haaye Oye (feat. Ash King)",
+      "artist": "QARAN",
+      "reason": "round BPM (120) + Indian genre; BPM = 120 (most common LLM default)",
+      "original_bpm": 120
+    },
+    {
+      "index": 21,
+      "name": "Shararat",
+      "artist": "Shashwat Sachdev",
+      "reason": "round BPM (110) + Indian genre",
+      "original_bpm": 110
+    },
+    {
+      "index": 22,
+      "name": "Ishq Jalakar - Karvaan",
+      "artist": "Shashwat Sachdev",
+      "reason": "round BPM (120) + Indian genre; BPM = 120 (most common LLM default)",
+      "original_bpm": 120
+    },
+    {
+      "index": 23,
+      "name": "Panwadi (From \"Sunny Sanskari Ki Tulsi Kumari\")",
+      "artist": "Khesari Lal Yadav",
+      "reason": "round BPM (130) + Indian genre",
+      "original_bpm": 130
+    },
+    {
+      "index": 24,
+      "name": "Shankara",
+      "artist": "Rishab Rikhiram Sharma",
+      "reason": "round BPM (120) + Indian genre; devotional genre + high BPM (120); BPM = 120 (most common LLM default); high acousticness (0.89) + low energy (0.40) + high BPM (120)",
+      "original_bpm": 120
+    }
+  ],
+  "targeted_mini_results": {
+    "8": {
+      "bpm": 70,
+      "confidence": "estimated",
+      "reasoning": "The song 'Namo Namo' has a spiritual and uplifting mood with high acousticness (0.85) and moderate energy (0.67). This combination suggests a slower tempo typical of devotional songs, likely around 60-85 BPM, rather than the previously estimated 120 BPM.",
+      "model": "gpt-4o-mini",
+      "tokens": 460
+    },
+    "9": {
+      "bpm": 80,
+      "confidence": "estimated",
+      "reasoning": "The song has high acousticness (0.96) and moderate energy (0.71), suggesting it is likely to be slower, fitting the typical tempo range for devotional or spiritual songs (60-85 BPM). The previous estimate of 120 BPM seems too high for this context.",
+      "model": "gpt-4o-mini",
+      "tokens": 470
+    },
+    "10": {
+      "bpm": 130,
+      "confidence": "estimated",
+      "reasoning": "The song 'Kajra Re' is a Bollywood dance number, which typically falls within the tempo range of 130-160 BPM. Given the energetic mood and the audio measurements indicating moderate energy and high acousticness, it suggests a tempo on the faster side, likely around 130 BPM.",
+      "model": "gpt-4o-mini",
+      "tokens": 463
+    },
+    "11": {
+      "bpm": 80,
+      "confidence": "estimated",
+      "reasoning": "The song has low energy (0.40) and high acousticness (0.85), which suggests a slower tempo typical of devotional or acoustic styles. Therefore, 100 BPM is likely too fast, and a tempo around 80 BPM is more appropriate.",
+      "model": "gpt-4o-mini",
+      "tokens": 463
+    },
+    "15": {
+      "bpm": 80,
+      "confidence": "estimated",
+      "reasoning": "The song has low energy (0.35) and high acousticness (0.82), which suggests a slower tempo typical of devotional or soft songs. The estimated BPM of 110 seems too high given these audio characteristics.",
+      "model": "gpt-4o-mini",
+      "tokens": 457
+    },
+    "19": {
+      "bpm": 140,
+      "confidence": "estimated",
+      "reasoning": "The song is classified as Bollywood and pop, which typically have tempos in the range of 130-160 BPM. Given the high energy (0.82) and low acousticness (0.33), it suggests a fast tempo. Therefore, 100 BPM is likely too low.",
+      "model": "gpt-4o-mini",
+      "tokens": 463
+    },
+    "20": {
+      "bpm": 130,
+      "confidence": "estimated",
+      "reasoning": "The song is upbeat and cheerful with high energy (0.70) and high acousticness (0.81). Given these characteristics, it likely falls into the fast tempo range typical for Bollywood dance numbers, which is usually between 130-160 BPM.",
+      "model": "gpt-4o-mini",
+      "tokens": 462
+    },
+    "21": {
+      "bpm": 130,
+      "confidence": "estimated",
+      "reasoning": "The song 'Shararat' is a Bollywood pop track with high energy (0.80) and moderate acousticness (0.68). Given the high energy, it is likely to be in the fast tempo range typical for Bollywood dance numbers, which is usually between 130-160 BPM. The previous estimate of 110 BPM seems low for this genre and energy level.",
+      "model": "gpt-4o-mini",
+      "tokens": 476
+    },
+    "22": {
+      "bpm": 130,
+      "confidence": "estimated",
+      "reasoning": "The song is classified as energetic and joyful with high energy (0.73) and high acousticness (0.79). Given these characteristics, it is likely to be in the fast tempo range typical for Bollywood dance numbers, which is usually between 130-160 BPM.",
+      "model": "gpt-4o-mini",
+      "tokens": 463
+    },
+    "23": {
+      "bpm": 130,
+      "confidence": "known",
+      "reasoning": "The song is a Bollywood dance number with high energy (0.96) and a festive, upbeat mood, which aligns with typical tempos for this genre, confirming the BPM estimate of 130.",
+      "model": "gpt-4o-mini",
+      "tokens": 455
+    },
+    "24": {
+      "bpm": 70,
+      "confidence": "estimated",
+      "reasoning": "The song 'Shankara' is a sufi devotional piece with low energy (0.40) and high acousticness (0.89), which suggests a slower tempo typical of devotional music. Based on these characteristics, a BPM of around 70 is more appropriate than the previously estimated 120 BPM.",
+      "model": "gpt-4o-mini",
+      "tokens": 466
+    }
+  },
+  "targeted_4o_results": {
+    "8": {
+      "bpm": 80,
+      "confidence": "estimated",
+      "reasoning": "The song 'Namo Namo' is a spiritual and uplifting track, which aligns with a devotional style. Devotional songs typically have a slower tempo range of 60-85 BPM. The audio measurements show a moderate energy level (0.67) and high acousticness (0.85), suggesting a slower tempo. The previous estimate of 120 BPM is likely incorrect for this song.",
+      "model": "gpt-4o",
+      "tokens": 480
+    },
+    "9": {
+      "bpm": 80,
+      "confidence": "estimated",
+      "reasoning": "The song 'Deva Deva' is tagged as uplifting, spiritual, and energetic, suggesting a devotional style. The high acousticness (0.96) indicates a more acoustic and likely slower tempo, while the energy level (0.71) is relatively high but not indicative of a fast dance track. Devotional songs typically range from 60-85 BPM. The previous estimate of 120 BPM is likely incorrect for this style.",
+      "model": "gpt-4o",
+      "tokens": 501
+    },
+    "10": {
+      "bpm": 80,
+      "confidence": "estimated",
+      "reasoning": "The song 'Kajra Re' is a Bollywood song with festive and energetic mood tags. However, the audio measurements show moderate energy (0.54) and high acousticness (0.87), suggesting a slower tempo. Bollywood dance numbers are typically fast, but the high acousticness indicates a more traditional or acoustic arrangement, which aligns with a slower tempo. Therefore, the BPM is likely around 80, rather than the default 120 BPM estimate.",
+      "model": "gpt-4o",
+      "tokens": 496
+    },
+    "11": {
+      "bpm": 80,
+      "confidence": "estimated",
+      "reasoning": "The song 'Chedkhaniyaan' is from a Bollywood soundtrack and has a playful, cheerful mood. However, the audio measurements show low energy (0.40) and high acousticness (0.85), suggesting a slower tempo typical of 60-85 BPM. The batch classification of 100 BPM seems too fast given these characteristics.",
+      "model": "gpt-4o",
+      "tokens": 481
+    },
+    "15": {
+      "bpm": 85,
+      "confidence": "estimated",
+      "reasoning": "The song 'Chunnari Chunnari' is a Bollywood track, which often suggests a higher tempo. However, the audio measurements indicate low energy (0.35) and high acousticness (0.82), suggesting a slower tempo. The batch classification of 110 BPM seems too high given these measurements. A tempo of 85 BPM is more consistent with the audio characteristics.",
+      "model": "gpt-4o",
+      "tokens": 489
+    },
+    "19": {
+      "bpm": 140,
+      "confidence": "estimated",
+      "reasoning": "The song is tagged as Bollywood and pop with energetic and festive moods, suggesting a danceable track. The high energy (0.82) and low acousticness (0.33) indicate a fast tempo. The batch estimate of 100 BPM seems low for this context, so a tempo in the range of 130-160 BPM is more likely.",
+      "model": "gpt-4o",
+      "tokens": 477
+    },
+    "20": {
+      "bpm": 85,
+      "confidence": "estimated",
+      "reasoning": "The song is tagged as Bollywood pop, which can vary in tempo. However, the high acousticness (0.81) suggests a more acoustic and potentially slower tempo, despite the moderate energy level (0.70). The batch classification of 120 BPM is likely a default guess. Given the acoustic nature, a tempo of 85 BPM is more plausible.",
+      "model": "gpt-4o",
+      "tokens": 483
+    },
+    "21": {
+      "bpm": 110,
+      "confidence": "estimated",
+      "reasoning": "The song 'Shararat' is tagged as Bollywood pop with a playful and joyful mood. The audio energy is high at 0.80, suggesting a lively tempo, but the acousticness is also relatively high at 0.68, indicating a mix of electronic and acoustic elements. While Bollywood pop songs can vary in tempo, the combination of high energy and moderate acousticness supports the estimated BPM of 110 as reasonable for this song.",
+      "model": "gpt-4o",
+      "tokens": 489
+    },
+    "22": {
+      "bpm": 85,
+      "confidence": "estimated",
+      "reasoning": "The song is tagged as energetic and joyful, which might suggest a faster tempo. However, the high acousticness (0.79) combined with the high energy (0.73) indicates a blend of acoustic elements with energetic delivery, often found in mid-tempo songs. The batch classification defaulted to 120 BPM, but given the acoustic nature, a slower tempo around 85 BPM is more plausible.",
+      "model": "gpt-4o",
+      "tokens": 490
+    },
+    "23": {
+      "bpm": 130,
+      "confidence": "estimated",
+      "reasoning": "The song is tagged as Bollywood and Bhojpuri dance, which typically have tempos in the 130-160 BPM range. The high energy level (0.96) suggests a fast tempo, consistent with dance music. Although the acousticness is moderately high (0.63), the energy level is a stronger indicator of tempo in this case. Therefore, the estimated BPM of 130 is reasonable for this song.",
+      "model": "gpt-4o",
+      "tokens": 499
+    },
+    "24": {
+      "bpm": 75,
+      "confidence": "estimated",
+      "reasoning": "The song is tagged as sufi and devotional, which typically have slower tempos. The audio measurements show low energy (0.40) and high acousticness (0.89), suggesting a slow tempo. The previous estimate of 120 BPM is likely incorrect for this meditative and calm song.",
+      "model": "gpt-4o",
+      "tokens": 463
+    }
+  },
+  "comprehensive_results": {
+    "8": {
+      "bpm": 90,
+      "perceived_energy": 0.5,
+      "valence": 0.6,
+      "danceability": 0.4,
+      "reasoning": "The song 'Namo Namo' by Amit Trivedi is a spiritual and uplifting track that combines traditional Indian musical elements with modern production. The tempo is moderate, around 90 BPM, which supports a steady and contemplative pace. The song's energy is perceived as moderate due to its spiritual and devotional nature, with a measured audio energy of 0.67, but it feels more subdued because of its acoustic elements and the spiritual context. The valence is relatively high at 0.6, as the song conveys a positive and uplifting mood through its melody and lyrics. Danceability is lower at 0.4, as the song is more suited for reflective listening rather than dancing, given its spiritual theme and acoustic instrumentation.",
+      "tokens": 493
+    },
+    "9": {
+      "bpm": 130,
+      "perceived_energy": 0.7,
+      "valence": 0.8,
+      "danceability": 0.6,
+      "reasoning": "The song 'Deva Deva' from the movie 'Brahmastra' is an uplifting and energetic track with a spiritual theme. The tempo is moderately fast, around 130 BPM, which contributes to its energetic feel. The song's mood is positive and uplifting, reflected in a high valence score. Despite its spiritual theme, the song has a rhythmic structure that allows for moderate danceability, as it combines traditional Indian musical elements with contemporary production. The measured audio energy of 0.71 aligns with the perceived energy, indicating a vibrant and engaging listening experience. The high acousticness suggests the use of traditional instruments, which adds to the spiritual and uplifting mood of the song.",
+      "tokens": 495
+    },
+    "10": {
+      "bpm": 120,
+      "perceived_energy": 0.6,
+      "valence": 0.7,
+      "danceability": 0.8,
+      "reasoning": "Kajra Re is a Bollywood song known for its festive and energetic vibe, typical of many dance numbers in Indian cinema. The song features a lively tempo, which I estimate to be around 120 BPM, making it suitable for dance. The instrumentation includes traditional Indian elements like the harmonium and tabla, contributing to its high acousticness. Despite this, the song maintains a moderate energy level due to its rhythmic beats and engaging melody, which are characteristic of Bollywood dance tracks. The mood is positive and celebratory, reflected in a high valence score. The song's structure and rhythm make it highly danceable, as it encourages movement and participation, typical of songs played at festive occasions and dance floors in India.",
+      "tokens": 491
+    },
+    "11": {
+      "bpm": 140,
+      "perceived_energy": 0.5,
+      "valence": 0.8,
+      "danceability": 0.6,
+      "reasoning": "The song 'Chedkhaniyaan' by Shankar-Ehsaan-Loy is a playful and cheerful Bollywood track. The tempo is relatively fast, around 140 BPM, which contributes to its lively feel. The song's playful nature and cheerful mood give it a high valence score, indicating a positive emotional tone. Despite its measured audio energy being 0.40, the song feels more energetic due to its upbeat rhythm and lively instrumentation, leading to a perceived energy of 0.5. The acousticness of 0.85 suggests a strong presence of acoustic instruments, which is typical in Bollywood music, and this contributes to a moderate danceability score of 0.6, as the rhythm and melody encourage movement but are not as driving as a dance track.",
+      "tokens": 511
+    },
+    "15": {
+      "bpm": 130,
+      "perceived_energy": 0.6,
+      "valence": 0.7,
+      "danceability": 0.8,
+      "reasoning": "The song 'Chunnari Chunnari' by Abhijeet is a lively Bollywood track with a playful and nostalgic mood. The tempo is moderately fast, around 130 BPM, which contributes to its danceable quality. Despite the measured audio energy being 0.35, the song feels more energetic due to its rhythmic beats and engaging melody, placing its perceived energy at 0.6. The high acousticness suggests the use of traditional instruments, which adds to the song's nostalgic feel. The overall mood is positive and upbeat, reflected in a valence of 0.7. The song's structure and rhythm make it highly suitable for dancing, hence a danceability score of 0.8.",
+      "tokens": 500
+    },
+    "19": {
+      "bpm": 140,
+      "perceived_energy": 0.85,
+      "valence": 0.75,
+      "danceability": 0.8,
+      "reasoning": "The song 'Dhurandhar - Title Track' by Shashwat Sachdev is characterized by its energetic and festive mood, typical of Bollywood pop tracks. The tempo is relatively fast, around 140 BPM, which contributes to its high energy level. The measured audio energy of 0.82 aligns with the song's lively and vibrant feel, suggesting a perceived energy of 0.85. The song likely features upbeat rhythms and catchy melodies, enhancing its danceability, which I estimate at 0.8. The festive and positive mood of the track suggests a high valence of 0.75, indicating a cheerful and uplifting musical experience. Overall, the song is designed to be engaging and suitable for celebratory occasions, with a strong emphasis on rhythm and melody that encourages dancing.",
+      "tokens": 510
+    },
+    "20": {
+      "bpm": 120,
+      "perceived_energy": 0.6,
+      "valence": 0.8,
+      "danceability": 0.7,
+      "reasoning": "The song 'Haaye Oye' by QARAN featuring Ash King is an upbeat and cheerful Bollywood pop track. The tempo is moderate, around 120 BPM, which is typical for pop songs that aim to be catchy and danceable. The measured audio energy of 0.70 suggests a lively and engaging sound, but the high acousticness of 0.81 indicates that the song incorporates significant acoustic elements, which can soften the perceived energy slightly. The mood is positive and uplifting, reflected in a high valence score of 0.8. The song's rhythm and structure make it suitable for dancing, leading to a danceability score of 0.7. Overall, the song feels energizing and joyful, making it a good fit for both listening and dancing in a casual setting.",
+      "tokens": 516
+    },
+    "21": {
+      "bpm": 128,
+      "perceived_energy": 0.75,
+      "valence": 0.85,
+      "danceability": 0.7,
+      "reasoning": "The song 'Shararat' by Shashwat Sachdev is a Bollywood pop track with a playful and joyful mood. The tempo is moderately fast, around 128 BPM, which is typical for pop songs that aim to be lively and engaging. The measured audio energy of 0.80 suggests that the song feels quite energizing, though not overwhelmingly intense. The high valence of 0.85 reflects the song's positive and joyful mood, which is common in playful Bollywood tracks. Despite the relatively high acousticness of 0.68, the song maintains a good level of danceability at 0.7, indicating that it has a rhythm and beat conducive to dancing, likely supported by catchy melodies and rhythmic elements typical of Bollywood pop music.",
+      "tokens": 496
+    },
+    "22": {
+      "bpm": 140,
+      "perceived_energy": 0.75,
+      "valence": 0.7,
+      "danceability": 0.65,
+      "reasoning": "The song 'Ishq Jalakar - Karvaan' by Shashwat Sachdev is characterized by its energetic and joyful mood, which is typical of many Bollywood tracks. The tempo is relatively fast, around 140 BPM, which contributes to its lively feel. The measured audio energy of 0.73 indicates a high level of intensity, aligning with the song's energetic description. Despite the high acousticness of 0.79, which suggests the presence of acoustic instruments, the song maintains a vibrant and dynamic atmosphere. The valence is high at 0.7, reflecting the song's positive and joyful mood. The danceability is moderate at 0.65, as the rhythm and tempo make it suitable for dancing, though the acoustic elements might slightly reduce its dance floor appeal compared to more electronic tracks. Overall, the song delivers an uplifting and spirited listening experience.",
+      "tokens": 530
+    },
+    "23": {
+      "bpm": 140,
+      "perceived_energy": 0.85,
+      "valence": 0.75,
+      "danceability": 0.8,
+      "reasoning": "The song 'Panwadi' by Khesari Lal Yadav is a festive and upbeat track, typical of the Bhojpuri dance genre. With a measured audio energy of 0.96, it is highly energetic, which aligns with its festive mood. The tempo is likely around 140 BPM, which is common for dance tracks that aim to keep the energy high and the listener engaged. The song's mood is positive and lively, suggesting a high valence of 0.75. The danceability is also high at 0.8, as the song is designed to be rhythmically engaging and suitable for dancing, despite its relatively high acousticness of 0.63, which might indicate the presence of traditional instruments or acoustic elements that add to its cultural flavor without diminishing its dance appeal.",
+      "tokens": 521
+    },
+    "24": {
+      "bpm": 60,
+      "perceived_energy": 0.2,
+      "valence": 0.3,
+      "danceability": 0.2,
+      "reasoning": "The song 'Shankara' by Rishab Rikhiram Sharma is a devotional piece with a meditative and calm mood. The genre being sufi and devotional suggests a slower tempo, likely around 60 BPM, which is typical for meditative music. The measured audio energy of 0.40 is relatively low, but the perceived energy feels even lower due to the calm and soothing nature of the song, placing it at 0.2. The high acousticness of 0.89 indicates a strong presence of acoustic instruments, contributing to the gentle and serene atmosphere. The valence is 0.3, reflecting a peaceful but not overly joyful mood. Danceability is low at 0.2, as the song is more suited for introspection and meditation rather than dancing.",
+      "tokens": 508
+    }
+  },
+  "all_comprehensive_results": {
+    "0": {
+      "bpm": 103,
+      "perceived_energy": 0.85,
+      "valence": 0.9,
+      "danceability": 0.85,
+      "reasoning": "Levitating (feat. DaBaby) by Dua Lipa is a high-energy pop and dance track with a tempo of 103 BPM, which is typical for dance music that aims to get people moving. The song's production features a strong, driving beat and catchy melodies, contributing to its high perceived energy of 0.85. The mood is very positive and uplifting, reflected in a high valence score of 0.9. The song's rhythmic elements and groove make it highly danceable, scoring 0.85 in danceability. Overall, the song is designed to be fun and engaging, encouraging listeners to dance and enjoy themselves.",
+      "tokens": 479
+    },
+    "1": {
+      "bpm": 108,
+      "perceived_energy": 0.35,
+      "valence": 0.5,
+      "danceability": 0.4,
+      "reasoning": "Ed Sheeran's 'Photograph' is a gentle acoustic ballad with a tempo of around 108 BPM, which is relatively slow and contributes to its introspective and nostalgic mood. The song's acoustic nature, with a high acousticness of 0.81, gives it a softer, more intimate feel, which is reflected in the perceived energy being lower than the measured audio energy. The song's mood is balanced between melancholy and warmth, resulting in a moderate valence of 0.5. Its danceability is also moderate at 0.4, as the song's rhythm is steady but not particularly suited for dancing, focusing more on emotional resonance and lyrical content.",
+      "tokens": 476
+    },
+    "2": {
+      "bpm": 171,
+      "perceived_energy": 0.8,
+      "valence": 0.7,
+      "danceability": 0.8,
+      "reasoning": "Blinding Lights by The Weeknd is a high-energy track with a fast tempo of 171 BPM, which contributes to its energetic and driving feel. The song's synthwave influences, characterized by bright synths and a pulsating beat, create an uplifting and positive mood, reflected in a high valence score of 0.7. Despite the measured acousticness being high, the song's production and arrangement give it a modern, electronic feel that enhances its danceability, rated at 0.8. The combination of these elements makes it an upbeat and engaging track, suitable for dancing and energizing listeners.",
+      "tokens": 465
+    },
+    "3": {
+      "bpm": 144,
+      "perceived_energy": 0.85,
+      "valence": 0.75,
+      "danceability": 0.8,
+      "reasoning": "Bruno Mars' 'Locked out of Heaven' is an energetic pop-funk track with a driving beat and lively instrumentation. The tempo is relatively fast at 144 BPM, contributing to its high energy level. The song's upbeat and catchy melody, combined with its rhythmic guitar riffs and dynamic vocal delivery, creates a sense of excitement and positivity, reflected in the high valence score. The song's groove and rhythmic structure make it highly danceable, encouraging listeners to move along with the music. Overall, the song's energetic and uplifting nature is evident in its high perceived energy and danceability scores.",
+      "tokens": 465
+    },
+    "4": {
+      "bpm": 100,
+      "perceived_energy": 0.4,
+      "valence": 0.6,
+      "danceability": 0.5,
+      "reasoning": "The song 'Love Yourself' by Justin Bieber has a moderate tempo of around 100 BPM, which contributes to its reflective and laid-back feel. The acoustic guitar-driven arrangement and minimal production give it a gentle, yet steady energy, placing it in the mid-tempo pop song category. The song's mood is reflective and somewhat empowering, with lyrics that convey a sense of self-respect and moving on from a toxic relationship, which contributes to a moderate valence score. The acoustic nature and rhythmic structure allow for a moderate level of danceability, as it is more suited for casual listening rather than energetic dancing. Overall, the song's acousticness and lyrical content create a balanced listening experience that is both introspective and uplifting.",
+      "tokens": 481
+    },
+    "5": {
+      "bpm": 174,
+      "perceived_energy": 0.8,
+      "valence": 0.7,
+      "danceability": 0.8,
+      "reasoning": "Harry Styles' 'As It Was' is an upbeat and energetic track with a fast tempo of 174 BPM, which contributes to its high perceived energy. The song's indie pop style, combined with its lively instrumentation and catchy melody, makes it feel energizing and danceable. The mood is generally positive, reflected in a high valence score, as the song conveys a sense of nostalgia and introspection while maintaining an uplifting vibe. Despite its measured acousticness, the production and arrangement give it a vibrant and engaging feel, suitable for dancing.",
+      "tokens": 451
+    },
+    "6": {
+      "bpm": 67,
+      "perceived_energy": 0.5,
+      "valence": 0.4,
+      "danceability": 0.6,
+      "reasoning": "The song 'Die For You' by The Weeknd has a slow tempo of around 67 BPM, which is typical for a ballad with R&B influences. Despite the slower tempo, the song has a measured audio energy of 0.71, indicating a rich production with layered instrumentation and emotive vocal delivery, which contributes to a moderate perceived energy level of 0.5. The song's mood is romantic and melancholic, which aligns with a valence of 0.4, suggesting a slightly more somber and emotional tone. The track's rhythm and groove, combined with its R&B elements, provide a moderate danceability score of 0.6, making it suitable for slow dancing or swaying. The high acousticness of 0.92 suggests a significant presence of acoustic elements, which adds to the song's emotional depth and warmth.",
+      "tokens": 519
+    },
+    "7": {
+      "bpm": 108,
+      "perceived_energy": 0.5,
+      "valence": 0.6,
+      "danceability": 0.5,
+      "reasoning": "The song 'Night Changes' by One Direction has a moderate tempo of around 108 BPM, which contributes to its mid-tempo pop feel. The song's nostalgic and romantic mood, combined with its acoustic elements, gives it a warm and reflective quality. The measured audio energy of 0.63 suggests a moderate level of energy, which aligns with the song's gentle yet engaging arrangement. The high acousticness of 0.92 indicates a strong presence of acoustic instruments, contributing to its softer sound. The valence is moderately high at 0.6, reflecting the song's positive and sentimental mood. Danceability is moderate at 0.5, as the song has a steady rhythm but is more suited for swaying or gentle movement rather than energetic dancing.",
+      "tokens": 490
+    },
+    "8": {
+      "bpm": 90,
+      "perceived_energy": 0.5,
+      "valence": 0.6,
+      "danceability": 0.4,
+      "reasoning": "The song 'Namo Namo' by Amit Trivedi is a spiritual and uplifting track that combines traditional Indian musical elements with modern production. The tempo is moderate, around 90 BPM, which supports a steady and contemplative pace. The song's energy is perceived as moderate due to its spiritual and devotional nature, with a measured audio energy of 0.67, but it feels more subdued because of its acoustic elements and the spiritual context. The valence is relatively high at 0.6, as the song conveys a positive and uplifting mood through its melody and lyrics. Danceability is lower at 0.4, as the song is more suited for reflective listening rather than dancing, given its spiritual theme and acoustic instrumentation.",
+      "tokens": 493
+    },
+    "9": {
+      "bpm": 130,
+      "perceived_energy": 0.7,
+      "valence": 0.8,
+      "danceability": 0.6,
+      "reasoning": "The song 'Deva Deva' from the movie 'Brahmastra' is an uplifting and energetic track with a spiritual theme. The tempo is moderately fast, around 130 BPM, which contributes to its energetic feel. The song's mood is positive and uplifting, reflected in a high valence score. Despite its spiritual theme, the song has a rhythmic structure that allows for moderate danceability, as it combines traditional Indian musical elements with contemporary production. The measured audio energy of 0.71 aligns with the perceived energy, indicating a vibrant and engaging listening experience. The high acousticness suggests the use of traditional instruments, which adds to the spiritual and uplifting mood of the song.",
+      "tokens": 495
+    },
+    "10": {
+      "bpm": 120,
+      "perceived_energy": 0.6,
+      "valence": 0.7,
+      "danceability": 0.8,
+      "reasoning": "Kajra Re is a Bollywood song known for its festive and energetic vibe, typical of many dance numbers in Indian cinema. The song features a lively tempo, which I estimate to be around 120 BPM, making it suitable for dance. The instrumentation includes traditional Indian elements like the harmonium and tabla, contributing to its high acousticness. Despite this, the song maintains a moderate energy level due to its rhythmic beats and engaging melody, which are characteristic of Bollywood dance tracks. The mood is positive and celebratory, reflected in a high valence score. The song's structure and rhythm make it highly danceable, as it encourages movement and participation, typical of songs played at festive occasions and dance floors in India.",
+      "tokens": 491
+    },
+    "11": {
+      "bpm": 140,
+      "perceived_energy": 0.5,
+      "valence": 0.8,
+      "danceability": 0.6,
+      "reasoning": "The song 'Chedkhaniyaan' by Shankar-Ehsaan-Loy is a playful and cheerful Bollywood track. The tempo is relatively fast, around 140 BPM, which contributes to its lively feel. The song's playful nature and cheerful mood give it a high valence score, indicating a positive emotional tone. Despite its measured audio energy being 0.40, the song feels more energetic due to its upbeat rhythm and lively instrumentation, leading to a perceived energy of 0.5. The acousticness of 0.85 suggests a strong presence of acoustic instruments, which is typical in Bollywood music, and this contributes to a moderate danceability score of 0.6, as the rhythm and melody encourage movement but are not as driving as a dance track.",
+      "tokens": 511
+    },
+    "12": {
+      "bpm": 78,
+      "perceived_energy": 0.4,
+      "valence": 0.5,
+      "danceability": 0.3,
+      "reasoning": "The song 'Tere Liye' by Atif Aslam is a romantic and nostalgic track, typical of Bollywood ballads. The tempo is relatively slow, around 78 BPM, which suits the romantic and reflective mood of the song. Despite the measured audio energy being high, the perceived energy feels moderate due to the song's gentle instrumentation and emotional delivery, placing it at 0.4. The valence is balanced at 0.5, reflecting the song's emotional depth and romantic theme without being overly happy or sad. Danceability is low at 0.3, as the song is more suited for listening and emotional engagement rather than dancing, given its slow tempo and lyrical focus.",
+      "tokens": 494
+    },
+    "13": {
+      "bpm": 80,
+      "perceived_energy": 0.3,
+      "valence": 0.4,
+      "danceability": 0.3,
+      "reasoning": "The song 'In Dino' by Pritam is a gentle, introspective track with a slow tempo, around 80 BPM, which contributes to its reflective and somewhat melancholic mood. The measured audio energy is low at 0.20, and the high acousticness of 0.90 suggests a strong presence of acoustic instruments, which aligns with the song's gentle and soothing nature. The perceived energy is slightly higher at 0.3, as the song's emotional depth and melodic structure provide a subtle lift. The valence is 0.4, indicating a slightly positive mood, as the song conveys a sense of hope and introspection despite its melancholy undertones. The danceability is low at 0.3, as the song's tempo and structure are not conducive to dancing, but rather to thoughtful listening and reflection.",
+      "tokens": 519
+    },
+    "14": {
+      "bpm": 95,
+      "perceived_energy": 0.5,
+      "valence": 0.7,
+      "danceability": 0.6,
+      "reasoning": "The song 'Softly' by Karan Aujla is a Punjabi pop track with a romantic and uplifting mood. The tempo is moderate, around 95 BPM, which is typical for pop songs that aim to be both engaging and relaxed. The measured audio energy of 0.64 suggests a lively but not overly intense track, aligning with the romantic theme. The acousticness of 0.69 indicates a significant presence of acoustic elements, contributing to a warm and organic feel. The perceived energy is moderate at 0.5, as the song balances between being energizing and soothing. The valence is relatively high at 0.7, reflecting the positive and uplifting mood of the song. Danceability is moderate at 0.6, as the rhythm and structure allow for easy movement, typical of pop songs with a romantic flair.",
+      "tokens": 514
+    },
+    "15": {
+      "bpm": 130,
+      "perceived_energy": 0.6,
+      "valence": 0.7,
+      "danceability": 0.8,
+      "reasoning": "The song 'Chunnari Chunnari' by Abhijeet is a lively Bollywood track with a playful and nostalgic mood. The tempo is moderately fast, around 130 BPM, which contributes to its danceable quality. Despite the measured audio energy being 0.35, the song feels more energetic due to its rhythmic beats and engaging melody, placing its perceived energy at 0.6. The high acousticness suggests the use of traditional instruments, which adds to the song's nostalgic feel. The overall mood is positive and upbeat, reflected in a valence of 0.7. The song's structure and rhythm make it highly suitable for dancing, hence a danceability score of 0.8.",
+      "tokens": 500
+    },
+    "16": {
+      "bpm": 60,
+      "perceived_energy": 0.2,
+      "valence": 0.3,
+      "danceability": 0.1,
+      "reasoning": "Bernie's Chalisa by Krishna Das is a devotional and ambient track, characterized by its spiritual and meditative mood. The song's slow tempo, around 60 BPM, aligns with its purpose as a chant, creating a calming and introspective atmosphere. The perceived energy is low, at 0.2, as the song is designed to be soothing rather than energizing, with a focus on spiritual reflection. The high acousticness of 0.96 suggests a predominance of acoustic instruments, contributing to the organic and serene sound. The valence is moderately low at 0.3, reflecting the song's contemplative and spiritual nature rather than overt happiness. Danceability is very low at 0.1, as the song is not intended for dancing but rather for meditation and spiritual practice.",
+      "tokens": 503
+    },
+    "17": {
+      "bpm": 60,
+      "perceived_energy": 0.2,
+      "valence": 0.3,
+      "danceability": 0.1,
+      "reasoning": "The song 'Shiv Kailash (Live in Mumbai)' by Rishab Rikhiram Sharma is a devotional and meditative piece, characterized by its sufi and devotional genre. The tempo is slow, around 60 BPM, which is typical for meditative and devotional music, allowing for a reflective and calming experience. The perceived energy is low, at 0.2, aligning with the measured audio energy of 0.19, as the song is designed to be soothing rather than energizing. The valence is slightly positive at 0.3, reflecting the uplifting and spiritual nature of devotional music. Danceability is very low at 0.1, as the song is not intended for dancing but rather for meditation and spiritual reflection. The high acousticness of 0.89 suggests a strong presence of acoustic instruments, contributing to the song's organic and serene sound.",
+      "tokens": 536
+    },
+    "18": {
+      "bpm": 60,
+      "perceived_energy": 0.3,
+      "valence": 0.4,
+      "danceability": 0.2,
+      "reasoning": "The 'Hanuman Chalisa (Lo-fi)' by Rasraj Ji Maharaj is a meditative and spiritual track that combines traditional devotional elements with a modern lo-fi aesthetic. The tempo is slow, around 60 BPM, which is typical for meditative music. The perceived energy is relatively low at 0.3, as the track is designed to be calming and introspective rather than energizing. The high acousticness of 0.93 suggests a strong presence of acoustic instruments, contributing to the soothing and organic feel of the song. The valence is moderate at 0.4, reflecting a serene and peaceful mood rather than overt happiness. Danceability is low at 0.2, as the track is not intended for dancing but rather for meditation and reflection. Overall, the song's lo-fi production adds a layer of warmth and tranquility, enhancing its meditative qualities.",
+      "tokens": 533
+    },
+    "19": {
+      "bpm": 140,
+      "perceived_energy": 0.85,
+      "valence": 0.75,
+      "danceability": 0.8,
+      "reasoning": "The song 'Dhurandhar - Title Track' by Shashwat Sachdev is characterized by its energetic and festive mood, typical of Bollywood pop tracks. The tempo is relatively fast, around 140 BPM, which contributes to its high energy level. The measured audio energy of 0.82 aligns with the song's lively and vibrant feel, suggesting a perceived energy of 0.85. The song likely features upbeat rhythms and catchy melodies, enhancing its danceability, which I estimate at 0.8. The festive and positive mood of the track suggests a high valence of 0.75, indicating a cheerful and uplifting musical experience. Overall, the song is designed to be engaging and suitable for celebratory occasions, with a strong emphasis on rhythm and melody that encourages dancing.",
+      "tokens": 510
+    },
+    "20": {
+      "bpm": 120,
+      "perceived_energy": 0.6,
+      "valence": 0.8,
+      "danceability": 0.7,
+      "reasoning": "The song 'Haaye Oye' by QARAN featuring Ash King is an upbeat and cheerful Bollywood pop track. The tempo is moderate, around 120 BPM, which is typical for pop songs that aim to be catchy and danceable. The measured audio energy of 0.70 suggests a lively and engaging sound, but the high acousticness of 0.81 indicates that the song incorporates significant acoustic elements, which can soften the perceived energy slightly. The mood is positive and uplifting, reflected in a high valence score of 0.8. The song's rhythm and structure make it suitable for dancing, leading to a danceability score of 0.7. Overall, the song feels energizing and joyful, making it a good fit for both listening and dancing in a casual setting.",
+      "tokens": 516
+    },
+    "21": {
+      "bpm": 128,
+      "perceived_energy": 0.75,
+      "valence": 0.85,
+      "danceability": 0.7,
+      "reasoning": "The song 'Shararat' by Shashwat Sachdev is a Bollywood pop track with a playful and joyful mood. The tempo is moderately fast, around 128 BPM, which is typical for pop songs that aim to be lively and engaging. The measured audio energy of 0.80 suggests that the song feels quite energizing, though not overwhelmingly intense. The high valence of 0.85 reflects the song's positive and joyful mood, which is common in playful Bollywood tracks. Despite the relatively high acousticness of 0.68, the song maintains a good level of danceability at 0.7, indicating that it has a rhythm and beat conducive to dancing, likely supported by catchy melodies and rhythmic elements typical of Bollywood pop music.",
+      "tokens": 496
+    },
+    "22": {
+      "bpm": 140,
+      "perceived_energy": 0.75,
+      "valence": 0.7,
+      "danceability": 0.65,
+      "reasoning": "The song 'Ishq Jalakar - Karvaan' by Shashwat Sachdev is characterized by its energetic and joyful mood, which is typical of many Bollywood tracks. The tempo is relatively fast, around 140 BPM, which contributes to its lively feel. The measured audio energy of 0.73 indicates a high level of intensity, aligning with the song's energetic description. Despite the high acousticness of 0.79, which suggests the presence of acoustic instruments, the song maintains a vibrant and dynamic atmosphere. The valence is high at 0.7, reflecting the song's positive and joyful mood. The danceability is moderate at 0.65, as the rhythm and tempo make it suitable for dancing, though the acoustic elements might slightly reduce its dance floor appeal compared to more electronic tracks. Overall, the song delivers an uplifting and spirited listening experience.",
+      "tokens": 530
+    },
+    "23": {
+      "bpm": 140,
+      "perceived_energy": 0.85,
+      "valence": 0.75,
+      "danceability": 0.8,
+      "reasoning": "The song 'Panwadi' by Khesari Lal Yadav is a festive and upbeat track, typical of the Bhojpuri dance genre. With a measured audio energy of 0.96, it is highly energetic, which aligns with its festive mood. The tempo is likely around 140 BPM, which is common for dance tracks that aim to keep the energy high and the listener engaged. The song's mood is positive and lively, suggesting a high valence of 0.75. The danceability is also high at 0.8, as the song is designed to be rhythmically engaging and suitable for dancing, despite its relatively high acousticness of 0.63, which might indicate the presence of traditional instruments or acoustic elements that add to its cultural flavor without diminishing its dance appeal.",
+      "tokens": 521
+    },
+    "24": {
+      "bpm": 60,
+      "perceived_energy": 0.2,
+      "valence": 0.3,
+      "danceability": 0.2,
+      "reasoning": "The song 'Shankara' by Rishab Rikhiram Sharma is a devotional piece with a meditative and calm mood. The genre being sufi and devotional suggests a slower tempo, likely around 60 BPM, which is typical for meditative music. The measured audio energy of 0.40 is relatively low, but the perceived energy feels even lower due to the calm and soothing nature of the song, placing it at 0.2. The high acousticness of 0.89 indicates a strong presence of acoustic instruments, contributing to the gentle and serene atmosphere. The valence is 0.3, reflecting a peaceful but not overly joyful mood. Danceability is low at 0.2, as the song is more suited for introspection and meditation rather than dancing.",
+      "tokens": 508
+    }
+  },
+  "accuracy": {
+    "baseline": {
+      "overall": 0.48,
+      "correct": 12,
+      "total": 25,
+      "by_category": {
+        "english": {
+          "correct": 1,
+          "total": 8
+        },
+        "popular_indian": {
+          "correct": 4,
+          "total": 8
+        },
+        "obscure_indian": {
+          "correct": 7,
+          "total": 9
+        }
+      }
+    },
+    "targeted_mini": {
+      "overall": 0.52,
+      "correct": 13,
+      "total": 25,
+      "by_category": {
+        "english": {
+          "correct": 1,
+          "total": 8
+        },
+        "popular_indian": {
+          "correct": 5,
+          "total": 8
+        },
+        "obscure_indian": {
+          "correct": 7,
+          "total": 9
+        }
+      }
+    },
+    "targeted_4o": {
+      "overall": 0.48,
+      "correct": 12,
+      "total": 25,
+      "by_category": {
+        "english": {
+          "correct": 1,
+          "total": 8
+        },
+        "popular_indian": {
+          "correct": 4,
+          "total": 8
+        },
+        "obscure_indian": {
+          "correct": 7,
+          "total": 9
+        }
+      }
+    },
+    "comprehensive_4o": {
+      "overall": 0.52,
+      "correct": 13,
+      "total": 25,
+      "by_category": {
+        "english": {
+          "correct": 1,
+          "total": 8
+        },
+        "popular_indian": {
+          "correct": 4,
+          "total": 8
+        },
+        "obscure_indian": {
+          "correct": 8,
+          "total": 9
+        }
+      }
+    },
+    "comprehensive_all": {
+      "overall": 0.56,
+      "correct": 14,
+      "total": 25,
+      "by_category": {
+        "english": {
+          "correct": 3,
+          "total": 8
+        },
+        "popular_indian": {
+          "correct": 4,
+          "total": 8
+        },
+        "obscure_indian": {
+          "correct": 7,
+          "total": 9
+        }
+      }
+    },
+    "bpm_agreement": {
+      "overall": 0.52,
+      "correct": 13,
+      "total": 25,
+      "by_category": {
+        "english": {
+          "correct": 1,
+          "total": 8
+        },
+        "popular_indian": {
+          "correct": 5,
+          "total": 8
+        },
+        "obscure_indian": {
+          "correct": 7,
+          "total": 9
+        }
+      }
+    }
+  }
+}
