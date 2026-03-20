@@ -1,19 +1,15 @@
 # Attuned — Current Status
 
-**Last updated:** Mar 19, 2026
-**Current phase:** Era cohesion implemented. Playlist generation working (dry-run tested). 774 tests passing.
-**Next action:** Finish release_year backfill (rate-limited ~24h), then reclassify songs with improved prompt, then Day 6.
-
-### Background: Essentia analysis running
-Audio clips downloaded for 1,069/1,360 songs. Essentia analysis in progress (~100/1,069 done, ~2-3 hours remaining). Once done, run `recompute-scores` to update neuro scores with measured energy/acousticness (71%/62% accuracy vs LLM's 42%/50%). 197 additional songs got duration_ms recovered from listening history.
+**Last updated:** Mar 20, 2026
+**Current phase:** Day 5 complete. Intelligence layer done. Essentia on 99.1% of library. Matching engine + cohesion + generation all working. 774 tests passing.
+**Next action:** Backfill release_year when Spotify rate limit clears, then generate first real playlist.
 
 ### Blocked: Spotify rate limit
-Backfill of release_year hit Spotify's rate limit after 548/1,623 songs. Fixed batch endpoint (50x fewer calls). Once limit clears (~24h from Mar 19 evening), run:
+Backfill of release_year: 491/1,360 done. Run when limit clears:
 ```
-python main.py backfill-release-years     # ~22 API calls with batch fix
-python main.py classify-songs --provider openai --reclassify  # With release year in prompt
-python main.py recompute-scores           # Recompute neuro scores (~2 sec)
-python main.py generate                   # Push real playlist to Spotify
+python main.py backfill-release-years
+python main.py recompute-scores
+python main.py generate
 ```
 
 ---

@@ -280,3 +280,71 @@ Selection = unified ranking, up to 5 recent anchors, freshness nudge for tiebrea
 35. **Simulate before committing.** We tested 6 grounding formula configurations (V1-V6) with full correlation and overlap analysis before changing the profiler. V5 (most aggressive) would have over-separated the dimensions. V6 (moderate) was the right choice.
 
 ### 693 tests passing, all green.
+
+---
+
+## Day 5c: Essentia Full Library + Audio Pipeline Hardening
+
+### What we were trying to do
+
+Improve input accuracy for all 1,360 songs. Before: only 33 had Essentia-measured energy/acousticness (71%/62% accurate). The other 1,327 relied on LLM guesses (42%/50% accurate). Energy is the second-heaviest weight in the profiler — bad energy → bad neuro scores → wrong playlists.
+
+### Audio download progression
+
+| Stage | Clips | What changed |
+|-------|-------|-------------|
+| Start | 34 | 33 from Day 4 experiments |
+| First download (yt-dlp basic) | 1,069 | Duration-verified Strategy D, skip Spotify previews |
+| Duration recovery | +176 | Derived duration_ms from max(ms_played) in listening history |
+| Relaxed tolerance (15s→30s) | +43 | Caught Bollywood songs with padded intros |
+| --ignore-errors fix | +29 | yt-dlp was failing on blocked videos instead of skipping them |
+| Title-match fallback (no duration check) | +33 | For songs where YouTube only has music videos (different length) |
+| **Final** | **1,348** | **99.1% of library** |
+
+### The --force bug (cost $1.40 and 2 hours)
+
+`analyze-audio --force` used `upsert_song_classification()` which does a full row replacement. This wiped LLM data (valence, mood_tags, genre_tags, raw_response) for every song Essentia touched. Required a full LLM reclassification ($0.70, ~1 hour) to restore.
+
+**Made this mistake TWICE** — ran --force knowing the bug existed the second time instead of fixing it first. The fix was 10 lines (targeted UPDATE instead of full upsert). Should have fixed the code first, then re-run.
+
+**The fix:**
+- Essentia now does `UPDATE ... SET bpm=?, key=?, mode=?, energy=?, acousticness=?` (only its reliable fields)
+- Does NOT touch: valence, mood_tags, genre_tags, instrumentalness, danceability, raw_response
+- Reads existing `classification_source` from DB to correctly append `+essentia`
+- For new songs (no existing row): falls back to full `upsert_song_classification`
+
+### Key decisions
+
+**Duration tolerance: 15s → 30s → 45s.** Initially strict (15s) to avoid wrong audio. But Bollywood songs on YouTube have padded intros/outros (music video vs audio track). 45s catches these while still rejecting genuinely wrong songs. The trim-to-30s function means we only analyze 30 seconds anyway.
+
+**--ignore-errors was the biggest unlock.** yt-dlp fails the entire search if ONE video in the results is unavailable/blocked. Adding `--ignore-errors` makes it skip those and return the rest. Recovered Safarnama, The Scientist, Channa Mereya, and dozens of other popular songs that were incorrectly marked as "unfindable."
+
+**Title-match fallback for the last 37.** For songs where duration verification fails (music video is a different length), we search YouTube, pick the result with the best title match, and download regardless of duration. We trim to 30 seconds anyway, so a 4-minute music video and a 3-minute audio track produce the same 30-second analysis clip. Recovered 33 of 37.
+
+**Bollywood artist = composer OR singer.** Spotify lists either the composer (Pritam) or singer (Arijit Singh) inconsistently. YouTube search fails when Spotify says "Pritam" but every YouTube video says "Arijit Singh." Added context to LLM prompt so future classifications consider both roles.
+
+**Essentia UPDATE should only write what it's reliable for.** Essentia is good at: BPM, key, mode, energy, acousticness. It's bad at: danceability (42%), instrumentalness (46%). The UPDATE path only sets the good fields. The INSERT path (new songs) sets everything since there's nothing to preserve.
+
+### Final intelligence state
+
+| Metric | Start of day | End of day |
+|--------|-------------|-----------|
+| Essentia-validated | 33/1,360 (2%) | 1,348/1,360 (99.1%) |
+| Confidence ≥ 0.7 | 33 | 1,339 |
+| Para↔Grnd correlation | 0.921 | 0.638 |
+| LLM-only songs | 1,327 | 12 |
+| Audio clips | 34 | 1,348 |
+
+### Key learnings
+
+36. **Fix the bug BEFORE re-running the broken code.** Ran --force with a known data-wiping bug, twice. Cost $1.40 and 2 hours. The fix was 10 lines that should have come first.
+
+37. **--ignore-errors is essential for yt-dlp search.** One blocked video kills the entire search without it. This was the biggest unlock for the 74 "unfindable" songs — they were findable all along, just behind a blocked video in the search results.
+
+38. **Duration verification tolerance should match the use case.** 15s was too strict for Bollywood (music videos have padding). 45s is right — catches the right song even with intro/outro differences. Trim-to-30s means the actual analysis clip is consistent regardless.
+
+39. **Derive data from what you already have.** 197 songs were missing duration_ms (Spotify rate-limited). But we had their play events in listening_history — max(ms_played) approximates the song's duration. Zero API calls needed.
+
+40. **Spotify's artist field is unreliable for Bollywood.** Could be composer or singer, inconsistently. This affects both YouTube search (wrong search terms) and LLM classification (wrong context). Added to LLM prompt for future runs.
+
+### 774 tests passing, all green.

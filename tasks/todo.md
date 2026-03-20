@@ -169,13 +169,19 @@
 - [x] Staff engineer audit: 3 MUST FIX + 4 SHOULD FIX, all resolved
 - [x] 697 tests passing
 
-## Essentia Full Library (IN PROGRESS — running in background)
-- [x] Audio download: 1,069/1,360 clips downloaded (293 failed: duration mismatch, bot detection, unavailable)
+## Essentia Full Library (DONE)
+- [x] Audio download: 1,348/1,360 clips (99.1%). Fixed with --ignore-errors, 45s tolerance, title-match fallback.
 - [x] Recovered 197 missing duration_ms from listening history (max ms_played)
-- [~] Additional download for 197 newly-eligible songs (running)
-- [~] Essentia analysis: ~100/1,069 analyzed (running, ~2-3 hours remaining)
-- [ ] Recompute scores: `python main.py recompute-scores`
-- [ ] Re-run 3 product questions (accuracy, optimality, variation) to measure improvement
+- [x] Essentia analysis: 1,348 songs analyzed. Fixed transient failures with re-run.
+- [x] Fixed --force bug: Essentia now does targeted UPDATE, preserves LLM fields (valence, mood_tags, etc.)
+- [x] LLM reclassification: 1360/1360 done, 0 failures. Full Essentia+LLM blend.
+- [x] Recompute scores: 1360 songs. Para↔Grnd r=0.638 (was 0.921 at start of day).
+- [x] Validation: 0/140 weak matches, 99.1% Essentia-validated.
+- [x] Staff audit: 2 MUST FIX + 5 SHOULD FIX, all resolved. 774 tests passing.
+
+### Remaining data gaps
+- [ ] **12 songs LLM-only** — 6 no YouTube results, 6 missing duration_ms (Spotify rate-limited). Acceptable — 99.1% coverage.
+- [ ] **~869 songs missing release_year** — Spotify rate limit. Run `python main.py backfill-release-years` when limit clears.
 
 ## Day 6: Playlist Creation + End-to-End Flow
 _Not started_
