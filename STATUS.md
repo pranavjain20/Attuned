@@ -1,126 +1,93 @@
 # Attuned — Current Status
 
 **Last updated:** Mar 19, 2026
-**Current phase:** Day 4b complete. Classification layer done. All 1360 songs classified with energy/acousticness. Ready for Day 5 matching engine.
-**Next action:** Day 5 — Matching engine (engagement-weighted song selection from classified library).
+**Current phase:** Era cohesion implemented. Playlist generation working (dry-run tested). 774 tests passing.
+**Next action:** Finish release_year backfill (rate-limited ~24h), then reclassify songs with improved prompt, then Day 6.
+
+### Background: Essentia analysis running
+Audio clips downloaded for 1,069/1,360 songs. Essentia analysis in progress (~100/1,069 done, ~2-3 hours remaining). Once done, run `recompute-scores` to update neuro scores with measured energy/acousticness (71%/62% accuracy vs LLM's 42%/50%). 197 additional songs got duration_ms recovered from listening history.
+
+### Blocked: Spotify rate limit
+Backfill of release_year hit Spotify's rate limit after 548/1,623 songs. Fixed batch endpoint (50x fewer calls). Once limit clears (~24h from Mar 19 evening), run:
+```
+python main.py backfill-release-years     # ~22 API calls with batch fix
+python main.py classify-songs --provider openai --reclassify  # With release year in prompt
+python main.py recompute-scores           # Recompute neuro scores (~2 sec)
+python main.py generate                   # Push real playlist to Spotify
+```
 
 ---
 
-## Classification Layer — Final State
+## What's Done (Era Cohesion + Playlist Generation)
 
-All 1360 songs fully classified with: BPM, energy, acousticness, valence, danceability, instrumentalness, mode, mood/genre tags, para/symp/grounding scores. 100% energy coverage (LLM estimates + Essentia for 33 songs with audio).
+### Era Cohesion
+- Genre-aware Gaussian decay on release year: hip-hop σ=2 (tight), ghazal σ=12 (loose), Bollywood σ=6
+- Uses larger sigma of two songs (more permissive wins). None year → 0.5 neutral.
+- `release_year` column added to songs table with migration
+- Spotify client extracts release_year from album.release_date
+- `backfill-release-years` CLI command
+- Batch endpoint fix: `sp.tracks()` (50/call) instead of `sp.track()` (1/call)
+- 491/1,360 classified songs have release_year data
 
-**Accuracy (59-song cross-validated test set):**
-- Bucket accuracy: 66% (discrete 3-bucket evaluation)
-- Product accuracy: 83% (score above threshold for correct playlist selection)
-- Safety: 86% (opposite dimension not dominant)
-- Within one adjacent bucket: 93%
+### Cohesion Weight Tuning
+- Era weight 0.10 → 0.20 (genre 0.25→0.20, mood 0.20→0.15)
+- At 0.10: max era swing was 0.06 — couldn't exclude cross-era songs
+- At 0.20: max era swing is 0.12 — correctly filters 1999 songs from 2010s clusters
+- Tested: Chunnari Chunnari (1999) excluded from 2009–2018 Bollywood cluster
 
-**Architecture:** Confidence-aware ensemble (formula + LLM) with energy-based routing. Essentia audio features when available, LLM estimates as fallback. See `tasks/accuracy_tuning_learnings.md` for full session log.
+### LLM Prompt Improvement
+- Release year added to classification prompt: `"Jee Le Zaraa" by Vishal Dadlani (album: Talaash) (2012)`
+- Helps disambiguate songs with common Hindi phrases as titles
+- Both `get_songs_needing_llm` queries updated to include release_year
 
-**Key insight:** Bucket accuracy (66%) was the wrong evaluation metric. The matching engine uses continuous scores with thresholds, not discrete buckets. A song with PARA=0.65, GRND=0.70 works for both calming and grounding playlists. Product-relevant accuracy is 83%.
+### Playlist Generation (dry-run tested)
+- State: Baseline (Recovery 59%, HRV 43ms)
+- 20 tracks selected, mean cohesion 0.612, dominant genre: Bollywood
+- Era range with full-data pool: 2009–2018 (tight 2010s cluster)
+
+### Known Issues
+- Jee Le Zaraa (Talaash) misclassified as upbeat (energy 0.7, valence 0.8) — actually slow/dark. Release year in prompt should fix on reclassification.
+- 64% of classified songs still missing release_year (rate-limited)
+
+### 774 tests passing.
 
 ---
+
+## What's Done (Day 5b: Matching Engine Rewrite)
+
+Neuro-score dot product, seed-and-expand cohesion, unified ranking. 0/140 weak matches, ~74% optimal, ~45% daily turnover. Para↔Grnd r: 0.921→0.776.
 
 ## What's Done (Day 4b: Accuracy Tuning)
 
-### Accuracy progression: 48% → 68%
+48%→68% accuracy. Confidence-aware ensemble. Product accuracy 83%. See `tasks/accuracy_tuning_learnings.md`.
 
-| Stage | Score | What changed |
-|-------|-------|-------------|
-| Original formula | 48% (12/25) | Narrow sigmoids, RMS energy, no blend |
-| + Ground truth fix | 56% (14/25) | Locked out of Heaven: mid → high |
-| + Reclassification | 64% (16/25) | Valence calibration, BPM corrections, onset rate energy |
-| + GRND gaussian narrowing | 68% (17/25) | sigma 15→10 reduced GRND gravity well |
-| + Confidence-aware ensemble | 72% (18/25) | Structural knowledge about when each source fails |
-| + LLM energy/acousticness | 68% combined (40/59) | 72% on original 25, 65% on fresh 34 |
+## What's Done (Day 4: LLM Classification)
 
-### Architecture changes
-
-**Confidence-aware ensemble** (replaced weighted-average blend):
-- Agreement (formula + LLM same bucket) → 50/50 blend
-- Formula says GRND in BPM 70-110 zone + energy < 0.40 → trust LLM (25/75)
-- Formula says GRND in BPM 70-110 zone + energy ≥ 0.40 → trust formula (70/30)
-- Other disagreements → slight LLM preference (40/60)
-- Uses structural knowledge about when each source fails, not fixed genre-based weights
-
-**LLM energy/acousticness fallback:** When no Essentia audio data (98% of library), LLM now provides energy + acousticness estimates. Less accurate than Essentia (42% vs 71%) but infinitely better than default 0.5. Gives the ensemble the signal it needs to distinguish quiet calming songs from moderate grounding ones.
-
-**GRND tempo gaussian narrowed:** sigma 15→10. The old gaussian dominated BPM 70-105 (63% of library). Narrower gaussian means GRND only wins for songs genuinely at moderate tempo.
-
-### Bug fixes
-- `has_essentia` exact-match bug: `== "essentia"` → `"essentia" in source`. Previous reclassification wiped Essentia data for "essentia+llm" songs.
-- Valence calibration added to LLM prompt (devotional/sad/nostalgic songs)
-- `felt_tempo` field added (LLM mostly ignores it but schema is ready)
-
-### New CLI commands
-- `python main.py recompute-scores` — recompute formula + ensemble from existing DB (2 seconds, no API calls)
-- `python main.py classify-songs --reclassify` — re-run LLM on all songs
-- `python main.py analyze-audio --force` — recompute Essentia on all audio clips
-
-### Error severity (59 songs)
-- Correct: 40/59 (68%)
-- Adjacent error (off by one bucket): 15/59 (25%)
-- Catastrophic error (PARA↔SYMP): 4/59 (7%)
-- "Close enough" (correct + adjacent): 55/59 (93%)
-
-### 617 tests passing, all green.
-
-### Detailed session log: `tasks/accuracy_tuning_learnings.md`
-
----
-
-## What's Done (Day 4: LLM Song Classification Pipeline)
-
-### Neurological Profiler (`classification/profiler.py`)
-- `sigmoid_decay`, `sigmoid_rise`, `gaussian` — primitive math functions
-- `compute_parasympathetic` — calming score (tempo 0.35, energy 0.25, acousticness 0.10, etc.)
-- `compute_sympathetic` — energizing score
-- `compute_grounding` — emotional grounding with Gaussian-centered BPM at 85 sigma=10
-- `compute_neurological_profile` — public API with None-handling
-
-### LLM Classifier (`classification/llm_classifier.py`)
-- `_build_prompt` — "Database recall" framing with rich context
-- `_call_openai` / `_call_anthropic` — Provider-agnostic API calls
-- `_validate_song_result` — Validates BPM, felt_tempo, energy, acousticness, valence, etc.
-- `_pick_best_bpm` — LLM primary, octave error detection
-- `_merge_with_essentia` — Essentia for key/mode/energy/acousticness when available, LLM estimates as fallback
-- `_blend_neuro_scores` — Confidence-aware ensemble (not a weighted average)
-- `classify_songs` — Orchestrator with `--reclassify` support
-
-### Full Library Classification
-- 1360 songs classified, 0 failures
-- 33 songs with Essentia audio features, 1327 with LLM-only estimates
-
----
-
-## What's Done (Day 4 Pre-Work)
-
-(See previous STATUS.md sections — unchanged)
+1360 songs classified. Profiler + LLM + Essentia hybrid. 0 failures.
 
 ## What's Done (Day 3: WHOOP Intelligence)
 
-(See previous STATUS.md sections — unchanged)
+Baselines, trends, sleep analysis, 8-state classifier. 823 days validated.
 
 ## What's Done (Day 2: Engagement Scoring)
 
-(See previous STATUS.md sections — unchanged)
+5-signal scoring, dedup, 669 songs scored.
 
 ## What's Done (Day 1: Data Foundation)
 
-(See previous STATUS.md sections — unchanged)
+Extended history ingestion, WHOOP/Spotify APIs, schema, 33K records.
 
 ---
 
 ## What's Next
 
-- **IMMEDIATE:** Full reclassification with LLM energy/acousticness (first thing next session)
-- Day 5: Matching engine (engagement-weighted)
-- Day 6: Playlist creation + end-to-end flow
-- Day 7: Sequencing + polish + hardening
+1. **Immediate (after rate limit clears):** Finish backfill, reclassify with release year, generate real playlist
+2. **Day 6:** Playlist sequencing (iso principle) + end-to-end flow
+3. **Day 7:** Polish + hardening
+4. **Future:** Essentia on more songs, playlist taste import, onboarding
 
 ## API Keys Status
 
 - WHOOP: registered, OAuth working, full history synced
-- Spotify: registered, OAuth working, library synced
-- OpenAI: ~$2 credits remaining (after 2 full + several partial reclassifications)
+- Spotify: registered, OAuth working, library synced — **rate-limited until ~Mar 20 evening**
+- OpenAI: ~$2 credits remaining

@@ -80,3 +80,24 @@ _Patterns, mistakes, and rules discovered during development. Updated as we go._
 - **Boundary labels in ground truth create phantom errors.** 11/14 adjacent "errors" were songs labeled low-mid, mid, or mid-high — inherently ambiguous. Adjusted accuracy accounting for ground truth ambiguity: 85%.
 - **Catastrophic errors (7%) are perception gaps, not algorithm gaps.** Songs where measured properties don't match personal perception ("this 109 BPM song feels gentle to me"). Requires personalization or neural audio models — not a better formula.
 - **Know when to stop optimizing and ship.** 83% product accuracy, 93% within one bucket, 86% safety. The remaining gap is data (more audio clips), personalization (feedback loop), and perception modeling. None are classification algorithm improvements.
+
+## Day 5a (Matching Engine v1)
+
+- **Clamp sigmoid exponents to prevent OverflowError.** `math.exp(x)` overflows when x > ~709. Zero-width target ranges with distant values create exponents in the thousands. A `min(exponent, 500.0)` clamp is cheap insurance. Caught by a test — write edge case tests for mathematical functions.
+- **Fallback paths need the same output contract as the happy path.** The engagement fallback path created incomplete breakdown dicts (missing property_match, engagement, variety, selection_score). The CLI expected these fields → crash. When writing a fallback, match the output structure exactly. The audit caught this before production.
+
+## Day 5b (Matching Engine Rewrite)
+
+- **Measure the right thing.** We spent hours optimizing overlap % and unique song count. The metrics that actually matter are: (1) does every song fit the state, (2) are these the best available songs, (3) does the playlist feel fresh across days. Wrong metrics → wrong optimizations.
+- **Staleness is a structural constraint, not a scoring signal.** Weighting staleness additively in the formula (0.15) compressed dynamic range. 77% of songs maxed out at staleness=1.0, adding a flat constant. Separating it into a pool constraint ("up to 5 recent") preserved score discrimination.
+- **Unified ranking beats pool splitting.** Splitting into recent/discovery pools and ranking each independently lets mediocre recent songs beat excellent discovery songs. Walking one unified ranking and filtering for "first 5 recent encountered" is strictly better — Pranav's insight.
+- **Variety should be a tiebreaker, not a penalty.** A 0.3x multiplier turns a 0.9 song into 0.27 — destroyed by a 0.35 mediocre song. A 0.02 subtractive nudge breaks ties among near-identical songs without overriding genuine quality differences. The product question is "among equally good songs, prefer the one I haven't heard recently" — not "penalize good songs."
+- **Unused data in the DB is a missed opportunity.** Mood tags sat unused for the entire project. Adding them as a 15% profiler weight created the semantic dimension we needed to decorrelate para from grnd. Always audit what data you already have before building new pipelines.
+- **Simulate before committing profiler changes.** Tested 6 grounding formula configurations with full correlation and overlap analysis before recomputing 1,360 songs. V5 (most aggressive) would have over-separated. V6 (moderate) was correct. Profiler changes are expensive to revert once recomputed.
+- **Feature correlation is a profiler problem, not a matching problem.** The dot product (matching engine) was correct. The issue was that para and grnd were computed from the same features (BPM, energy, acousticness) in the same direction. Fixing the profiler's grounding formula and adding mood tags — not changing the matching algorithm — is what reduced correlation from 0.921 to 0.776.
+
+## Era Cohesion
+
+- **LLM misidentifies songs with common Hindi phrases as titles.** "Jee Le Zaraa" (Talaash, 2012) is a slow, dark song but was classified as energy=0.7, valence=0.8, mood=["uplifting", "celebratory"]. The LLM likely confused it with the common Hindi phrase "jee le zara" (live a little) which appears in many upbeat songs. Songs with generic Hindi phrases as titles are high-risk for LLM misclassification. Flag for manual review or reclassification with stronger context (album name, artist, year).
+- **Cohesion weight must be high enough to actually exclude.** Era weight at 0.10 only produced a 0.06 max swing — not enough to exclude a 1999 song from a 2010s cluster when genre/mood/BPM all matched. Bumped to 0.20 (swing 0.12) which correctly filtered cross-era songs. For any cohesion dimension, test that the weight produces enough swing to change the playlist, not just shift similarity scores.
+- **Spotify rate limits are per-app, not per-endpoint.** Single-track fetches (`sp.track()`) burn through rate limits 50x faster than batch fetches (`sp.tracks()`). Always use batch endpoints. The batch /v1/tracks endpoint that returned 403 on new apps works fine on established apps.

@@ -143,11 +143,70 @@
 - [x] CPO assessment: classification layer is good enough. Continuous scores serve the matching engine.
 - [x] 621 tests passing
 
-## Day 5: Matching Engine (engagement-weighted)
-_Next up_
+## Day 5a: Matching Engine v1 (DONE — superseded by 5b)
+- [x] config.py — TARGET_RANGES, MATCH_WEIGHTS, selection weights, variety penalties
+- [x] matching/state_mapper.py — state → target property ranges (10 tests)
+- [x] matching/query_engine.py — scoring + selection pipeline (49 tests)
+- [x] db/queries.py — insert_generated_playlist, get_recent_playlist_track_uris
+- [x] main.py — match-songs CLI with --state and --date flags
+- [x] Real data validation: fatigue/peak/baseline/poor_recovery all produce intuitively correct playlists
+- [x] Staff engineer audit: 1 critical bug (fallback breakdown), fixed + tested
+- [x] 680 tests passing
+
+## Day 5b: Matching Engine Rewrite (DONE)
+- [x] Replaced range-box scoring with neuro-score dot product
+- [x] Diagnosed para↔grnd correlation (r=0.921) via 18 diagnostic analyses
+- [x] Decorrelated grounding formula: BPM 85→90, energy 0.35→0.40, instrumentalness flipped, acousticness gaussian, valence 0.45→0.55
+- [x] Integrated mood tags into profiler as 15% weight (semantic dimension orthogonal to audio)
+- [x] Widened state profile gaps: fatigue (0.95/0/0.05), physical (0.60/0/0.40) — gap 0.35 vs old 0.15
+- [x] Pool-based selection → unified ranking with recent anchors (Pranav's algorithm)
+- [x] Variety penalty (0.3x multiplier) → freshness nudge (0.02 subtraction tiebreaker)
+- [x] Product evaluation: 0/140 weak matches, ~74% optimal, ~45% daily turnover
+- [x] Para↔Grnd correlation: 0.921 → 0.776
+- [x] Detailed session log: tasks/matching_engine_learnings.md
+- [x] Fixed download-audio to use duration-verified Strategy D only (removed unreliable strategies)
+- [x] Added --all flag to download audio for all classified songs (skip Spotify preview, yt-dlp only)
+- [x] Staff engineer audit: 3 MUST FIX + 4 SHOULD FIX, all resolved
+- [x] 697 tests passing
+
+## Essentia Full Library (IN PROGRESS — running in background)
+- [x] Audio download: 1,069/1,360 clips downloaded (293 failed: duration mismatch, bot detection, unavailable)
+- [x] Recovered 197 missing duration_ms from listening history (max ms_played)
+- [~] Additional download for 197 newly-eligible songs (running)
+- [~] Essentia analysis: ~100/1,069 analyzed (running, ~2-3 hours remaining)
+- [ ] Recompute scores: `python main.py recompute-scores`
+- [ ] Re-run 3 product questions (accuracy, optimality, variation) to measure improvement
 
 ## Day 6: Playlist Creation + End-to-End Flow
 _Not started_
 
 ## Day 7: Sequencing + Polish + Hardening
 _Not started_
+
+## Future: Personalization Features (deferred — design research done)
+_Research completed in docs/era_cohesion_research.md and docs/playlist_cohesion_research.md_
+
+### Era Cohesion
+- [x] Genre-aware era similarity in cohesion layer (sigma varies by genre)
+- [x] release_year column + migration, upsert_song param, get_all_classified_songs
+- [x] Spotify client extracts release_year from album.release_date
+- [x] backfill-release-years CLI command
+- [x] Batch endpoint fix: sp.tracks() 50-at-a-time instead of sp.track() one-by-one
+- [x] 8 new era similarity tests, 774 total tests passing
+- [~] Backfill release_year data: 491/1360 classified songs done, rate-limited ~24h
+- [ ] Finish backfill after rate limit clears (~22 API calls remaining with batch fix)
+- [ ] Tune sigma values and weight based on real playlist output
+
+### Playlist Taste Import (later — needs new Spotify scope)
+- [ ] Add playlist-read-private scope, re-auth
+- [ ] Sync user-owned playlists into playlist_tracks table
+- [ ] Compute song co-occurrence from playlists
+- [ ] Add taste similarity dimension to cohesion layer
+- [ ] Dynamic weighting: disable when <3 playlists
+
+### Onboarding (later — after core pipeline complete)
+- [ ] user_preferences table (key-value)
+- [ ] `python main.py onboard` CLI command (2-3 questions)
+- [ ] Iso principle preference (match mood vs lift up)
+- [ ] Genre/artist exclusions
+- [ ] Cold-start flow for new users (liked songs + top tracks + classify)
