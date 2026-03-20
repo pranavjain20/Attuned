@@ -49,9 +49,9 @@ python main.py generate
 
 ---
 
-## What's Done (Day 5b: Matching Engine Rewrite)
+## What's Done (Day 5b+5c: Matching Engine Rewrite + Essentia Full Library)
 
-Neuro-score dot product, seed-and-expand cohesion, unified ranking. 0/140 weak matches, ~74% optimal, ~45% daily turnover. Para↔Grnd r: 0.921→0.776.
+Neuro-score dot product, seed-and-expand cohesion, unified ranking, freshness nudge. Profiler decorrelated (grounding ≠ parasympathetic). Mood tags as 15% profiler weight. Essentia on 1,348/1,360 songs (99.1%). Para↔Grnd r: 0.921→0.638. 0/140 weak matches, ~45% daily turnover. Fixed Essentia --force merge bug. See `docs/HOW_IT_WORKS.md` for complete technical guide, `tasks/matching_engine_learnings.md` for session log.
 
 ## What's Done (Day 4b: Accuracy Tuning)
 
@@ -80,10 +80,10 @@ Extended history ingestion, WHOOP/Spotify APIs, schema, 33K records.
 1. **Immediate (after rate limit clears):** Finish backfill, reclassify with release year, generate real playlist
 2. **Day 6:** Playlist sequencing (iso principle) + end-to-end flow
 3. **Day 7:** Polish + hardening
-4. **Future:** Essentia on more songs, playlist taste import, onboarding
+4. **Future:** Playlist taste import, onboarding, remaining 12 songs (YouTube unavailable)
 
 ## API Keys Status
 
 - WHOOP: registered, OAuth working, full history synced
 - Spotify: registered, OAuth working, library synced — **rate-limited until ~Mar 20 evening**
-- OpenAI: ~$2 credits remaining
+- OpenAI: ~$0.60 credits remaining (after 2 full reclassifications today)
