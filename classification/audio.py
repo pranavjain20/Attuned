@@ -183,7 +183,7 @@ def download_from_youtube_verified(
     expected_duration_s: float,
     album: str | None = None,
     num_results: int = 5,
-    tolerance_s: float = 15.0,
+    tolerance_s: float = 45.0,
 ) -> bool:
     """Search YouTube for multiple results and download the best duration match.
 
@@ -210,6 +210,7 @@ def download_from_youtube_verified(
                 ytdlp_bin,
                 search_query,
                 "--dump-json",
+                "--ignore-errors",
                 "--no-playlist",
                 "--quiet",
                 "--no-warnings",
@@ -218,8 +219,9 @@ def download_from_youtube_verified(
             text=True,
             timeout=60,
         )
-        if result.returncode != 0:
-            logger.warning("yt-dlp metadata search failed: %s", result.stderr[:200])
+        # With --ignore-errors, returncode may be non-zero but stdout has valid results
+        if not result.stdout.strip():
+            logger.warning("yt-dlp metadata search returned no results: %s", result.stderr[:200])
             return False
     except subprocess.TimeoutExpired:
         logger.warning("yt-dlp metadata search timed out for '%s'", base_query)
@@ -293,14 +295,53 @@ def download_from_youtube_verified(
 
         actual_file = _find_ytdlp_output(temp_path)
         if actual_file and actual_file.exists():
-            actual_file.rename(output_path)
-            return True
+            trimmed = _trim_to_30s(actual_file, output_path)
+            if actual_file != output_path and actual_file.exists():
+                actual_file.unlink()
+            return trimmed
 
         logger.warning("yt-dlp output file not found after download")
         return False
 
     except subprocess.TimeoutExpired:
         logger.warning("yt-dlp download timed out for '%s'", best["title"])
+        return False
+
+
+def _trim_to_30s(input_path: Path, output_path: Path) -> bool:
+    """Trim an audio file to 30 seconds using ffmpeg.
+
+    Starts at 30 seconds in (skip intro) and takes 30 seconds.
+    Falls back to start if file is shorter than 60 seconds.
+    """
+    try:
+        # Probe duration first
+        probe = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+             "-of", "csv=p=0", str(input_path)],
+            capture_output=True, text=True, timeout=10,
+        )
+        duration = float(probe.stdout.strip()) if probe.stdout.strip() else 0
+
+        # Start 30s in to skip intros, unless file is short
+        start = 30 if duration > 60 else 0
+
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-i", str(input_path),
+             "-ss", str(start), "-t", "30",
+             "-ac", "1", "-ar", "22050",
+             "-q:a", "5", str(output_path)],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0 and output_path.exists():
+            return True
+        logger.warning("ffmpeg trim failed: %s", result.stderr[:200])
+        return False
+    except (subprocess.TimeoutExpired, ValueError, FileNotFoundError):
+        # Fallback: just rename without trimming
+        if input_path.exists():
+            input_path.rename(output_path)
+            return True
         return False
 
 
@@ -361,6 +402,8 @@ def acquire_audio_clips(
 
     # Spotify preview URLs (skip for bulk downloads to avoid rate limits)
     preview_urls: dict[str, str | None] = {}
+    if not skip_preview and sp_client is None:
+        raise ValueError("sp_client required when skip_preview=False")
     if not skip_preview:
         uris = [s["spotify_uri"] for s in uris_needing_download]
         preview_urls = fetch_preview_urls(sp_client, uris)
