@@ -291,9 +291,12 @@ def _cmd_classify_state() -> None:
 
 
 def _cmd_backfill_release_years() -> None:
+    import time
+
+    import spotipy
+
     from spotify.auth import get_spotify_client
-    from spotify.client import get_tracks_metadata
-    from config import SPOTIFY_BATCH_SIZE
+    from spotify.client import _parse_track
 
     conn = get_connection()
     sp = get_spotify_client(conn)
@@ -311,22 +314,52 @@ def _cmd_backfill_release_years() -> None:
 
     print(f"Backfilling release_year for {len(missing)} songs...")
     updated = 0
-    for i in range(0, len(missing), SPOTIFY_BATCH_SIZE):
-        batch_uris = missing[i : i + SPOTIFY_BATCH_SIZE]
-        track_ids = [uri.split(":")[-1] for uri in batch_uris]
-        metadata = get_tracks_metadata(sp, track_ids)
-        for m in metadata:
-            if m.get("release_year") is not None:
-                conn.execute(
-                    "UPDATE songs SET release_year = ? WHERE spotify_uri = ?",
-                    (m["release_year"], m["uri"]),
-                )
-                updated += 1
-        conn.commit()
-        if (i // SPOTIFY_BATCH_SIZE + 1) % 5 == 0:
-            print(f"  Processed {min(i + SPOTIFY_BATCH_SIZE, len(missing))}/{len(missing)}...")
+    failed = 0
 
-    print(f"\nBackfill complete: {updated} songs updated with release_year")
+    for i, uri in enumerate(missing):
+        track_id = uri.split(":")[-1]
+        try:
+            track = sp.track(track_id)
+            if track:
+                parsed = _parse_track(track)
+                if parsed and parsed.get("release_year") is not None:
+                    conn.execute(
+                        "UPDATE songs SET release_year = ? WHERE spotify_uri = ?",
+                        (parsed["release_year"], uri),
+                    )
+                    updated += 1
+        except spotipy.SpotifyException as e:
+            if e.http_status == 429:
+                retry_after = int(e.headers.get("Retry-After", 30))
+                conn.commit()  # Save progress before waiting
+                print(f"\n  Rate limited at {updated + failed}/{len(missing)}. "
+                      f"Waiting {retry_after}s ({retry_after // 60}m)...")
+                time.sleep(retry_after + 1)
+                # Retry this same track
+                try:
+                    track = sp.track(track_id)
+                    if track:
+                        parsed = _parse_track(track)
+                        if parsed and parsed.get("release_year") is not None:
+                            conn.execute(
+                                "UPDATE songs SET release_year = ? WHERE spotify_uri = ?",
+                                (parsed["release_year"], uri),
+                            )
+                            updated += 1
+                except Exception:
+                    failed += 1
+            else:
+                failed += 1
+        except Exception:
+            failed += 1
+
+        # Commit and log every 50 songs
+        if (i + 1) % 50 == 0:
+            conn.commit()
+            print(f"  {i + 1}/{len(missing)} processed ({updated} updated, {failed} failed)")
+
+    conn.commit()
+    print(f"\nBackfill complete: {updated} updated, {failed} failed")
 
     # Summary
     row = conn.execute("SELECT COUNT(*) as cnt FROM songs WHERE release_year IS NOT NULL").fetchone()

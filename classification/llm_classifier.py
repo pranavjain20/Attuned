@@ -61,6 +61,7 @@ Rules:
 - BPM must be an integer. Look up the actual BPM, don't guess from genre.
 - When audio features are provided, use them to inform your classification.
 - For Indian songs: use genre tags like "bollywood", "hindi", "punjabi", "sufi", etc.
+- For Bollywood/Indian music: the listed "artist" may be the composer (Pritam, A.R. Rahman) or the singer (Arijit Singh, Atif Aslam). If the listed artist alone doesn't help you identify the song, consider who the other person is (the singer if the artist is the composer, or vice versa) — that may help you recall the song's actual sound and mood.
 - Return ONLY valid JSON. No markdown, no explanations."""
 
 
