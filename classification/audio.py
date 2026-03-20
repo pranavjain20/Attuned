@@ -321,16 +321,18 @@ def acquire_audio_clips(
     sp_client: Any,
     songs: list[dict[str, Any]],
     output_dir: Path,
+    skip_preview: bool = False,
 ) -> dict[str, int]:
     """Orchestrate audio clip acquisition for a list of songs.
 
-    Tries Spotify preview first, falls back to yt-dlp.
-    Skips already-cached clips (idempotent re-runs).
+    Tries Spotify preview first (unless skip_preview=True), then
+    yt-dlp with duration verification. Skips already-cached clips.
 
     Args:
         sp_client: Authenticated Spotipy client.
-        songs: List of song dicts with spotify_uri, name, artist.
+        songs: List of song dicts with spotify_uri, name, artist, duration_ms.
         output_dir: Directory to store audio clips.
+        skip_preview: If True, skip Spotify preview fetch (avoids rate limits for bulk downloads).
 
     Returns:
         Summary stats: {downloaded, failed, already_cached, preview_count, ytdlp_count}
@@ -357,15 +359,23 @@ def acquire_audio_clips(
     if not uris_needing_download:
         return stats
 
-    # Batch-fetch preview URLs for songs needing download
-    uris = [s["spotify_uri"] for s in uris_needing_download]
-    preview_urls = fetch_preview_urls(sp_client, uris)
+    # Spotify preview URLs (skip for bulk downloads to avoid rate limits)
+    preview_urls: dict[str, str | None] = {}
+    if not skip_preview:
+        uris = [s["spotify_uri"] for s in uris_needing_download]
+        preview_urls = fetch_preview_urls(sp_client, uris)
 
-    for song in uris_needing_download:
+    import time as _time
+
+    for idx, song in enumerate(uris_needing_download):
         uri = song["spotify_uri"]
         clip_path = output_dir / uri_to_filename(uri)
 
-        # Try Spotify preview first
+        # Pace requests to avoid YouTube bot detection (every 5 downloads)
+        if idx > 0 and idx % 5 == 0:
+            _time.sleep(3)
+
+        # Try Spotify preview first (if not skipped)
         preview_url = preview_urls.get(uri)
         if preview_url and download_preview(preview_url, clip_path):
             stats["downloaded"] += 1
@@ -373,11 +383,21 @@ def acquire_audio_clips(
             logger.info("Downloaded preview: %s — %s", song["name"], song["artist"])
             continue
 
-        # Fallback to yt-dlp
-        if download_from_youtube(song["name"], song["artist"], clip_path, album=song.get("album")):
+        # yt-dlp with duration verification (Strategy D — only reliable strategy)
+        duration_ms = song.get("duration_ms")
+        if not duration_ms:
+            stats["failed"] += 1
+            logger.warning("No duration_ms for '%s' — cannot verify YouTube match, skipping", song["name"])
+            continue
+
+        expected_s = duration_ms / 1000.0
+        if download_from_youtube_verified(
+            song["name"], song["artist"], clip_path,
+            expected_duration_s=expected_s, album=song.get("album"),
+        ):
             stats["downloaded"] += 1
             stats["ytdlp_count"] += 1
-            logger.info("Downloaded via yt-dlp: %s — %s", song["name"], song["artist"])
+            logger.info("Downloaded via yt-dlp (verified): %s — %s", song["name"], song["artist"])
             continue
 
         stats["failed"] += 1

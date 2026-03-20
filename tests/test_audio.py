@@ -172,7 +172,8 @@ class TestDownloadFromYoutube:
 class TestAcquireAudioClips:
     def _make_songs(self, uris):
         return [
-            {"spotify_uri": uri, "name": f"Song {i}", "artist": f"Artist {i}"}
+            {"spotify_uri": uri, "name": f"Song {i}", "artist": f"Artist {i}",
+             "duration_ms": 210000}
             for i, uri in enumerate(uris)
         ]
 
@@ -204,18 +205,18 @@ class TestAcquireAudioClips:
         assert stats["ytdlp_count"] == 0
         mock_dl.assert_called_once()
 
-    def test_falls_back_to_ytdlp(self, tmp_path):
+    def test_falls_back_to_ytdlp_verified(self, tmp_path):
         songs = self._make_songs(["uri:1"])
         sp = MagicMock()
         sp.tracks.return_value = {"tracks": [{"preview_url": None}]}
 
         with patch("classification.audio.download_preview") as mock_preview, \
-             patch("classification.audio.download_from_youtube", return_value=True) as mock_yt:
+             patch("classification.audio.download_from_youtube_verified", return_value=True) as mock_yt:
             stats = acquire_audio_clips(sp, songs, tmp_path)
 
         assert stats["downloaded"] == 1
         assert stats["ytdlp_count"] == 1
-        mock_preview.assert_not_called()  # No preview URL, so preview not attempted
+        mock_preview.assert_not_called()
         mock_yt.assert_called_once()
 
     def test_both_fail_counts_as_failed(self, tmp_path):
@@ -224,7 +225,7 @@ class TestAcquireAudioClips:
         sp.tracks.return_value = {"tracks": [{"preview_url": "https://example.com/p.mp3"}]}
 
         with patch("classification.audio.download_preview", return_value=False), \
-             patch("classification.audio.download_from_youtube", return_value=False):
+             patch("classification.audio.download_from_youtube_verified", return_value=False):
             stats = acquire_audio_clips(sp, songs, tmp_path)
 
         assert stats["downloaded"] == 0
