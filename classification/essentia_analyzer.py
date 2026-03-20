@@ -230,19 +230,53 @@ def analyze_all_songs(
             )
             continue
 
-        upsert_song_classification(conn, {
-            "spotify_uri": uri,
-            "bpm": features["bpm"],
-            "key": features["key"],
-            "mode": features["mode"],
-            "energy": features["energy"],
-            "acousticness": features["acousticness"],
-            "instrumentalness": features["instrumentalness"],
-            "danceability": features["danceability"],
-            "confidence": features["bpm_confidence"],
-            "classification_source": "essentia",
-            "classified_at": datetime.now(timezone.utc).isoformat(),
-        })
+        # Merge Essentia features with existing data — never overwrite LLM fields
+        # (valence, mood_tags, genre_tags, raw_response, etc.)
+        existing = conn.execute(
+            "SELECT classification_source FROM song_classifications WHERE spotify_uri = ?", (uri,)
+        ).fetchone()
+
+        existing_source = existing["classification_source"] if existing else ""
+        existing_source = existing_source or ""
+        new_source = "essentia" if "essentia" in existing_source else (
+            existing_source + "+essentia" if existing_source else "essentia"
+        )
+        now = datetime.now(timezone.utc).isoformat()
+
+        if existing:
+            # UPDATE: merge Essentia fields, preserve LLM fields
+            # Only update properties Essentia is reliable for (energy, acousticness,
+            # BPM, key, mode). Danceability and instrumentalness stay from LLM.
+            conn.execute(
+                """UPDATE song_classifications
+                   SET bpm = ?, key = ?, mode = ?, energy = ?, acousticness = ?,
+                       confidence = MAX(COALESCE(confidence, 0), ?),
+                       classification_source = ?,
+                       classified_at = ?
+                   WHERE spotify_uri = ?""",
+                (
+                    features["bpm"], features["key"], features["mode"],
+                    features["energy"], features["acousticness"],
+                    features["bpm_confidence"],
+                    new_source, now, uri,
+                ),
+            )
+        else:
+            # INSERT: new song with Essentia-only data
+            upsert_song_classification(conn, {
+                "spotify_uri": uri,
+                "bpm": features["bpm"],
+                "key": features["key"],
+                "mode": features["mode"],
+                "energy": features["energy"],
+                "acousticness": features["acousticness"],
+                "instrumentalness": features["instrumentalness"],
+                "danceability": features["danceability"],
+                "confidence": features["bpm_confidence"],
+                "classification_source": "essentia",
+                "classified_at": now,
+            })
+        conn.commit()
         stats["analyzed"] += 1
         logger.info(
             "Analyzed: %s — %s (BPM=%s, key=%s %s)",
