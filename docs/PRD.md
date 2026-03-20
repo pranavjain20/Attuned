@@ -1,9 +1,9 @@
 # Attuned — Product Document
 
-**Version:** 2.2
-**Date:** March 17, 2026
+**Version:** 2.3
+**Date:** March 20, 2026
 **Author:** Pranav Jain
-**Status:** Planning
+**Status:** Day 5 complete. Intelligence layer operational. See docs/HOW_IT_WORKS.md for complete technical guide.
 
 ---
 
@@ -245,7 +245,7 @@ Three computed scores per song:
 - Sympathetic activation potential — fast tempo, high energy, strong beat. These increase arousal and alertness.
 - Emotional grounding potential — high familiarity, moderate tempo, warm timbre. These support emotional regulation.
 
-**Scoring approach:** Parasympathetic and sympathetic scores use sigmoid functions for tempo and energy (modeling monotonic relationships — slower is calmer, faster is more activating). The grounding score uses Gaussian (true peak at ~75 BPM). See docs/RESEARCH.md Section 7 for full formulas.
+**Scoring approach:** Parasympathetic and sympathetic scores use sigmoid functions for tempo and energy (modeling monotonic relationships — slower is calmer, faster is more activating). The grounding score uses Gaussians centered at moderate values (BPM 90, energy 0.40, valence 0.55) because grounding has a genuine peak — too slow loses engagement, too fast loses calm. Grounding is deliberately decorrelated from parasympathetic: inverted instrumentalness (vocals > instrumental), moderate acousticness (warmth > silence), warmer valence. Mood tags contribute 15% weight in all three dimensions, adding semantic signal orthogonal to audio. See docs/HOW_IT_WORKS.md for complete formulas.
 
 **Matching specificity.** Not "calm song for bad recovery" but "60-80 BPM, major key, acousticness > 0.7, valence > 0.6, from liked songs or frequent top tracks." Precise multi-dimensional matching.
 
@@ -368,28 +368,19 @@ Build the LLM classification pipeline. Design the prompt for batches of 5 songs,
 
 **Constraint driving these days:** The matching engine (Day 5) needs both a detected state and classified songs to work.
 
-### Day 5: Matching Engine (engagement-weighted)
+### Day 5: Matching Engine (neuro-score dot product)
 
-Build the state-to-properties mapper — for each of the six states, define target song property ranges grounded in the research (e.g., Accumulated Fatigue → 50-70 BPM, energy ≤ 0.3, acousticness ≥ 0.7). Build the library query that finds matching songs. Add engagement-weighted selection: selection_weight = property_match_score (0.60) + engagement_score (0.30) + variety_factor (0.10). This replaces the old source-based scoring (liked +3, top track +2) with real behavioral data. Add recency penalty for variety: -50% weight if played in yesterday's playlist, -25% if 2 days ago.
+_Note: The original plan used property range boxes and engagement weighting. This was replaced with neuro-score dot product matching after discovering that range boxes filtered out 94% of the library and engagement at 30% weight pushed the same favorites to every playlist. See docs/HOW_IT_WORKS.md for the full evolution._
 
-**Property match score:** For each of the seven properties, compute how well the song fits the state's target range:
-- Inside range: score based on proximity to range center (1.0 at center, 0.7 at edges)
-- Outside range: score decays with distance from nearest edge (sigmoid decay)
+Each state maps to a 3D neuro profile (para/symp/grnd weights). Each song has 3 neuro scores from the profiler. The match score is the normalized dot product — how aligned is the song with what the state needs.
 
-Weight each property (tempo 0.35, energy 0.25, acousticness 0.10, instrumentalness 0.10, valence 0.10, mode 0.05, danceability 0.05). Sum to get property_match_score (0.0-1.0).
+**Selection:** `score = neuro_match × confidence - freshness_nudge`. Unified ranking of all 1,360 songs. Top 60 candidates pass to cohesion engine for sonic coherence filtering (genre, BPM, era, mood clustering). Result: 15-20 songs that are neurologically correct AND sound good together.
 
-Note: The neurological scores (parasympathetic/sympathetic/grounding) are used for playlist description and logging, NOT for selection. Selection uses per-property range matching.
+**No engagement in the formula.** Every classified song (2+ listens) already passed the quality bar. The system's job is: which of YOUR songs has the right neurological properties for what your body needs right now?
 
-**Confidence multiplier in matching:** The LLM confidence field feeds into the property match score — high: 1.0x, medium: 0.8x, low: 0.5x. Songs classified with low confidence have their property match score halved, making them less likely to be selected when strict matching matters.
+**Freshness nudge (0.02 subtraction)** gently swaps near-ties for variety across days. Not a penalty — if a song is clearly the best match, it stays regardless of yesterday's playlist.
 
-Progressive filter relaxation when too few songs match:
-- Step 1: Widen BPM range
-- Step 2: Lower acousticness threshold
-- Step 3: Widen energy range
-- Step 4: Relax instrumentalness and valence constraints
-- Step 5 (terminal fallback): Drop all property constraints, select purely by engagement score. Log warning: "Insufficient library coverage for [state] — playlist selected by engagement only"
-
-**Testable:** For each of 6 states, selected songs make intuitive sense and high-engagement songs appear more.
+**Testable:** For each of 7 states, selected songs make intuitive sense, 0/140 weak matches, ~45% daily turnover on same state.
 
 ### Day 6: Playlist Creation + End-to-End Flow
 
