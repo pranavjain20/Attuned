@@ -78,9 +78,13 @@ def _build_prompt(songs: list[dict[str, Any]]) -> str:
         name = song.get("name", "Unknown")
         album = song.get("album", "")
 
+        release_year = song.get("release_year")
+
         parts = [f'{i}. "{name}" by {artist}']
         if album:
             parts.append(f"(album: {album})")
+        if release_year:
+            parts.append(f"({release_year})")
 
         # Duration
         duration_ms = song.get("duration_ms")
@@ -584,6 +588,7 @@ def classify_songs(
                 valence=merged.get("valence"),
                 mode=merged.get("mode"),
                 danceability=merged.get("danceability"),
+                mood_tags=merged.get("mood_tags"),
             )
 
             # Ensemble: combine formula + LLM direct scores using

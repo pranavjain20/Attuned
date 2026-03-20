@@ -78,6 +78,7 @@ def upsert_song(
     first_played: str | None = None,
     last_played: str | None = None,
     duration_ms: int | None = None,
+    release_year: int | None = None,
 ) -> None:
     """Insert or update a song. Merges sources via set union."""
     sources = sources or []
@@ -92,6 +93,9 @@ def upsert_song(
         if duration_ms is not None:
             updates.append("duration_ms = ?")
             params.append(duration_ms)
+        if release_year is not None:
+            updates.append("release_year = ?")
+            params.append(release_year)
         if last_played is not None:
             updates.append("last_played = MAX(COALESCE(last_played, ''), ?)")
             params.append(last_played)
@@ -103,10 +107,11 @@ def upsert_song(
     else:
         conn.execute(
             """INSERT INTO songs (spotify_uri, name, artist, album, duration_ms,
-                                  sources, first_played, last_played)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                                  sources, first_played, last_played, release_year)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (uri, name, artist, album, duration_ms,
-             json.dumps(sorted(set(sources))), first_played, last_played),
+             json.dumps(sorted(set(sources))), first_played, last_played,
+             release_year),
         )
     conn.commit()
 
@@ -445,7 +450,7 @@ def get_songs_needing_llm(
     if reclassify:
         rows = conn.execute(
             """SELECT s.spotify_uri, s.name, s.artist, s.album, s.duration_ms,
-                      s.play_count, s.engagement_score,
+                      s.play_count, s.engagement_score, s.release_year,
                       sc.bpm AS essentia_bpm, sc.key AS essentia_key,
                       sc.mode AS essentia_mode, sc.energy AS essentia_energy,
                       sc.acousticness AS essentia_acousticness,
@@ -459,7 +464,7 @@ def get_songs_needing_llm(
     else:
         rows = conn.execute(
             """SELECT s.spotify_uri, s.name, s.artist, s.album, s.duration_ms,
-                      s.play_count, s.engagement_score,
+                      s.play_count, s.engagement_score, s.release_year,
                       sc.bpm AS essentia_bpm, sc.key AS essentia_key,
                       sc.mode AS essentia_mode, sc.energy AS essentia_energy,
                       sc.acousticness AS essentia_acousticness,
@@ -562,7 +567,8 @@ def get_all_classified_songs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """Fetch all classified songs joined with song metadata for the matching engine."""
     rows = conn.execute(
         """SELECT sc.*, s.name, s.artist, s.album, s.duration_ms,
-                  s.play_count, s.engagement_score
+                  s.play_count, s.engagement_score, s.last_played,
+                  s.release_year
            FROM song_classifications sc
            JOIN songs s ON sc.spotify_uri = s.spotify_uri
            ORDER BY s.engagement_score DESC"""
@@ -576,6 +582,70 @@ def get_all_classified_songs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             d["genre_tags"] = json.loads(d["genre_tags"])
         results.append(d)
     return results
+
+
+# ---------------------------------------------------------------------------
+# Generated playlists
+# ---------------------------------------------------------------------------
+
+def insert_generated_playlist(
+    conn: sqlite3.Connection,
+    date: str,
+    detected_state: str,
+    track_uris: list[str],
+    reasoning: str | None = None,
+    whoop_metrics: dict | None = None,
+    description: str | None = None,
+    spotify_playlist_id: str | None = None,
+) -> int:
+    """Insert a generated playlist record. Returns the new row id."""
+    cursor = conn.execute(
+        """INSERT INTO generated_playlists
+               (spotify_playlist_id, date, detected_state, reasoning,
+                whoop_metrics, track_uris, description)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (
+            spotify_playlist_id,
+            date,
+            detected_state,
+            reasoning,
+            json.dumps(whoop_metrics) if whoop_metrics else None,
+            json.dumps(track_uris),
+            description,
+        ),
+    )
+    conn.commit()
+    return cursor.lastrowid
+
+
+def get_recent_playlist_track_uris(
+    conn: sqlite3.Connection,
+    before_date: str,
+    days: int = 2,
+) -> dict[str, int]:
+    """Get track URIs from recent playlists for variety penalty.
+
+    Returns dict of {uri: days_ago} where days_ago is 1 or 2.
+    If a URI appears in both day 1 and day 2 playlists, the more recent (1) wins.
+    """
+    from datetime import datetime, timedelta
+
+    target = datetime.strptime(before_date, "%Y-%m-%d")
+    result: dict[str, int] = {}
+
+    for days_ago in range(days, 0, -1):  # Process oldest first so newest overwrites
+        check_date = (target - timedelta(days=days_ago)).strftime("%Y-%m-%d")
+        rows = conn.execute(
+            "SELECT track_uris FROM generated_playlists WHERE date = ?",
+            (check_date,),
+        ).fetchall()
+        for row in rows:
+            if row["track_uris"]:
+                uris = json.loads(row["track_uris"])
+                for uri in uris:
+                    result[uri] = days_ago
+
+    return result
 
 
 def count_rows(conn: sqlite3.Connection, table: str) -> int:

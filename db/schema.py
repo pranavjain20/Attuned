@@ -23,6 +23,7 @@ def create_tables(conn: sqlite3.Connection) -> None:
     _migrate_add_recent_play_ratio(conn)
     _migrate_add_classified_at(conn)
     _migrate_add_felt_tempo(conn)
+    _migrate_add_release_year(conn)
 
 
 def _migrate_add_recent_play_ratio(conn: sqlite3.Connection) -> None:
@@ -48,6 +49,15 @@ def _migrate_add_felt_tempo(conn: sqlite3.Connection) -> None:
     """Add felt_tempo column to song_classifications for perceived tempo scoring."""
     try:
         conn.execute("ALTER TABLE song_classifications ADD COLUMN felt_tempo REAL")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
+
+def _migrate_add_release_year(conn: sqlite3.Connection) -> None:
+    """Add release_year column to songs table for era cohesion."""
+    try:
+        conn.execute("ALTER TABLE songs ADD COLUMN release_year INTEGER")
         conn.commit()
     except sqlite3.OperationalError:
         pass
