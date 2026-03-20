@@ -28,7 +28,9 @@ COMMANDS = {
     "analyze-audio": "Run Essentia analysis on audio clips",
     "classify-songs": "Run LLM classification on unclassified songs",
     "recompute-scores": "Recompute neuro scores from existing DB data (no API calls)",
-    "generate": "Generate today's playlist (not yet implemented)",
+    "match-songs": "Match songs to a physiological state (testing/preview)",
+    "generate": "Generate today's playlist from WHOOP state + matched songs",
+    "backfill-release-years": "Backfill release_year from Spotify for songs missing it",
 }
 
 
@@ -64,8 +66,12 @@ def main() -> None:
         _cmd_recompute_scores()
     elif command == "sync-whoop-history":
         _cmd_sync_whoop_history()
+    elif command == "backfill-release-years":
+        _cmd_backfill_release_years()
+    elif command == "match-songs":
+        _cmd_match_songs()
     elif command == "generate":
-        print("Not yet implemented — playlist generation comes Day 5-6.")
+        _cmd_generate()
     elif command == "auth-whoop":
         _cmd_auth_whoop()
     elif command == "auth-spotify":
@@ -284,23 +290,219 @@ def _cmd_classify_state() -> None:
     conn.close()
 
 
-def _cmd_download_audio() -> None:
-    from config import AUDIO_CLIPS_DIR
-    from db.queries import get_unclassified_songs
+def _cmd_backfill_release_years() -> None:
     from spotify.auth import get_spotify_client
-    from classification.audio import acquire_audio_clips
+    from spotify.client import get_tracks_metadata
+    from config import SPOTIFY_BATCH_SIZE
 
     conn = get_connection()
     sp = get_spotify_client(conn)
-    songs = get_unclassified_songs(conn)
+
+    # Songs with metadata already fetched (duration_ms present) but missing release_year
+    rows = conn.execute(
+        "SELECT spotify_uri FROM songs WHERE release_year IS NULL AND duration_ms IS NOT NULL"
+    ).fetchall()
+    missing = [r["spotify_uri"] for r in rows]
+
+    if not missing:
+        print("All songs already have release_year.")
+        conn.close()
+        return
+
+    print(f"Backfilling release_year for {len(missing)} songs...")
+    updated = 0
+    for i in range(0, len(missing), SPOTIFY_BATCH_SIZE):
+        batch_uris = missing[i : i + SPOTIFY_BATCH_SIZE]
+        track_ids = [uri.split(":")[-1] for uri in batch_uris]
+        metadata = get_tracks_metadata(sp, track_ids)
+        for m in metadata:
+            if m.get("release_year") is not None:
+                conn.execute(
+                    "UPDATE songs SET release_year = ? WHERE spotify_uri = ?",
+                    (m["release_year"], m["uri"]),
+                )
+                updated += 1
+        conn.commit()
+        if (i // SPOTIFY_BATCH_SIZE + 1) % 5 == 0:
+            print(f"  Processed {min(i + SPOTIFY_BATCH_SIZE, len(missing))}/{len(missing)}...")
+
+    print(f"\nBackfill complete: {updated} songs updated with release_year")
+
+    # Summary
+    row = conn.execute("SELECT COUNT(*) as cnt FROM songs WHERE release_year IS NOT NULL").fetchone()
+    total = conn.execute("SELECT COUNT(*) as cnt FROM songs").fetchone()
+    print(f"  Songs with release_year: {row['cnt']}/{total['cnt']}")
+    conn.close()
+
+
+def _cmd_match_songs() -> None:
+    from datetime import date
+
+    from intelligence.state_classifier import classify_state
+    from matching.query_engine import select_songs
+
+    # Support --date flag, default to today
+    target_date = date.today().isoformat()
+    if "--date" in sys.argv:
+        idx = sys.argv.index("--date")
+        if idx + 1 < len(sys.argv):
+            target_date = sys.argv[idx + 1]
+
+    # Support --state flag to override classifier
+    override_state = None
+    if "--state" in sys.argv:
+        idx = sys.argv.index("--state")
+        if idx + 1 < len(sys.argv):
+            override_state = sys.argv[idx + 1]
+
+    conn = get_connection()
+
+    if override_state:
+        state = override_state
+        print(f"\nUsing override state: {state}")
+    else:
+        result = classify_state(conn, target_date)
+        state = result["state"]
+        print(f"\nDetected state: {state} (confidence: {result['confidence']})")
+        if result["reasoning"]:
+            for r in result["reasoning"]:
+                print(f"  - {r}")
+
+    if state == "insufficient_data":
+        print("\nCannot match songs — insufficient WHOOP data (need 14+ days)")
+        conn.close()
+        return
+
+    print(f"\nMatching songs for state: {state} (date: {target_date})")
+    match_result = select_songs(conn, state, target_date)
+
+    stats = match_result["match_stats"]
+    print(f"\nMatch stats:")
+    print(f"  Candidates:  {stats['total_candidates']:,}")
+    print(f"  Selected:    {stats['selected']}")
+    cohesion = stats.get("cohesion_stats", {})
+    if cohesion:
+        print(f"  Cohesion pool:     {cohesion.get('pool_size', 0)}")
+        print(f"  Mean similarity:   {cohesion.get('mean_similarity', 0):.4f}")
+        print(f"  Dominant genre:    {cohesion.get('dominant_genre', 'N/A')}")
+        if cohesion.get("seed_song"):
+            print(f"  Seed song:         {cohesion['seed_song']}")
+        if cohesion.get("relaxations", 0) > 0:
+            print(f"  Relaxations:       {cohesion['relaxations']}")
+
+    songs = match_result["songs"]
+    if not songs:
+        print("\nNo songs matched. Is the library classified?")
+        conn.close()
+        return
+
+    # Show neuro profile
+    profile = match_result["neuro_profile"]
+    print(f"\nNeuro profile:")
+    print(f"  Para: {profile['para']:.2f}  Symp: {profile['symp']:.2f}  Grnd: {profile['grnd']:.2f}")
+
+    print(f"\n{'#':<4} {'Song':<35} {'Artist':<22} {'Genre':<15} {'BPM':>5} {'Sel':>6}")
+    print("-" * 95)
+    for i, song in enumerate(songs, 1):
+        name = (song["name"] or "")[:33]
+        artist = (song["artist"] or "")[:20]
+        genres = song.get("genre_tags") or []
+        genre_str = (genres[0] if genres else "—")[:13]
+        bpm_str = f"{song['bpm']:.0f}" if song.get("bpm") is not None else "?"
+        print(f"{i:<4} {name:<35} {artist:<22} {genre_str:<15} {bpm_str:>5} {song['selection_score']:>6.3f}")
+
+    conn.close()
+
+
+def _cmd_generate() -> None:
+    from datetime import date
+
+    from matching.generator import GenerationError, generate_playlist
+
+    # Support --date flag, default to today
+    target_date = date.today().isoformat()
+    if "--date" in sys.argv:
+        idx = sys.argv.index("--date")
+        if idx + 1 < len(sys.argv):
+            target_date = sys.argv[idx + 1]
+
+    dry_run = "--dry-run" in sys.argv
+
+    conn = get_connection()
+    sp = None
+
+    if not dry_run:
+        from spotify.auth import get_spotify_client
+        sp = get_spotify_client(conn)
+
+    try:
+        result = generate_playlist(conn, sp, date_str=target_date, dry_run=dry_run)
+    except GenerationError as e:
+        print(f"\nGeneration failed: {e}")
+        conn.close()
+        sys.exit(1)
+
+    # Print results
+    mode = "DRY RUN" if dry_run else "LIVE"
+    print(f"\n{'='*50}")
+    print(f"  [{mode}] Playlist Generated")
+    print(f"{'='*50}")
+    print(f"  Name:   {result['name']}")
+    print(f"  State:  {result['state'].replace('_', ' ').title()}")
+    print(f"  Tracks: {len(result['songs'])}")
+
+    if result["playlist_url"]:
+        print(f"  URL:    {result['playlist_url']}")
+
+    print(f"\nDescription:")
+    print(f"  {result['description']}")
+
+    profile = result["neuro_profile"]
+    print(f"\nNeuro profile:")
+    print(f"  Para: {profile.get('para', 0):.2f}  "
+          f"Symp: {profile.get('symp', 0):.2f}  "
+          f"Grnd: {profile.get('grnd', 0):.2f}")
+
+    stats = result["match_stats"]
+    print(f"\nMatch stats:")
+    print(f"  Candidates: {stats['total_candidates']:,}")
+    print(f"  Selected:   {stats['selected']}")
+    cohesion = stats.get("cohesion_stats", {})
+    if cohesion:
+        print(f"  Cohesion:   mean_sim={cohesion.get('mean_similarity', 0):.4f}, "
+              f"genre={cohesion.get('dominant_genre', 'N/A')}")
+
+    print(f"\nTracks:")
+    for i, song in enumerate(result["songs"], 1):
+        name = (song["name"] or "")[:40]
+        artist = (song["artist"] or "")[:25]
+        print(f"  {i:2d}. {name} — {artist} ({song['selection_score']:.3f})")
+
+    conn.close()
+
+
+def _cmd_download_audio() -> None:
+    from config import AUDIO_CLIPS_DIR
+    from classification.audio import acquire_audio_clips
+
+    conn = get_connection()
+
+    if "--all" in sys.argv:
+        # Download audio for ALL classified songs (for Essentia re-analysis)
+        # Skip Spotify client — previews are deprecated, we use yt-dlp only
+        from db.queries import get_all_classified_songs
+        songs = get_all_classified_songs(conn)
+    else:
+        from db.queries import get_unclassified_songs
+        songs = get_unclassified_songs(conn)
 
     if not songs:
-        print("No unclassified songs to download audio for.")
+        print("No songs to download audio for.")
         conn.close()
         return
 
     print(f"Downloading audio clips for {len(songs)} songs...")
-    stats = acquire_audio_clips(sp, songs, AUDIO_CLIPS_DIR)
+    stats = acquire_audio_clips(None, songs, AUDIO_CLIPS_DIR, skip_preview=True)
 
     print(f"\nAudio download complete:")
     print(f"  Downloaded:      {stats['downloaded']:,}")
@@ -356,16 +558,19 @@ def _cmd_recompute_scores() -> None:
         """SELECT sc.spotify_uri, s.name, s.artist,
                   sc.bpm, sc.felt_tempo, sc.energy, sc.acousticness,
                   sc.instrumentalness, sc.valence, sc.mode, sc.danceability,
-                  sc.genre_tags, sc.raw_response
+                  sc.genre_tags, sc.mood_tags, sc.raw_response
            FROM song_classifications sc
            JOIN songs s ON sc.spotify_uri = s.spotify_uri
            WHERE sc.valence IS NOT NULL"""
     ).fetchall()
 
     updated = 0
+    def _clamp01(v: float | None) -> float | None:
+        return max(0.0, min(1.0, float(v))) if v is not None else None
+
     for row in rows:
         d = dict(row)
-        genre_tags = json.loads(d["genre_tags"]) if d.get("genre_tags") else None
+        mood_tags = json.loads(d["mood_tags"]) if d.get("mood_tags") else None
 
         # Use felt_tempo for scoring when available
         scoring_bpm = d.get("felt_tempo") or d.get("bpm")
@@ -379,6 +584,7 @@ def _cmd_recompute_scores() -> None:
             valence=d.get("valence"),
             mode=d.get("mode"),
             danceability=d.get("danceability"),
+            mood_tags=mood_tags,
         )
 
         # Extract LLM direct scores from raw_response by matching title/artist.
@@ -399,10 +605,6 @@ def _cmd_recompute_scores() -> None:
                         break
             except (json.JSONDecodeError, KeyError):
                 pass
-
-        # Clamp LLM scores to [0.0, 1.0] — they bypass _validate_song_result
-        def _clamp01(v: float | None) -> float | None:
-            return max(0.0, min(1.0, float(v))) if v is not None else None
 
         llm_para = _clamp01(llm_para)
         llm_symp = _clamp01(llm_symp)

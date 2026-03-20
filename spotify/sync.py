@@ -154,6 +154,7 @@ def sync_liked_songs(conn: sqlite3.Connection, sp: Any) -> int:
             album=track["album"],
             sources=["liked"],
             duration_ms=track.get("duration_ms"),
+            release_year=track.get("release_year"),
         )
     logger.info("Synced %d liked songs", len(tracks))
     return len(tracks)
@@ -177,6 +178,7 @@ def sync_top_tracks(conn: sqlite3.Connection, sp: Any) -> int:
                 album=track["album"],
                 sources=["top_track"],
                 duration_ms=track.get("duration_ms"),
+                release_year=track.get("release_year"),
             )
             seen_uris.add(track["uri"])
     logger.info("Synced %d unique top tracks", len(seen_uris))
@@ -215,6 +217,14 @@ def fetch_batch_metadata(conn: sqlite3.Connection, sp: Any) -> int:
         metadata = get_tracks_metadata(sp, track_ids)
         durations = {m["uri"]: m["duration_ms"] for m in metadata if m.get("duration_ms")}
         queries.update_song_durations_batch(conn, durations)
+        # Also store release_year from metadata
+        for m in metadata:
+            if m.get("release_year") is not None:
+                conn.execute(
+                    "UPDATE songs SET release_year = COALESCE(release_year, ?) WHERE spotify_uri = ?",
+                    (m["release_year"], m["uri"]),
+                )
+        conn.commit()
         updated += len(durations)
 
     logger.info("Fetched duration_ms for %d songs", updated)
