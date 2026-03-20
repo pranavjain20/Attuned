@@ -1,0 +1,296 @@
+"""Playlist cohesion: seed-and-expand selection for sonic coherence.
+
+After neurological scoring produces a pool of candidates, this module
+selects a cohesive subset that sounds like it belongs in the same room.
+Uses pairwise similarity across genre, mood, BPM, and production properties.
+"""
+
+import logging
+import math
+from typing import Any
+
+from config import (
+    COHESION_BPM_SIGMA,
+    COHESION_MIN_SIMILARITY,
+    COHESION_POOL_SIZE,
+    COHESION_PROPERTY_SIGMA,
+    COHESION_RELAXATION_MAX,
+    COHESION_RELAXATION_STEP,
+    COHESION_WEIGHTS,
+    ERA_SIGMA_BY_GENRE,
+    ERA_SIGMA_DEFAULT,
+    MAX_PLAYLIST_SIZE,
+    MIN_PLAYLIST_SIZE,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Similarity primitives
+# ---------------------------------------------------------------------------
+
+def compute_tag_similarity(tags_a: list[str] | None, tags_b: list[str] | None) -> float:
+    """Jaccard similarity between two tag lists.
+
+    None or empty = 0.0 (no signal means we can't assume similar).
+    """
+    if not tags_a or not tags_b:
+        return 0.0
+    set_a = set(t.lower().strip() for t in tags_a)
+    set_b = set(t.lower().strip() for t in tags_b)
+    if not set_a or not set_b:
+        return 0.0
+    intersection = len(set_a & set_b)
+    union = len(set_a | set_b)
+    return intersection / union
+
+
+def compute_bpm_similarity(bpm_a: float | None, bpm_b: float | None) -> float:
+    """Gaussian decay similarity for BPM. sigma=COHESION_BPM_SIGMA.
+
+    None = 0.5 (neutral — don't penalize or reward missing data).
+    """
+    if bpm_a is None or bpm_b is None:
+        return 0.5
+    diff = bpm_a - bpm_b
+    return math.exp(-(diff ** 2) / (2 * COHESION_BPM_SIGMA ** 2))
+
+
+def compute_property_similarity(val_a: float | None, val_b: float | None) -> float:
+    """Gaussian decay similarity for a 0-1 property. sigma=COHESION_PROPERTY_SIGMA.
+
+    None = 0.5 (neutral).
+    """
+    if val_a is None or val_b is None:
+        return 0.5
+    diff = val_a - val_b
+    return math.exp(-(diff ** 2) / (2 * COHESION_PROPERTY_SIGMA ** 2))
+
+
+def _resolve_era_sigma(genre_tags: list[str] | None) -> float:
+    """Find the best era sigma for a song's genre tags.
+
+    Returns the minimum sigma across all recognized genre tags
+    (most specific genre wins). Falls back to ERA_SIGMA_DEFAULT.
+    """
+    if not genre_tags:
+        return ERA_SIGMA_DEFAULT
+    sigmas = [ERA_SIGMA_BY_GENRE[t.lower().strip()]
+              for t in genre_tags if t.lower().strip() in ERA_SIGMA_BY_GENRE]
+    return min(sigmas) if sigmas else ERA_SIGMA_DEFAULT
+
+
+def compute_era_similarity(
+    year_a: int | None,
+    year_b: int | None,
+    genre_tags_a: list[str] | None,
+    genre_tags_b: list[str] | None,
+) -> float:
+    """Genre-aware Gaussian decay on release year difference.
+
+    Sigma varies by genre: hip-hop sigma=2 (tight), ghazal sigma=12 (loose).
+    Uses the LARGER sigma of the two songs (more permissive wins).
+    None year = 0.5 (neutral — don't penalize or reward missing data).
+    """
+    if year_a is None or year_b is None:
+        return 0.5
+    sigma_a = _resolve_era_sigma(genre_tags_a)
+    sigma_b = _resolve_era_sigma(genre_tags_b)
+    sigma = max(sigma_a, sigma_b)
+    diff = year_a - year_b
+    return math.exp(-(diff ** 2) / (2 * sigma ** 2))
+
+
+def compute_pairwise_similarity(song_a: dict[str, Any], song_b: dict[str, Any]) -> float:
+    """Weighted similarity between two songs across all cohesion dimensions.
+
+    Returns 0.0-1.0. Uses COHESION_WEIGHTS for dimension weighting.
+    """
+    w = COHESION_WEIGHTS
+    score = 0.0
+
+    score += w["genre_tags"] * compute_tag_similarity(
+        song_a.get("genre_tags"), song_b.get("genre_tags"))
+    score += w["mood_tags"] * compute_tag_similarity(
+        song_a.get("mood_tags"), song_b.get("mood_tags"))
+    score += w["bpm"] * compute_bpm_similarity(
+        song_a.get("bpm"), song_b.get("bpm"))
+    score += w["release_year"] * compute_era_similarity(
+        song_a.get("release_year"), song_b.get("release_year"),
+        song_a.get("genre_tags"), song_b.get("genre_tags"))
+    score += w["energy"] * compute_property_similarity(
+        song_a.get("energy"), song_b.get("energy"))
+    score += w["acousticness"] * compute_property_similarity(
+        song_a.get("acousticness"), song_b.get("acousticness"))
+    score += w["danceability"] * compute_property_similarity(
+        song_a.get("danceability"), song_b.get("danceability"))
+    score += w["valence"] * compute_property_similarity(
+        song_a.get("valence"), song_b.get("valence"))
+
+    return score
+
+
+# ---------------------------------------------------------------------------
+# Seed-and-expand
+# ---------------------------------------------------------------------------
+
+def compute_neighborhood_density(idx: int, sim_matrix: list[list[float]]) -> float:
+    """Average similarity of song at idx to all other songs in the matrix."""
+    row = sim_matrix[idx]
+    n = len(row)
+    if n <= 1:
+        return 0.0
+    total = sum(row[j] for j in range(n) if j != idx)
+    return total / (n - 1)
+
+
+def select_seed(
+    neuro_scores: list[float],
+    sim_matrix: list[list[float]],
+) -> int:
+    """Pick the seed: argmax(neuro_score * neighborhood_density).
+
+    A song must be both neurologically correct AND have many similar neighbors.
+    """
+    best_idx = 0
+    best_val = -1.0
+    for i in range(len(neuro_scores)):
+        density = compute_neighborhood_density(i, sim_matrix)
+        val = neuro_scores[i] * density
+        if val > best_val:
+            best_val = val
+            best_idx = i
+    return best_idx
+
+
+def expand_cluster(
+    seed_idx: int,
+    sim_matrix: list[list[float]],
+    target_size: int,
+    min_similarity: float,
+) -> list[int]:
+    """Greedily expand from seed, adding the most similar candidate each step.
+
+    At each step, picks the candidate with highest average similarity to all
+    songs already in the cluster. Stops at target_size or when no candidate
+    exceeds min_similarity.
+    """
+    n = len(sim_matrix)
+    selected = [seed_idx]
+    remaining = set(range(n)) - {seed_idx}
+
+    while len(selected) < target_size and remaining:
+        best_idx = -1
+        best_avg_sim = -1.0
+
+        for candidate in remaining:
+            avg_sim = sum(sim_matrix[candidate][s] for s in selected) / len(selected)
+            if avg_sim > best_avg_sim:
+                best_avg_sim = avg_sim
+                best_idx = candidate
+
+        if best_avg_sim < min_similarity:
+            break
+
+        selected.append(best_idx)
+        remaining.discard(best_idx)
+
+    return selected
+
+
+def select_cohesive_songs(
+    scored_candidates: list[tuple[dict[str, Any], float, dict[str, float]]],
+    pool_size: int = COHESION_POOL_SIZE,
+    target_size: int = MAX_PLAYLIST_SIZE,
+    min_size: int = MIN_PLAYLIST_SIZE,
+) -> tuple[list[int], dict[str, Any]]:
+    """Select a cohesive subset from scored candidates.
+
+    Args:
+        scored_candidates: List of (song, selection_score, breakdown) sorted by score desc.
+        pool_size: How many top candidates to consider for cohesion.
+        target_size: Desired playlist size.
+        min_size: Minimum acceptable playlist size (triggers relaxation).
+
+    Returns:
+        (selected_indices, stats) where indices refer to positions in scored_candidates.
+        Stats include pool_size, seed info, similarity metrics, relaxation info.
+    """
+    # Take top pool_size candidates (all neurologically correct)
+    pool = scored_candidates[:pool_size]
+    n = len(pool)
+
+    if n == 0:
+        return [], {"pool_size": 0, "seed_idx": -1, "relaxations": 0,
+                    "mean_similarity": 0.0, "min_similarity_used": COHESION_MIN_SIMILARITY}
+
+    if n <= target_size:
+        # Fewer candidates than target — take all, no cohesion filtering needed
+        indices = list(range(n))
+        return indices, {
+            "pool_size": n, "seed_idx": 0, "relaxations": 0,
+            "mean_similarity": 0.0, "min_similarity_used": 0.0,
+        }
+
+    # Build pairwise similarity matrix
+    songs = [entry[0] for entry in pool]
+    neuro_scores = [entry[1] for entry in pool]
+
+    sim_matrix = [[0.0] * n for _ in range(n)]
+    for i in range(n):
+        sim_matrix[i][i] = 1.0
+        for j in range(i + 1, n):
+            sim = compute_pairwise_similarity(songs[i], songs[j])
+            sim_matrix[i][j] = sim
+            sim_matrix[j][i] = sim
+
+    # Seed: best neuro_score * neighborhood_density
+    seed_idx = select_seed(neuro_scores, sim_matrix)
+
+    # Expand with progressive relaxation if needed
+    min_sim = COHESION_MIN_SIMILARITY
+    relaxations = 0
+
+    selected = expand_cluster(seed_idx, sim_matrix, target_size, min_sim)
+
+    while len(selected) < min_size and relaxations < COHESION_RELAXATION_MAX:
+        relaxations += 1
+        min_sim -= COHESION_RELAXATION_STEP
+        min_sim = max(min_sim, 0.0)
+        selected = expand_cluster(seed_idx, sim_matrix, target_size, min_sim)
+        logger.info(
+            "Cohesion relaxation %d: min_similarity=%.3f, got %d songs",
+            relaxations, min_sim, len(selected),
+        )
+
+    # Compute cohesion stats
+    if len(selected) >= 2:
+        pair_sims = []
+        for i, a in enumerate(selected):
+            for b in selected[i + 1:]:
+                pair_sims.append(sim_matrix[a][b])
+        mean_sim = sum(pair_sims) / len(pair_sims)
+    else:
+        mean_sim = 0.0
+
+    # Dominant genre in selected cluster
+    genre_counts: dict[str, int] = {}
+    for idx in selected:
+        tags = songs[idx].get("genre_tags") or []
+        for tag in tags:
+            t = tag.lower().strip()
+            genre_counts[t] = genre_counts.get(t, 0) + 1
+    dominant_genre = max(genre_counts, key=genre_counts.get) if genre_counts else None
+
+    stats = {
+        "pool_size": n,
+        "seed_idx": seed_idx,
+        "seed_song": songs[seed_idx].get("name", ""),
+        "relaxations": relaxations,
+        "min_similarity_used": round(min_sim, 3),
+        "mean_similarity": round(mean_sim, 4),
+        "dominant_genre": dominant_genre,
+    }
+
+    return selected, stats
