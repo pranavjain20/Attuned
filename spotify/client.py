@@ -12,7 +12,7 @@ def get_liked_songs(sp: Any) -> list[dict[str, Any]]:
     results = sp.current_user_saved_tracks(limit=50)
     while results:
         for item in results["items"]:
-            parsed = _parse_track(item["track"])
+            parsed = parse_track(item["track"])
             if parsed:
                 tracks.append(parsed)
         results = sp.next(results) if results.get("next") else None
@@ -29,7 +29,7 @@ def get_top_tracks(sp: Any, time_range: str = "medium_term") -> list[dict[str, A
     results = sp.current_user_top_tracks(limit=50, time_range=time_range)
     while results:
         for item in results["items"]:
-            parsed = _parse_track(item)
+            parsed = parse_track(item)
             if parsed:
                 tracks.append(parsed)
         results = sp.next(results) if results.get("next") else None
@@ -50,20 +50,20 @@ def get_tracks_metadata(sp: Any, track_ids: list[str]) -> list[dict[str, Any]]:
     # Try batch first (50x fewer API calls)
     try:
         batch = track_ids[:50]
-        result = sp.tracks(batch, market="from_token")
+        result = sp.tracks(batch)
         # Batch works — use it for everything
         for track in (result.get("tracks") or []):
             if track:
-                p = _parse_track(track)
+                p = parse_track(track)
                 if p:
                     parsed.append(p)
         # Process remaining batches
         for i in range(50, len(track_ids), 50):
             batch = track_ids[i : i + 50]
-            result = sp.tracks(batch, market="from_token")
+            result = sp.tracks(batch)
             for track in (result.get("tracks") or []):
                 if track:
-                    p = _parse_track(track)
+                    p = parse_track(track)
                     if p:
                         parsed.append(p)
         return parsed
@@ -77,9 +77,9 @@ def get_tracks_metadata(sp: Any, track_ids: list[str]) -> list[dict[str, Any]]:
     parsed = []
     for track_id in track_ids:
         try:
-            track = sp.track(track_id, market="from_token")
+            track = sp.track(track_id)
             if track:
-                p = _parse_track(track)
+                p = parse_track(track)
                 if p:
                     parsed.append(p)
         except Exception:
@@ -87,7 +87,7 @@ def get_tracks_metadata(sp: Any, track_ids: list[str]) -> list[dict[str, Any]]:
     return parsed
 
 
-def _parse_track(track: dict[str, Any]) -> dict[str, Any] | None:
+def parse_track(track: dict[str, Any]) -> dict[str, Any] | None:
     """Extract {uri, name, artist, album, duration_ms} from a Spotify track object."""
     if not track or not track.get("uri"):
         return None
@@ -95,7 +95,11 @@ def _parse_track(track: dict[str, Any]) -> dict[str, Any] | None:
     artist_name = artists[0]["name"] if artists else "Unknown"
     album = track.get("album") or {}
     release_date = album.get("release_date", "")
-    release_year = int(release_date[:4]) if release_date and len(release_date) >= 4 else None
+    try:
+        raw_year = int(release_date[:4]) if release_date and len(release_date) >= 4 else None
+    except ValueError:
+        raw_year = None
+    release_year = raw_year if raw_year and raw_year > 1900 else None
     return {
         "uri": track["uri"],
         "name": track.get("name", "Unknown"),

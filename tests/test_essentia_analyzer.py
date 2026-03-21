@@ -268,6 +268,23 @@ class TestAnalyzeAudio:
         result = _run_analyze_with_mock(audio_path, _make_es_mock(onset_rate=1.0))
         assert result["energy"] == 0.0
 
+    def test_bpm_confidence_clamped_to_1(self, tmp_path):
+        """High RhythmExtractor confidence (0-5.32) should be clamped to 1.0."""
+        audio_path = tmp_path / "high_conf.mp3"
+        audio_path.write_bytes(b"fake")
+
+        # RhythmExtractor returns 0.8 confidence, with mock producing full agreement
+        # → raw confidence = 0.8 * 1.0 = 0.8, which is fine
+        # But with re_confidence=5.0 (its actual range), that would exceed 1.0
+        es_mock = _make_es_mock()
+        # Override to return high confidence value
+        es_mock.RhythmExtractor2013.return_value = MagicMock(
+            return_value=(120.0, [], 5.0, [], [])
+        )
+
+        result = _run_analyze_with_mock(audio_path, es_mock)
+        assert result["bpm_confidence"] <= 1.0
+
 
 class TestAnalyzeAllSongs:
     def _insert_song(self, db_conn, uri, play_count=10):

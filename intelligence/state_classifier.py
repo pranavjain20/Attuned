@@ -222,6 +222,14 @@ def classify_state(conn: sqlite3.Connection, date: str) -> dict:
         ]
     else:
         reasoning = ["No strong deficit or readiness signals detected — operating near baseline"]
+
+    # Transparency: warn when no WHOOP data exists for the requested date
+    if recovery is None and sleep is None:
+        reasoning.append(
+            f"No WHOOP data for {date} — defaulting to baseline. "
+            "Run sync-whoop for today's data."
+        )
+
     return _build_result(
         state="baseline",
         confidence="medium",

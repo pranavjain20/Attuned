@@ -68,7 +68,7 @@ def _estimate_bpm(audio: Any, es: Any) -> tuple[int | None, float]:
 
     # Confidence: RhythmExtractor confidence (0-5.32) scaled by agreement level
     agreement = len(best_group) / len(normalized) if normalized else 0
-    confidence = float(re_confidence) * agreement
+    confidence = min(float(re_confidence) * agreement, 1.0)
 
     return int(round(best_bpm)), confidence
 
@@ -238,7 +238,7 @@ def analyze_all_songs(
 
         existing_source = existing["classification_source"] if existing else ""
         existing_source = existing_source or ""
-        new_source = "essentia" if "essentia" in existing_source else (
+        new_source = existing_source if "essentia" in existing_source else (
             existing_source + "+essentia" if existing_source else "essentia"
         )
         now = datetime.now(timezone.utc).isoformat()

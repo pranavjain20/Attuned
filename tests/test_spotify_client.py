@@ -2,12 +2,12 @@
 
 import pytest
 
-from spotify.client import _parse_track, get_liked_songs, get_top_tracks, get_tracks_metadata
+from spotify.client import parse_track, get_liked_songs, get_top_tracks, get_tracks_metadata
 
 
 class TestParseTrack:
     def test_parses_valid_track(self, sample_spotify_track):
-        result = _parse_track(sample_spotify_track)
+        result = parse_track(sample_spotify_track)
         assert result is not None
         assert result["uri"] == "spotify:track:xyz789"
         assert result["name"] == "Test Track"
@@ -16,27 +16,48 @@ class TestParseTrack:
         assert result["duration_ms"] == 240000
 
     def test_returns_none_for_none(self):
-        assert _parse_track(None) is None
+        assert parse_track(None) is None
 
     def test_returns_none_for_no_uri(self):
-        assert _parse_track({"name": "Track"}) is None
+        assert parse_track({"name": "Track"}) is None
 
     def test_handles_empty_artists(self):
         track = {"uri": "spotify:track:abc", "name": "Song", "artists": []}
-        result = _parse_track(track)
+        result = parse_track(track)
         assert result["artist"] == "Unknown"
 
     def test_handles_no_album(self):
         track = {"uri": "spotify:track:abc", "name": "Song",
                  "artists": [{"name": "Artist"}]}
-        result = _parse_track(track)
+        result = parse_track(track)
         assert result["album"] is None
 
     def test_handles_missing_duration(self):
         track = {"uri": "spotify:track:abc", "name": "Song",
                  "artists": [{"name": "Artist"}], "album": {"name": "Alb"}}
-        result = _parse_track(track)
+        result = parse_track(track)
         assert result["duration_ms"] is None
+
+    def test_release_year_zero_becomes_none(self):
+        track = {"uri": "spotify:track:abc", "name": "Song",
+                 "artists": [{"name": "Artist"}],
+                 "album": {"name": "Alb", "release_date": "0000"}}
+        result = parse_track(track)
+        assert result["release_year"] is None
+
+    def test_release_year_valid(self):
+        track = {"uri": "spotify:track:abc", "name": "Song",
+                 "artists": [{"name": "Artist"}],
+                 "album": {"name": "Alb", "release_date": "2020-01-15"}}
+        result = parse_track(track)
+        assert result["release_year"] == 2020
+
+    def test_release_year_1900_becomes_none(self):
+        track = {"uri": "spotify:track:abc", "name": "Song",
+                 "artists": [{"name": "Artist"}],
+                 "album": {"name": "Alb", "release_date": "1900"}}
+        result = parse_track(track)
+        assert result["release_year"] is None
 
 
 class TestGetLikedSongs:

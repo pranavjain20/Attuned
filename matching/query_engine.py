@@ -9,6 +9,7 @@ already passed the quality bar.
 
 import logging
 import math
+import re
 import sqlite3
 from typing import Any
 
@@ -21,6 +22,58 @@ from matching.cohesion import select_cohesive_songs
 from matching.state_mapper import get_state_neuro_profile
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Near-duplicate detection
+# ---------------------------------------------------------------------------
+
+# Strips "(From 'Movie Name')" and '(From "Movie Name")' — Bollywood album variants.
+# Does NOT strip "(Remix)", "(Acoustic)", "(Live)" — those are genuinely different.
+_FROM_PATTERN = re.compile(r"""\s*\(From\s+['"].*?['"]\)""", re.IGNORECASE)
+
+
+def _normalize_title(name: str) -> str:
+    """Normalize song title for near-duplicate detection.
+
+    Strips "(From 'X')" / '(From "X")' suffixes and lowercases.
+    """
+    return _FROM_PATTERN.sub("", name).strip().lower()
+
+
+def _dedup_near_duplicates(songs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Remove near-duplicate songs, keeping the version with more plays.
+
+    Two songs are near-duplicates if they share the same normalized title
+    AND the same artist (case-insensitive).
+    """
+    seen: dict[tuple[str, str], dict[str, Any]] = {}
+    for song in songs:
+        key = (
+            _normalize_title(song.get("name", "")),
+            (song.get("artist") or "").lower(),
+        )
+        existing = seen.get(key)
+        if existing is None:
+            seen[key] = song
+        else:
+            # Keep the version with more plays (engagement_score as proxy)
+            existing_plays = existing.get("play_count") or 0
+            new_plays = song.get("play_count") or 0
+            if new_plays > existing_plays:
+                logger.info(
+                    "Dedup: keeping '%s' (%s plays) over '%s' (%s plays)",
+                    song.get("name"), new_plays,
+                    existing.get("name"), existing_plays,
+                )
+                seen[key] = song
+            else:
+                logger.info(
+                    "Dedup: keeping '%s' (%s plays) over '%s' (%s plays)",
+                    existing.get("name"), existing_plays,
+                    song.get("name"), new_plays,
+                )
+    return list(seen.values())
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +136,12 @@ def compute_confidence_multiplier(confidence: float | None) -> float:
 # better neurological match. Typical adjacent-song gap is 0.005-0.012.
 FRESHNESS_NUDGE = {1: 0.02, 2: 0.01}  # days_ago → subtraction
 
+# Familiarity multiplier: songs without engagement data (< 5 meaningful
+# plays) get a small penalty. Doesn't override a genuinely better neuro
+# match, but when scores are similar, songs you actually know and love
+# float up. Songs with engagement are unaffected (1.0).
+UNFAMILIAR_PENALTY = 0.95
+
 
 def score_song(
     song: dict[str, Any],
@@ -91,10 +150,7 @@ def score_song(
 ) -> tuple[float, dict[str, float]]:
     """Score a single song. Returns (score, breakdown).
 
-    Formula: neuro_match * confidence_mult - freshness_nudge
-    The nudge is a tiny subtraction for songs in recent playlists.
-    It only matters when two songs are similarly scored — the one
-    you haven't heard recently gets a slight edge.
+    Formula: neuro_match * confidence_mult * familiarity_mult - freshness_nudge
     """
     neuro_match = compute_neuro_match(
         song.get("parasympathetic"),
@@ -105,7 +161,10 @@ def score_song(
 
     confidence_mult = compute_confidence_multiplier(song.get("confidence"))
 
-    base_score = neuro_match * confidence_mult
+    # Familiarity: penalize songs with < 5 plays (no engagement data)
+    familiarity_mult = 1.0 if song.get("engagement_score") is not None else UNFAMILIAR_PENALTY
+
+    base_score = neuro_match * confidence_mult * familiarity_mult
 
     # Freshness nudge: tiny subtraction for recent playlist songs
     nudge = 0.0
@@ -120,6 +179,7 @@ def score_song(
     breakdown = {
         "neuro_match": round(neuro_match, 4),
         "confidence_mult": confidence_mult,
+        "familiarity_mult": familiarity_mult,
         "freshness_nudge": round(nudge, 4),
         "selection_score": round(selection_score, 4),
     }
@@ -138,6 +198,37 @@ def compute_selection_scores(
         scored.append((song, selection_score, breakdown))
     scored.sort(key=lambda x: x[1], reverse=True)
     return scored
+
+
+# ---------------------------------------------------------------------------
+# Result building
+# ---------------------------------------------------------------------------
+
+def _build_result_song(
+    song: dict[str, Any],
+    sel_score: float,
+    breakdown: dict[str, float],
+) -> dict[str, Any]:
+    """Build a result dict for a selected song."""
+    return {
+        "spotify_uri": song["spotify_uri"],
+        "name": song.get("name", ""),
+        "artist": song.get("artist", ""),
+        "album": song.get("album", ""),
+        "parasympathetic": song.get("parasympathetic"),
+        "sympathetic": song.get("sympathetic"),
+        "grounding": song.get("grounding"),
+        "confidence": song.get("confidence"),
+        "last_played": song.get("last_played"),
+        "play_count": song.get("play_count"),
+        "bpm": song.get("bpm"),
+        "energy": song.get("energy"),
+        "genre_tags": song.get("genre_tags"),
+        "mood_tags": song.get("mood_tags"),
+        "release_year": song.get("release_year"),
+        "selection_score": round(sel_score, 4),
+        "breakdown": breakdown,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -203,25 +294,43 @@ def select_songs(
     selected_songs = []
     for idx in cohesion_indices:
         song, sel_score, breakdown = scored[idx]
-        result_song = {
-            "spotify_uri": song["spotify_uri"],
-            "name": song.get("name", ""),
-            "artist": song.get("artist", ""),
-            "album": song.get("album", ""),
-            "parasympathetic": song.get("parasympathetic"),
-            "sympathetic": song.get("sympathetic"),
-            "grounding": song.get("grounding"),
-            "confidence": song.get("confidence"),
-            "last_played": song.get("last_played"),
-            "bpm": song.get("bpm"),
-            "energy": song.get("energy"),
-            "genre_tags": song.get("genre_tags"),
-            "mood_tags": song.get("mood_tags"),
-            "release_year": song.get("release_year"),
-            "selection_score": round(sel_score, 4),
-            "breakdown": breakdown,
+        selected_songs.append(_build_result_song(song, sel_score, breakdown))
+
+    # Dedup near-duplicates (e.g., same song from different albums)
+    pre_dedup_count = len(selected_songs)
+    selected_songs = _dedup_near_duplicates(selected_songs)
+    removed_count = pre_dedup_count - len(selected_songs)
+
+    # Backfill from scored pool if dedup shrunk the playlist
+    if removed_count > 0:
+        logger.info(
+            "Removed %d near-duplicate(s) from playlist, backfilling",
+            removed_count,
+        )
+        selected_uris = {s["spotify_uri"] for s in selected_songs}
+        selected_keys = {
+            (_normalize_title(s.get("name", "")), (s.get("artist") or "").lower())
+            for s in selected_songs
         }
-        selected_songs.append(result_song)
+        already_selected = set(cohesion_indices)
+        for idx in range(len(scored)):
+            if len(selected_songs) >= MAX_PLAYLIST_SIZE:
+                break
+            if idx in already_selected:
+                continue
+            song, sel_score, breakdown = scored[idx]
+            if song["spotify_uri"] in selected_uris:
+                continue
+            key = (_normalize_title(song.get("name", "")), (song.get("artist") or "").lower())
+            if key in selected_keys:
+                continue
+            selected_songs.append(_build_result_song(song, sel_score, breakdown))
+            selected_uris.add(song["spotify_uri"])
+            selected_keys.add(key)
+            logger.info(
+                "Backfilled: '%s' — %s (score=%.4f)",
+                song.get("name"), song.get("artist"), sel_score,
+            )
 
     # Sort final selection by score descending for display
     selected_songs.sort(key=lambda s: s["selection_score"], reverse=True)

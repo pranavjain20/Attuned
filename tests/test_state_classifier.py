@@ -647,6 +647,29 @@ class TestPriorityAndEdgeCases:
         result = classify_state(db_conn, TARGET)
         assert result["state"] == "baseline"
 
+    def test_no_whoop_data_today_warns_in_reasoning(self, db_conn):
+        """No recovery AND no sleep for today → baseline with sync warning."""
+        _seed_healthy_baseline(db_conn)
+        # Don't seed any data for TARGET date itself
+
+        result = classify_state(db_conn, TARGET)
+        assert result["state"] == "baseline"
+        reasoning_text = " ".join(result["reasoning"])
+        assert "No WHOOP data" in reasoning_text
+        assert "sync-whoop" in reasoning_text
+
+    def test_partial_data_today_no_warning(self, db_conn):
+        """Recovery exists but no sleep → no sync warning (partial data is fine)."""
+        _seed_healthy_baseline(db_conn)
+        upsert_whoop_recovery(
+            db_conn, cycle_id=500, date=TARGET,
+            recovery_score=70.0, hrv_rmssd_milli=55.0, resting_heart_rate=58.0,
+        )
+
+        result = classify_state(db_conn, TARGET)
+        reasoning_text = " ".join(result["reasoning"])
+        assert "No WHOOP data" not in reasoning_text
+
     def test_result_structure(self, db_conn):
         """Verify all expected keys in result dict."""
         _seed_healthy_baseline(db_conn)

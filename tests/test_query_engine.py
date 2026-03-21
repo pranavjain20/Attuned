@@ -11,12 +11,105 @@ from db.queries import (
     upsert_song_classification,
 )
 from matching.query_engine import (
+    _dedup_near_duplicates,
+    _normalize_title,
     compute_confidence_multiplier,
     compute_neuro_match,
     compute_selection_scores,
     score_song,
     select_songs,
 )
+
+
+# ---------------------------------------------------------------------------
+# Near-duplicate detection tests
+# ---------------------------------------------------------------------------
+
+class TestNormalizeTitle:
+
+    def test_strips_from_single_quotes(self):
+        assert _normalize_title("Tum Hi Ho Bandhu (From 'Cocktail')") == "tum hi ho bandhu"
+
+    def test_strips_from_double_quotes(self):
+        assert _normalize_title('Tum Hi Ho Bandhu (From "Cocktail")') == "tum hi ho bandhu"
+
+    def test_preserves_remix(self):
+        assert "(remix)" in _normalize_title("Song Name (Remix)")
+
+    def test_preserves_acoustic(self):
+        assert "(acoustic)" in _normalize_title("Song Name (Acoustic)")
+
+    def test_preserves_live(self):
+        assert "(live)" in _normalize_title("Song Name (Live)")
+
+    def test_no_parens_unchanged(self):
+        assert _normalize_title("Just a Song") == "just a song"
+
+    def test_case_insensitive_from(self):
+        assert _normalize_title("Song (FROM 'Movie')") == "song"
+
+
+class TestDedupNearDuplicates:
+
+    def test_removes_duplicate_same_artist(self):
+        songs = [
+            {"name": "Tum Hi Ho Bandhu (From 'Cocktail')", "artist": "Neeraj Shridhar",
+             "play_count": 15, "spotify_uri": "uri:1"},
+            {"name": "Tum Hi Ho Bandhu", "artist": "Neeraj Shridhar",
+             "play_count": 5, "spotify_uri": "uri:2"},
+        ]
+        result = _dedup_near_duplicates(songs)
+        assert len(result) == 1
+        assert result[0]["spotify_uri"] == "uri:1"  # more plays
+
+    def test_keeps_different_artists(self):
+        songs = [
+            {"name": "Tum Hi Ho", "artist": "Arijit Singh", "play_count": 10, "spotify_uri": "uri:1"},
+            {"name": "Tum Hi Ho", "artist": "Someone Else", "play_count": 5, "spotify_uri": "uri:2"},
+        ]
+        result = _dedup_near_duplicates(songs)
+        assert len(result) == 2
+
+    def test_keeps_remix_as_distinct(self):
+        songs = [
+            {"name": "Song Name", "artist": "Artist", "play_count": 10, "spotify_uri": "uri:1"},
+            {"name": "Song Name (Remix)", "artist": "Artist", "play_count": 5, "spotify_uri": "uri:2"},
+        ]
+        result = _dedup_near_duplicates(songs)
+        assert len(result) == 2
+
+    def test_keeps_higher_play_count(self):
+        songs = [
+            {"name": "Song (From 'Movie A')", "artist": "Artist", "play_count": 3, "spotify_uri": "uri:1"},
+            {"name": "Song (From 'Movie B')", "artist": "Artist", "play_count": 20, "spotify_uri": "uri:2"},
+        ]
+        result = _dedup_near_duplicates(songs)
+        assert len(result) == 1
+        assert result[0]["spotify_uri"] == "uri:2"
+
+    def test_no_duplicates_returns_all(self):
+        songs = [
+            {"name": "Song A", "artist": "Artist 1", "play_count": 10, "spotify_uri": "uri:1"},
+            {"name": "Song B", "artist": "Artist 2", "play_count": 5, "spotify_uri": "uri:2"},
+        ]
+        result = _dedup_near_duplicates(songs)
+        assert len(result) == 2
+
+    def test_empty_list(self):
+        assert _dedup_near_duplicates([]) == []
+
+    def test_dedup_three_copies_keeps_highest_plays(self):
+        songs = [
+            {"name": "Tum Hi Ho (From 'Aashiqui 2')", "artist": "Arijit Singh",
+             "play_count": 5, "spotify_uri": "uri:1"},
+            {"name": "Tum Hi Ho (From 'Aashiqui 2 Deluxe')", "artist": "Arijit Singh",
+             "play_count": 20, "spotify_uri": "uri:2"},
+            {"name": "Tum Hi Ho (From 'Bollywood Hits')", "artist": "Arijit Singh",
+             "play_count": 8, "spotify_uri": "uri:3"},
+        ]
+        result = _dedup_near_duplicates(songs)
+        assert len(result) == 1
+        assert result[0]["spotify_uri"] == "uri:2"  # 20 plays — highest
 
 
 # ---------------------------------------------------------------------------
@@ -113,12 +206,23 @@ class TestScoreSong:
         defaults.update(extras)
         return defaults
 
-    def test_formula_is_neuro_times_confidence(self):
+    def test_formula_is_neuro_times_confidence_times_familiarity(self):
         profile = {"para": 0.85, "symp": 0.00, "grnd": 0.15}
-        song = self._make_song("uri:1", para=0.8, confidence=0.7)
+        song = self._make_song("uri:1", para=0.8, confidence=0.7, engagement_score=0.5)
         score, bd = score_song(song, profile)
-        expected = bd["neuro_match"] * bd["confidence_mult"]
+        expected = bd["neuro_match"] * bd["confidence_mult"] * bd["familiarity_mult"]
         assert score == pytest.approx(expected, abs=0.001)
+        assert bd["familiarity_mult"] == 1.0  # has engagement
+
+    def test_unfamiliar_song_penalized(self):
+        profile = {"para": 0.85, "symp": 0.00, "grnd": 0.15}
+        familiar = self._make_song("uri:1", para=0.8, engagement_score=0.5)
+        unfamiliar = self._make_song("uri:2", para=0.8)  # no engagement_score
+        score_f, bd_f = score_song(familiar, profile)
+        score_u, bd_u = score_song(unfamiliar, profile)
+        assert bd_f["familiarity_mult"] == 1.0
+        assert bd_u["familiarity_mult"] == 0.95
+        assert score_f > score_u
 
     def test_no_variety_in_score(self):
         profile = {"para": 0.50, "symp": 0.30, "grnd": 0.20}
@@ -361,6 +465,120 @@ class TestSelectSongs:
             assert "mood_tags" in song
             assert "bpm" in song
             assert "energy" in song
+
+    def test_near_duplicate_songs_deduped(self, db_conn):
+        """Same song from two albums should appear only once, keeping more-played version."""
+        # Seed two versions of the same song with different albums
+        uri_more = "spotify:track:dup_more"
+        uri_less = "spotify:track:dup_less"
+        upsert_song(db_conn, uri_more, "Tum Hi Ho Bandhu (From 'Cocktail')",
+                     "Neeraj Shridhar", sources=["test"], last_played="2026-03-18")
+        db_conn.execute("UPDATE songs SET play_count = 20 WHERE spotify_uri = ?", (uri_more,))
+        upsert_song(db_conn, uri_less, "Tum Hi Ho Bandhu",
+                     "Neeraj Shridhar", sources=["test"], last_played="2026-03-18")
+        db_conn.execute("UPDATE songs SET play_count = 3 WHERE spotify_uri = ?", (uri_less,))
+
+        for uri in [uri_more, uri_less]:
+            upsert_song_classification(db_conn, {
+                "spotify_uri": uri, "parasympathetic": 0.8, "sympathetic": 0.05,
+                "grounding": 0.1, "confidence": 0.7,
+                "bpm": 120.0, "energy": 0.6,
+                "genre_tags": ["bollywood", "hindi"],
+                "mood_tags": ["uplifting", "energetic"],
+                "classification_source": "test",
+            })
+
+        # Seed enough other songs to fill the pool
+        self._seed_songs(db_conn, count=30)
+        db_conn.commit()
+
+        result = select_songs(db_conn, "baseline", "2026-03-19")
+        uris = [s["spotify_uri"] for s in result["songs"]]
+        names = [s["name"].lower() for s in result["songs"]]
+
+        # At most one version of "Tum Hi Ho Bandhu" in the playlist
+        bandhu_count = sum(1 for n in names if "tum hi ho bandhu" in n)
+        assert bandhu_count <= 1
+
+        # If present, it should be the more-played version
+        if uri_more in uris:
+            assert uri_less not in uris
+
+    def test_backfill_after_dedup_maintains_playlist_size(self, db_conn):
+        """When dedup removes a duplicate, backfill should restore playlist to 20 songs."""
+        import random
+        random.seed(99)
+
+        # Seed 30+ unique songs with varied neuro scores
+        for i in range(32):
+            uri = f"spotify:track:fill{i:03d}"
+            upsert_song(db_conn, uri, f"Unique Song {i}", f"Artist {i}",
+                        sources=["test"], last_played="2026-03-18")
+            db_conn.execute(
+                "UPDATE songs SET play_count = ? WHERE spotify_uri = ?",
+                (random.randint(5, 40), uri),
+            )
+            upsert_song_classification(db_conn, {
+                "spotify_uri": uri,
+                "parasympathetic": 0.85 - i * 0.01,  # high para for fatigue state
+                "sympathetic": 0.05,
+                "grounding": 0.1,
+                "confidence": 0.7,
+                "bpm": 70.0 + i * 0.5,
+                "energy": 0.3 + i * 0.01,
+                "genre_tags": ["bollywood", "hindi"],
+                "mood_tags": ["calm", "soothing"],
+                "classification_source": "test",
+            })
+
+        # Seed 2 near-duplicates with very high para scores so they're both top candidates
+        dup_uri_a = "spotify:track:dup_alpha"
+        dup_uri_b = "spotify:track:dup_beta"
+        upsert_song(db_conn, dup_uri_a, "Kabira (From 'Yeh Jawaani Hai Deewani')",
+                     "Arijit Singh", sources=["test"], last_played="2026-03-18")
+        db_conn.execute(
+            "UPDATE songs SET play_count = 30 WHERE spotify_uri = ?", (dup_uri_a,),
+        )
+        upsert_song_classification(db_conn, {
+            "spotify_uri": dup_uri_a,
+            "parasympathetic": 0.95,
+            "sympathetic": 0.02,
+            "grounding": 0.05,
+            "confidence": 0.8,
+            "bpm": 80.0,
+            "energy": 0.3,
+            "genre_tags": ["bollywood", "hindi"],
+            "mood_tags": ["calm", "soothing"],
+            "classification_source": "test",
+        })
+
+        upsert_song(db_conn, dup_uri_b, "Kabira (From 'Bollywood Essentials')",
+                     "Arijit Singh", sources=["test"], last_played="2026-03-17")
+        db_conn.execute(
+            "UPDATE songs SET play_count = 10 WHERE spotify_uri = ?", (dup_uri_b,),
+        )
+        upsert_song_classification(db_conn, {
+            "spotify_uri": dup_uri_b,
+            "parasympathetic": 0.94,
+            "sympathetic": 0.02,
+            "grounding": 0.05,
+            "confidence": 0.8,
+            "bpm": 80.0,
+            "energy": 0.3,
+            "genre_tags": ["bollywood", "hindi"],
+            "mood_tags": ["calm", "soothing"],
+            "classification_source": "test",
+        })
+        db_conn.commit()
+
+        result = select_songs(db_conn, "accumulated_fatigue", "2026-03-19")
+        uris = [s["spotify_uri"] for s in result["songs"]]
+
+        # Should have exactly 20 songs (dedup removed 1, backfill added 1)
+        assert len(result["songs"]) == 20
+
+        # The removed duplicate (lower plays) should not appear
+        assert dup_uri_b not in uris
 
 
 # ---------------------------------------------------------------------------
