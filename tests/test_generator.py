@@ -7,6 +7,9 @@ import spotipy
 
 from matching.generator import (
     GenerationError,
+    _get_dominant_moods,
+    _get_neuro_purpose,
+    _pick_name_label,
     format_playlist_name,
     format_reasoning,
     generate_description,
@@ -20,24 +23,79 @@ from spotify.playlist import SpotifyPlaylistError
 # ---------------------------------------------------------------------------
 
 class TestFormatPlaylistName:
-    def test_basic_format(self):
-        assert format_playlist_name("2026-03-19", "accumulated_fatigue") == \
-            "Mar 19 — Accumulated Fatigue"
+    def test_fatigue_slow_down(self):
+        name = format_playlist_name(
+            "2026-03-19", {"para": 0.95, "symp": 0.00, "grnd": 0.05}, 19.0)
+        assert name == "Mar 19 — Slow Down"
 
-    def test_single_digit_day(self):
-        result = format_playlist_name("2026-03-05", "peak_readiness")
-        assert result == "Mar 5 — Peak Readiness"
+    def test_peak_full_send(self):
+        name = format_playlist_name(
+            "2026-03-05", {"para": 0.00, "symp": 0.90, "grnd": 0.10}, 92.0)
+        assert name == "Mar 5 — Full Send"
 
-    def test_baseline_state(self):
-        assert format_playlist_name("2026-01-01", "baseline") == "Jan 1 — Baseline"
+    def test_baseline_high_recovery_stay_sharp(self):
+        name = format_playlist_name(
+            "2026-01-01", {"para": 0.15, "symp": 0.50, "grnd": 0.35}, 78.0)
+        assert name == "Jan 1 — Stay Sharp"
 
-    def test_poor_recovery(self):
-        result = format_playlist_name("2026-12-25", "poor_recovery")
-        assert result == "Dec 25 — Poor Recovery"
+    def test_baseline_low_recovery_fuel_up(self):
+        name = format_playlist_name(
+            "2026-12-25", {"para": 0.15, "symp": 0.50, "grnd": 0.35}, 62.0)
+        assert name == "Dec 25 — Fuel Up"
 
-    def test_emotional_processing_deficit(self):
-        result = format_playlist_name("2026-06-15", "emotional_processing_deficit")
-        assert result == "Jun 15 — Emotional Processing Deficit"
+    def test_emotional_sit_with_it(self):
+        name = format_playlist_name(
+            "2026-06-15", {"para": 0.10, "symp": 0.00, "grnd": 0.90}, 45.0)
+        assert name == "Jun 15 — Sit With It"
+
+    def test_poor_recovery_ease_into_it(self):
+        name = format_playlist_name(
+            "2026-03-10", {"para": 0.25, "symp": 0.30, "grnd": 0.45}, 35.0)
+        assert name == "Mar 10 — Ease Into It"
+
+    def test_poor_sleep_ground_yourself(self):
+        name = format_playlist_name(
+            "2026-03-10", {"para": 0.55, "symp": 0.00, "grnd": 0.45}, 55.0)
+        assert name == "Mar 10 — Settle In"
+
+    def test_physical_recovery_rest_and_repair(self):
+        name = format_playlist_name(
+            "2026-03-10", {"para": 0.60, "symp": 0.00, "grnd": 0.40}, 40.0)
+        assert name == "Mar 10 — Rest & Repair"
+
+    def test_none_recovery_uses_default(self):
+        name = format_playlist_name(
+            "2026-03-10", {"para": 0.15, "symp": 0.50, "grnd": 0.35})
+        assert "Fuel Up" in name  # default recovery 50 → not > 70
+
+
+class TestPickNameLabel:
+    def test_para_very_high(self):
+        assert _pick_name_label({"para": 0.95, "symp": 0.00, "grnd": 0.05}) == "Slow Down"
+
+    def test_para_moderate_low_recovery(self):
+        assert _pick_name_label({"para": 0.60, "symp": 0.00, "grnd": 0.40}, 35.0) == "Rest & Repair"
+
+    def test_para_moderate_high_recovery(self):
+        assert _pick_name_label({"para": 0.55, "symp": 0.00, "grnd": 0.45}, 65.0) == "Settle In"
+
+    def test_symp_very_high(self):
+        assert _pick_name_label({"para": 0.00, "symp": 0.90, "grnd": 0.10}) == "Full Send"
+
+    def test_symp_moderate_high_recovery(self):
+        assert _pick_name_label({"para": 0.15, "symp": 0.50, "grnd": 0.35}, 75.0) == "Stay Sharp"
+
+    def test_symp_moderate_low_recovery(self):
+        assert _pick_name_label({"para": 0.15, "symp": 0.50, "grnd": 0.35}, 60.0) == "Fuel Up"
+
+    def test_grnd_very_high(self):
+        assert _pick_name_label({"para": 0.10, "symp": 0.00, "grnd": 0.90}) == "Sit With It"
+
+    def test_grnd_moderate_with_symp(self):
+        assert _pick_name_label({"para": 0.25, "symp": 0.30, "grnd": 0.45}) == "Ease Into It"
+
+    def test_grnd_moderate_without_symp(self):
+        assert _pick_name_label({"para": 0.15, "symp": 0.10, "grnd": 0.45}) == "Ground Yourself"
 
 
 # ---------------------------------------------------------------------------
@@ -45,67 +103,99 @@ class TestFormatPlaylistName:
 # ---------------------------------------------------------------------------
 
 class TestGenerateDescription:
-    def test_full_metrics(self):
+    def _make_songs(self, mood_tags=None, genre_tags=None, n=5):
+        return [
+            {"mood_tags": mood_tags or ["energetic", "uplifting"],
+             "genre_tags": genre_tags or ["bollywood"]}
+            for _ in range(n)
+        ]
+
+    def test_para_dominant_description(self):
         desc = generate_description(
-            state="accumulated_fatigue",
-            metrics={"recovery_score": 35.0, "hrv_rmssd_milli": 42.5},
             neuro_profile={"para": 0.95, "symp": 0.00, "grnd": 0.05},
-            match_stats={"selected": 18},
+            songs=self._make_songs(["calm", "soothing", "peaceful"]),
+            cohesion_stats={"dominant_genre": "bollywood"},
         )
-        assert "Accumulated Fatigue" in desc
-        assert "Recovery 35%" in desc
-        assert "HRV 42ms" in desc  # rounded
-        assert "parasympathetic" in desc
-        assert "18 tracks" in desc
+        assert "Calming your nervous system" in desc
+        assert "Bollywood" in desc
 
-    def test_missing_recovery(self):
+    def test_symp_dominant_description(self):
         desc = generate_description(
-            state="baseline",
-            metrics={},
             neuro_profile={"para": 0.15, "symp": 0.50, "grnd": 0.35},
-            match_stats={"selected": 20},
+            songs=self._make_songs(["energetic", "uplifting"]),
+            cohesion_stats={"dominant_genre": "rock"},
         )
-        assert "Recovery" not in desc
-        assert "HRV" not in desc
-        assert "sympathetic" in desc
+        assert "Matching your energy" in desc
+        assert "Rock" in desc
 
-    def test_missing_hrv(self):
+    def test_grnd_dominant_description(self):
         desc = generate_description(
-            state="poor_recovery",
-            metrics={"recovery_score": 28.0},
-            neuro_profile={"para": 0.25, "symp": 0.30, "grnd": 0.45},
-            match_stats={"selected": 15},
-        )
-        assert "Recovery 28%" in desc
-        assert "HRV" not in desc
-
-    def test_grounding_dominant(self):
-        desc = generate_description(
-            state="emotional_processing_deficit",
-            metrics={},
             neuro_profile={"para": 0.10, "symp": 0.00, "grnd": 0.90},
-            match_stats={"selected": 17},
+            songs=self._make_songs(["reflective", "nostalgic"]),
+            cohesion_stats={"dominant_genre": "bollywood"},
         )
-        assert "grounding" in desc
+        assert "Grounding your emotions" in desc
+
+    def test_includes_mood_tags(self):
+        desc = generate_description(
+            neuro_profile={"para": 0.95, "symp": 0.00, "grnd": 0.05},
+            songs=self._make_songs(["romantic", "nostalgic", "warm"]),
+            cohesion_stats={"dominant_genre": "bollywood"},
+        )
+        assert "Romantic" in desc
+
+    def test_no_genre_graceful(self):
+        desc = generate_description(
+            neuro_profile={"para": 0.50, "symp": 0.30, "grnd": 0.20},
+            songs=self._make_songs(),
+            cohesion_stats={},
+        )
+        assert len(desc) > 0
+
+    def test_no_mood_tags_graceful(self):
+        desc = generate_description(
+            neuro_profile={"para": 0.50, "symp": 0.30, "grnd": 0.20},
+            songs=[{"mood_tags": None} for _ in range(5)],
+            cohesion_stats={"dominant_genre": "rock"},
+        )
+        assert "Rock" in desc
 
     def test_under_300_chars(self):
         desc = generate_description(
-            state="accumulated_fatigue",
-            metrics={"recovery_score": 35.0, "hrv_rmssd_milli": 42.5},
             neuro_profile={"para": 0.95, "symp": 0.00, "grnd": 0.05},
-            match_stats={"selected": 20},
+            songs=self._make_songs(["calm", "soothing", "peaceful", "relaxed", "serene"]),
+            cohesion_stats={"dominant_genre": "bollywood"},
         )
         assert len(desc) <= 300
 
-    def test_none_metric_values_handled(self):
-        desc = generate_description(
-            state="baseline",
-            metrics={"recovery_score": None, "hrv_rmssd_milli": None},
-            neuro_profile={"para": 0.15, "symp": 0.50, "grnd": 0.35},
-            match_stats={"selected": 15},
-        )
-        assert "Recovery" not in desc
-        assert "HRV" not in desc
+
+class TestGetDominantMoods:
+    def test_counts_across_songs(self):
+        songs = [
+            {"mood_tags": ["calm", "soothing"]},
+            {"mood_tags": ["calm", "peaceful"]},
+            {"mood_tags": ["calm", "soothing", "warm"]},
+        ]
+        moods = _get_dominant_moods(songs, top_n=2)
+        assert moods[0] == "calm"  # 3 occurrences
+        assert len(moods) == 2
+
+    def test_empty_songs(self):
+        assert _get_dominant_moods([]) == []
+
+    def test_none_mood_tags(self):
+        assert _get_dominant_moods([{"mood_tags": None}]) == []
+
+
+class TestGetNeuroPurpose:
+    def test_para(self):
+        assert _get_neuro_purpose({"para": 0.9, "symp": 0.0, "grnd": 0.1}) == "Calming your nervous system"
+
+    def test_symp(self):
+        assert _get_neuro_purpose({"para": 0.1, "symp": 0.8, "grnd": 0.1}) == "Matching your energy"
+
+    def test_grnd(self):
+        assert _get_neuro_purpose({"para": 0.1, "symp": 0.0, "grnd": 0.9}) == "Grounding your emotions"
 
 
 # ---------------------------------------------------------------------------
@@ -255,8 +345,8 @@ class TestGeneratePlaylist:
         assert result["playlist_url"] is None
         assert result["state"] == "baseline"
         assert len(result["songs"]) == 18
-        assert "Baseline" in result["name"]
         assert "Mar 19" in result["name"]
+        assert "Fuel Up" in result["name"]  # baseline symp-dominant, no recovery → default
         conn.close()
 
     @patch("matching.generator.select_songs")
@@ -388,7 +478,8 @@ class TestGeneratePlaylist:
         result = generate_playlist(conn, sp=None, date_str="2026-03-19", dry_run=True)
 
         assert len(result["description"]) <= 300
-        assert "Recovery 72%" in result["description"]
+        assert "Matching your energy" in result["description"]  # symp-dominant baseline
+        assert "Rock" in result["description"]  # dominant genre from mock
         conn.close()
 
     @patch("matching.generator.select_songs")

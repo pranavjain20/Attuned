@@ -26,42 +26,100 @@ class GenerationError(Exception):
 # Pure formatting functions
 # ---------------------------------------------------------------------------
 
-def format_playlist_name(date_str: str, state: str) -> str:
-    """Format playlist name: 'Mar 19 — Accumulated Fatigue'."""
+def format_playlist_name(
+    date_str: str,
+    neuro_profile: dict[str, float],
+    recovery_score: float | None = None,
+) -> str:
+    """Dynamic playlist name based on neuro profile + recovery intensity.
+
+    Names reflect what the music is doing for the body, not clinical state names.
+    Recovery score adds intensity variation so no two days feel the same.
+    """
     dt = datetime.strptime(date_str, "%Y-%m-%d")
     month_day = dt.strftime("%b %-d")
-    state_title = state.replace("_", " ").title()
-    return f"{month_day} — {state_title}"
+
+    label = _pick_name_label(neuro_profile, recovery_score)
+    return f"{month_day} — {label}"
+
+
+def _pick_name_label(
+    neuro_profile: dict[str, float],
+    recovery_score: float | None = None,
+) -> str:
+    """Pick a human-readable label from neuro profile + recovery."""
+    para = neuro_profile.get("para", 0)
+    symp = neuro_profile.get("symp", 0)
+    grnd = neuro_profile.get("grnd", 0)
+    recovery = recovery_score if recovery_score is not None else 50.0
+
+    top_dim = max(neuro_profile, key=neuro_profile.get)
+
+    if top_dim == "para":
+        if para > 0.80:
+            return "Slow Down"
+        if recovery < 50:
+            return "Rest & Repair"
+        return "Settle In"
+
+    if top_dim == "symp":
+        if symp > 0.80:
+            return "Full Send"
+        if recovery > 70:
+            return "Stay Sharp"
+        return "Fuel Up"
+
+    # grnd dominant
+    if grnd > 0.80:
+        return "Sit With It"
+    if symp > 0.20:
+        return "Ease Into It"  # mixed grnd+symp = gentle lift
+    return "Ground Yourself"
+
+
+def _get_neuro_purpose(neuro_profile: dict[str, float]) -> str:
+    """Human-readable phrase for what the music is doing."""
+    top_dim = max(neuro_profile, key=neuro_profile.get)
+    purposes = {
+        "para": "Calming your nervous system",
+        "symp": "Matching your energy",
+        "grnd": "Grounding your emotions",
+    }
+    return purposes.get(top_dim, "Tuned for you")
+
+
+def _get_dominant_moods(songs: list[dict], top_n: int = 3) -> list[str]:
+    """Extract the most common mood tags from selected songs."""
+    mood_counts: dict[str, int] = {}
+    for song in songs:
+        for tag in (song.get("mood_tags") or []):
+            t = tag.lower().strip()
+            if t:
+                mood_counts[t] = mood_counts.get(t, 0) + 1
+    if not mood_counts:
+        return []
+    sorted_moods = sorted(mood_counts, key=mood_counts.get, reverse=True)
+    return sorted_moods[:top_n]
 
 
 def generate_description(
-    state: str,
-    metrics: dict,
     neuro_profile: dict[str, float],
-    match_stats: dict,
+    songs: list[dict],
+    cohesion_stats: dict,
 ) -> str:
     """Generate a <=300 char playlist description.
 
-    Template-based: state + recovery% + HRV context + neuro emphasis.
-    Gracefully omits missing metrics.
+    Format: what the music does · genre · mood tags.
     """
-    state_label = state.replace("_", " ").title()
-    parts = [state_label]
+    parts = [_get_neuro_purpose(neuro_profile)]
 
-    recovery = metrics.get("recovery_score")
-    if recovery is not None:
-        parts.append(f"Recovery {recovery:.0f}%")
+    genre = cohesion_stats.get("dominant_genre")
+    if genre:
+        parts.append(genre.title())
 
-    hrv = metrics.get("hrv_rmssd_milli")
-    if hrv is not None:
-        parts.append(f"HRV {hrv:.0f}ms")
-
-    # Neuro emphasis: which dimension dominates
-    top_dim = max(neuro_profile, key=neuro_profile.get)
-    dim_labels = {"para": "parasympathetic", "symp": "sympathetic", "grnd": "grounding"}
-    parts.append(f"Tuned for {dim_labels.get(top_dim, top_dim)}")
-
-    parts.append(f"{match_stats['selected']} tracks")
+    moods = _get_dominant_moods(songs)
+    if moods:
+        parts.append(", ".join(m.title() for m in moods))
 
     desc = " · ".join(parts)
     if len(desc) > SPOTIFY_DESCRIPTION_MAX_LENGTH:
@@ -174,13 +232,12 @@ def generate_playlist(
         )
 
     # 3. Format outputs
-    name = format_playlist_name(date_str, state)
-    description = generate_description(
-        state,
-        classification.get("metrics", {}),
-        match_result["neuro_profile"],
-        match_result["match_stats"],
-    )
+    metrics = classification.get("metrics", {})
+    neuro_profile = match_result["neuro_profile"]
+    cohesion_stats = match_result["match_stats"].get("cohesion_stats", {})
+
+    name = format_playlist_name(date_str, neuro_profile, metrics.get("recovery_score"))
+    description = generate_description(neuro_profile, songs, cohesion_stats)
     reasoning = format_reasoning(classification, match_result)
     track_uris = [s["spotify_uri"] for s in songs]
 
