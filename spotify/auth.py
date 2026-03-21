@@ -72,6 +72,8 @@ def get_spotify_client(conn: sqlite3.Connection) -> spotipy.Spotify:
 
 def _refresh_spotify_token(conn: sqlite3.Connection, refresh_token: str) -> str:
     """Refresh the Spotify access token and update the DB."""
+    if not refresh_token:
+        raise RuntimeError("No Spotify refresh token stored — re-run: python main.py auth-spotify")
     response = httpx.post(
         "https://accounts.spotify.com/api/token",
         data={

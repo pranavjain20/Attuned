@@ -12,7 +12,6 @@ from spotify.engagement import (
     _compute_final_scores,
     _compute_recent_play_ratios,
     _compute_skip_rates,
-    _parse_date,
     compute_engagement_scores,
 )
 
@@ -370,69 +369,6 @@ class TestNoEligibleSongs:
         _insert_song(db_conn, "uri:2", play_count=2)
         scored = compute_engagement_scores(db_conn)
         assert scored == 0
-
-
-# ---------------------------------------------------------------------------
-# _parse_date helper
-# ---------------------------------------------------------------------------
-
-class TestParseDate:
-    def test_z_suffix(self):
-        """ISO 8601 with Z suffix parses to UTC datetime."""
-        result = _parse_date("2026-03-17T10:00:00Z")
-        assert result is not None
-        assert result.tzinfo is not None
-        assert result.year == 2026
-        assert result.month == 3
-        assert result.day == 17
-        assert result.hour == 10
-
-    def test_plus_zero_offset(self):
-        """ISO 8601 with +00:00 offset parses correctly."""
-        result = _parse_date("2026-03-17T10:00:00+00:00")
-        assert result is not None
-        assert result.tzinfo is not None
-        assert result.hour == 10
-
-    def test_date_only(self):
-        """Date-only string (YYYY-MM-DD) parses to midnight UTC."""
-        result = _parse_date("2026-03-17")
-        assert result is not None
-        assert result.hour == 0
-        assert result.minute == 0
-        assert result.tzinfo is not None
-
-    def test_invalid_string(self):
-        """Invalid date string returns None."""
-        result = _parse_date("not-a-date")
-        assert result is None
-
-    def test_empty_string(self):
-        """Empty string returns None."""
-        result = _parse_date("")
-        assert result is None
-
-    def test_non_utc_timezone_offset(self):
-        """ISO 8601 with non-UTC offset is correctly converted to UTC."""
-        result = _parse_date("2026-03-17T10:00:00+05:30")
-        assert result is not None
-        assert result.tzinfo == timezone.utc
-        # 10:00+05:30 = 04:30 UTC
-        assert result.hour == 4
-        assert result.minute == 30
-
-    def test_no_t_separator_with_time(self):
-        """Date string without T but with time info falls through to date-only path."""
-        # "2026-03-17 10:00:00" has no "T" so the code appends T00:00:00+00:00
-        # This would produce "2026-03-17 10:00:00T00:00:00+00:00" → ValueError → None
-        result = _parse_date("2026-03-17 10:00:00")
-        assert result is None
-
-    def test_with_milliseconds_z(self):
-        """ISO 8601 with milliseconds and Z suffix."""
-        result = _parse_date("2026-03-17T10:00:00.123Z")
-        assert result is not None
-        assert result.hour == 10
 
 
 # ---------------------------------------------------------------------------

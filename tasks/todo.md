@@ -183,11 +183,30 @@
 - [ ] **12 songs LLM-only** — 6 no YouTube results, 6 missing duration_ms (Spotify rate-limited). Acceptable — 99.1% coverage.
 - [ ] **~869 songs missing release_year** — Spotify rate limit. Run `python main.py backfill-release-years` when limit clears.
 
-## Day 6: Playlist Creation + End-to-End Flow
-_Not started_
+## Day 6: Playlist Creation + End-to-End Flow (DONE)
+- [x] matching/generator.py — full pipeline: WHOOP state → match → Spotify push → DB log (26 tests)
+- [x] spotify/playlist.py — create playlist, description truncation, private by default (13 tests)
+- [x] main.py generate — CLI with --date and --dry-run flags
+- [x] Dynamic playlist names from neuro profile + recovery (Slow Down, Fuel Up, Full Send, etc.)
+- [x] Description: purpose + genre + mood ("Calming your nervous system · Bollywood · Melancholy, Introspective")
+- [x] Era cohesion integrated into matching (genre-aware sigma, weight 0.20)
+- [x] LLM prompt improved with release_year + Bollywood artist/composer context
+- [x] Backfill command with rate-limit handling (auto-retry on 429)
+- [x] Dry-run tested: baseline, fatigue, peak — all produce correct playlists
+- [x] 794 tests passing
 
-## Day 7: Sequencing + Polish + Hardening
-_Not started_
+### Blocked on Spotify rate limit (~7 PM Mar 20)
+- [ ] Finish release_year backfill: `python main.py backfill-release-years`
+- [ ] Push first real playlist to Spotify: `python main.py generate`
+
+## Day 7: Polish + Hardening
+- [ ] Tune era sigma/weights based on real playlist output with full release_year data
+- [ ] End-of-project audit: re-read every file, check for hacks, dead code, missing edge cases
+- [ ] Full test suite review: coverage gaps, missing edge cases, assertion strength
+- [ ] Run all 7 states, verify playlist quality: correct songs, good names, good descriptions
+- [ ] Error handling review: what happens with no internet, expired tokens, empty library
+- [ ] STATUS.md final update
+- [ ] Clean up scripts/ (remove plot_fatigue.py or keep)
 
 ## Future: Personalization Features (deferred — design research done)
 _Research completed in docs/era_cohesion_research.md and docs/playlist_cohesion_research.md_

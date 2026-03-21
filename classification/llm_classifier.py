@@ -14,7 +14,6 @@ from typing import Any
 
 from classification.profiler import compute_neurological_profile
 from config import (
-    INDIAN_GENRE_TAGS,
     LLM_BATCH_SIZE,
     LLM_MAX_RETRIES,
     LLM_MODEL_ANTHROPIC,
@@ -254,15 +253,6 @@ def _match_result_to_song(
 # ---------------------------------------------------------------------------
 # Merge logic
 # ---------------------------------------------------------------------------
-
-def _is_indian_song(genre_tags: list[str] | None) -> bool:
-    """Check if genre_tags indicate an Indian song."""
-    if not genre_tags:
-        return False
-    return any(tag in INDIAN_GENRE_TAGS for tag in genre_tags)
-
-
-BPM_AGREEMENT_THRESHOLD = 15  # BPM within ±15 = agreement
 
 
 def _compute_confidence(
@@ -614,7 +604,7 @@ def classify_songs(
 
             # Flag low-confidence classifications for review
             confidence = merged.get("confidence")
-            if confidence is not None and confidence < 0.5:
+            if confidence is not None and confidence < 0.7:
                 stats["low_confidence"] += 1
                 logger.warning(
                     "Low confidence (%.2f): %s — %s",

@@ -179,19 +179,3 @@ def _compute_final_scores(conn: sqlite3.Connection) -> int:
 
     conn.commit()
     return scored
-
-
-def _parse_date(iso_str: str) -> datetime | None:
-    """Parse an ISO 8601 date string to a timezone-aware datetime."""
-    try:
-        # Handle both 'YYYY-MM-DDTHH:MM:SSZ' and 'YYYY-MM-DD' formats
-        if "T" in iso_str:
-            if iso_str.endswith("Z"):
-                return datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-            dt = datetime.fromisoformat(iso_str)
-            if dt.tzinfo is not None:
-                return dt.astimezone(timezone.utc)
-            return dt.replace(tzinfo=timezone.utc)
-        return datetime.fromisoformat(iso_str + "T00:00:00+00:00")
-    except (ValueError, TypeError):
-        return None

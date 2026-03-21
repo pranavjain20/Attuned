@@ -3,11 +3,13 @@
 import time
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from db import queries
 from whoop.auth import (
     _is_token_expired,
+    _refresh_token,
     exchange_code_for_tokens,
     get_authorization_url,
     get_valid_token,
@@ -91,3 +93,28 @@ class TestGetValidToken:
         token = get_valid_token(db_conn)
         assert token == "refreshed_access"
         mock_refresh.assert_called_once()
+
+
+class TestRefreshTokenErrors:
+    @patch("whoop.auth.get_whoop_client_id", return_value="id")
+    @patch("whoop.auth.get_whoop_client_secret", return_value="secret")
+    @patch("whoop.auth.httpx.post")
+    def test_refresh_token_handles_401_error(self, mock_post, mock_secret, mock_id, db_conn):
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "401 Unauthorized", request=MagicMock(), response=mock_response,
+        )
+        mock_post.return_value = mock_response
+
+        with pytest.raises(httpx.HTTPStatusError):
+            _refresh_token(db_conn, "stale_refresh_token")
+
+    @patch("whoop.auth.get_whoop_client_id", return_value="id")
+    @patch("whoop.auth.get_whoop_client_secret", return_value="secret")
+    @patch("whoop.auth.httpx.post")
+    def test_refresh_token_handles_network_error(self, mock_post, mock_secret, mock_id, db_conn):
+        mock_post.side_effect = httpx.ConnectError("Connection refused")
+
+        with pytest.raises(httpx.ConnectError):
+            _refresh_token(db_conn, "some_refresh_token")

@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from classification.llm_classifier import _blend_neuro_scores, _is_indian_song
+from classification.llm_classifier import _blend_neuro_scores
 from classification.profiler import (
     NEUTRAL_BPM,
     NEUTRAL_FLOAT,

@@ -31,9 +31,9 @@ def _migrate_add_recent_play_ratio(conn: sqlite3.Connection) -> None:
     try:
         conn.execute("ALTER TABLE songs ADD COLUMN recent_play_ratio REAL")
         conn.commit()
-    except sqlite3.OperationalError:
-        # Column already exists — expected for new DBs or re-runs
-        pass
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
 
 
 def _migrate_add_classified_at(conn: sqlite3.Connection) -> None:
@@ -41,8 +41,9 @@ def _migrate_add_classified_at(conn: sqlite3.Connection) -> None:
     try:
         conn.execute("ALTER TABLE song_classifications ADD COLUMN classified_at TEXT")
         conn.commit()
-    except sqlite3.OperationalError:
-        pass
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
 
 
 def _migrate_add_felt_tempo(conn: sqlite3.Connection) -> None:
@@ -50,8 +51,9 @@ def _migrate_add_felt_tempo(conn: sqlite3.Connection) -> None:
     try:
         conn.execute("ALTER TABLE song_classifications ADD COLUMN felt_tempo REAL")
         conn.commit()
-    except sqlite3.OperationalError:
-        pass
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
 
 
 def _migrate_add_release_year(conn: sqlite3.Connection) -> None:
@@ -59,8 +61,9 @@ def _migrate_add_release_year(conn: sqlite3.Connection) -> None:
     try:
         conn.execute("ALTER TABLE songs ADD COLUMN release_year INTEGER")
         conn.commit()
-    except sqlite3.OperationalError:
-        pass
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
 
 
 _SCHEMA_SQL = """

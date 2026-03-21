@@ -8,7 +8,6 @@ logger = logging.getLogger(__name__)
 from config import (
     DEEP_SLEEP_MIN_MS,
     DEEP_SLEEP_MIN_RATIO,
-    MIN_BASELINE_DAYS,
     REM_SLEEP_MIN_RATIO,
     SLEEP_ADEQUATE_SD,
     SLEEP_DEFICIT_SD,

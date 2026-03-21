@@ -1,11 +1,12 @@
 """Tests for spotify/auth.py — SQLite cache handler and client creation."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from db import queries
-from spotify.auth import SQLiteCacheHandler
+from spotify.auth import SQLiteCacheHandler, _refresh_spotify_token
 
 
 class TestSQLiteCacheHandler:
@@ -45,3 +46,23 @@ class TestSQLiteCacheHandler:
         loaded = handler.get_cached_token()
         assert loaded["access_token"] == "access"
         assert loaded["refresh_token"] == "refresh"
+
+
+class TestRefreshSpotifyTokenErrors:
+    @patch("spotify.auth.get_spotify_client_id", return_value="id")
+    @patch("spotify.auth.get_spotify_client_secret", return_value="secret")
+    @patch("spotify.auth.httpx.post")
+    def test_refresh_token_handles_http_error(self, mock_post, mock_secret, mock_id, db_conn):
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "400 Bad Request", request=MagicMock(), response=mock_response,
+        )
+        mock_post.return_value = mock_response
+
+        with pytest.raises(httpx.HTTPStatusError):
+            _refresh_spotify_token(db_conn, "valid_refresh_token")
+
+    def test_refresh_token_missing_token_raises(self, db_conn):
+        with pytest.raises(RuntimeError, match="No Spotify refresh token"):
+            _refresh_spotify_token(db_conn, None)

@@ -168,15 +168,6 @@ def get_songs_missing_duration(conn: sqlite3.Connection) -> list[str]:
     return [r["spotify_uri"] for r in rows]
 
 
-def update_song_duration(conn: sqlite3.Connection, uri: str, duration_ms: int) -> None:
-    """Set duration_ms for a song."""
-    conn.execute(
-        "UPDATE songs SET duration_ms = ? WHERE spotify_uri = ?",
-        (duration_ms, uri),
-    )
-    conn.commit()
-
-
 def update_song_durations_batch(
     conn: sqlite3.Connection,
     durations: dict[str, int],
@@ -185,22 +176,6 @@ def update_song_durations_batch(
     conn.executemany(
         "UPDATE songs SET duration_ms = ? WHERE spotify_uri = ?",
         [(ms, uri) for uri, ms in durations.items()],
-    )
-    conn.commit()
-
-
-def update_song_play_stats(
-    conn: sqlite3.Connection,
-    uri: str,
-    play_count: int,
-    first_played: str | None,
-    last_played: str | None,
-) -> None:
-    """Update play_count, first_played, last_played for a song."""
-    conn.execute(
-        """UPDATE songs SET play_count = ?, first_played = ?, last_played = ?
-           WHERE spotify_uri = ?""",
-        (play_count, first_played, last_played, uri),
     )
     conn.commit()
 

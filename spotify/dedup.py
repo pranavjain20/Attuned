@@ -155,14 +155,8 @@ def _reassign_listening_history(
         WHERE spotify_uri IN ({placeholders})
     """, others)
 
-    # Log if any rows were dropped due to timestamp conflicts
+    # Log reassignment
     if before > 0:
-        after = conn.execute(
-            "SELECT COUNT(*) as cnt FROM listening_history WHERE spotify_uri = ?",
-            (canonical,),
-        ).fetchone()["cnt"]
-        # We can't know exact new rows added, but if before > 0 it was reassigned
-        dropped = 0  # INSERT OR IGNORE handles conflicts silently
         logger.debug("Reassigned %d rows to %s", before, canonical)
 
 

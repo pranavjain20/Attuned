@@ -88,10 +88,14 @@ def _parse_history_record(record: dict[str, Any]) -> dict[str, Any] | None:
     if not track_name or not artist_name:
         return None
 
+    ts = record.get("ts")
+    if not ts:
+        return None
+
     return {
         "history": {
             "spotify_uri": uri,
-            "played_at": record["ts"],
+            "played_at": ts,
             "ms_played": record.get("ms_played", 0),
             "reason_start": record.get("reason_start"),
             "reason_end": record.get("reason_end"),
@@ -105,8 +109,8 @@ def _parse_history_record(record: dict[str, Any]) -> dict[str, Any] | None:
             "artist": artist_name,
             "album": record.get("master_metadata_album_album_name"),
             "sources": ["extended_history"],
-            "first_played": record["ts"],
-            "last_played": record["ts"],
+            "first_played": ts,
+            "last_played": ts,
         },
     }
 

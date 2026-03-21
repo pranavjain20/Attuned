@@ -66,6 +66,7 @@ def _paginated_get(
             endpoint,
             headers={"Authorization": f"Bearer {token}"},
             params=params,
+            timeout=30,
         )
         response.raise_for_status()
         data = response.json()

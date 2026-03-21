@@ -43,6 +43,7 @@ def exchange_code_for_tokens(code: str, conn: sqlite3.Connection) -> dict:
             "client_id": get_whoop_client_id(),
             "client_secret": get_whoop_client_secret(),
         },
+        timeout=30,
     )
     response.raise_for_status()
     data = response.json()
@@ -95,6 +96,7 @@ def _refresh_token(conn: sqlite3.Connection, refresh_token: str) -> str:
             "client_id": get_whoop_client_id(),
             "client_secret": get_whoop_client_secret(),
         },
+        timeout=30,
     )
     response.raise_for_status()
     data = response.json()

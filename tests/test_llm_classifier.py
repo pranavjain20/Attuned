@@ -8,8 +8,8 @@ import pytest
 from classification.llm_classifier import (
     _blend_neuro_scores,
     _build_prompt,
+    _call_anthropic,
     _compute_confidence,
-    _is_indian_song,
     _match_result_to_song,
     _merge_with_essentia,
     _pick_best_bpm,
@@ -322,33 +322,6 @@ class TestValidateSongResult:
         result["felt_tempo"] = "slow"
         validated = _validate_song_result(result)
         assert validated["felt_tempo"] is None
-
-
-# ---------------------------------------------------------------------------
-# _is_indian_song
-# ---------------------------------------------------------------------------
-
-class TestIsIndianSong:
-    def test_bollywood_is_indian(self):
-        assert _is_indian_song(["bollywood", "romantic"]) is True
-
-    def test_hindi_is_indian(self):
-        assert _is_indian_song(["pop", "hindi"]) is True
-
-    def test_punjabi_is_indian(self):
-        assert _is_indian_song(["bhangra", "punjabi"]) is True
-
-    def test_sufi_is_indian(self):
-        assert _is_indian_song(["sufi", "devotional"]) is True
-
-    def test_pop_is_not_indian(self):
-        assert _is_indian_song(["pop", "dance", "electronic"]) is False
-
-    def test_none_tags_is_not_indian(self):
-        assert _is_indian_song(None) is False
-
-    def test_empty_tags_is_not_indian(self):
-        assert _is_indian_song([]) is False
 
 
 # ---------------------------------------------------------------------------
@@ -1039,13 +1012,13 @@ class TestClassifySongs:
 
     @patch("classification.llm_classifier._call_openai")
     def test_low_computed_confidence_tracked(self, mock_call, db_conn):
-        """Songs with computed confidence < 0.5 are counted (LLM-only is 0.5, not flagged)."""
+        """LLM-only songs (confidence=0.5) are flagged as low confidence (< 0.7)."""
         self._seed_songs(db_conn, 1)
         mock_call.side_effect = lambda prompt: self._mock_llm_response(prompt)
 
         stats = classify_songs(db_conn, provider="openai")
-        # LLM-only gets 0.5, which is not < 0.5, so not flagged
-        assert stats["low_confidence"] == 0
+        # LLM-only gets 0.5, which is < 0.7, so flagged
+        assert stats["low_confidence"] == 1
 
     @patch("classification.llm_classifier._call_openai")
     def test_llm_returns_no_songs_key(self, mock_call, db_conn):
@@ -1317,3 +1290,31 @@ class TestRecomputeScores:
         # All scores should be in [0, 1]
         for key in ("parasympathetic", "sympathetic", "grounding"):
             assert 0.0 <= updated[0][key] <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# _call_anthropic malformed response tests
+# ---------------------------------------------------------------------------
+
+class TestCallAnthropicMalformedResponse:
+    def test_call_anthropic_handles_non_json_response(self):
+        """When Anthropic returns text with no valid JSON, _call_anthropic raises JSONDecodeError.
+
+        The classify_songs retry loop catches this as a generic Exception, so
+        after max retries the batch is marked as 'failed' — not a hang or crash.
+        """
+        mock_anthropic = MagicMock()
+        mock_client = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+
+        # Simulate a response with no JSON at all
+        mock_content_block = MagicMock()
+        mock_content_block.text = "I cannot classify this song because I don't have enough information."
+        mock_response = MagicMock()
+        mock_response.content = [mock_content_block]
+        mock_client.messages.create.return_value = mock_response
+
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            with patch("config.get_anthropic_api_key", return_value="test-key"):
+                with pytest.raises(json.JSONDecodeError):
+                    _call_anthropic("Classify these songs:\n1. \"Unknown Song\" by Unknown Artist")
