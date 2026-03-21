@@ -1,16 +1,8 @@
 # Attuned — Current Status
 
-**Last updated:** Mar 20, 2026
-**Current phase:** Day 5 complete. Intelligence layer done. Essentia on 99.1% of library. Matching engine + cohesion + generation all working. 774 tests passing.
-**Next action:** Backfill release_year when Spotify rate limit clears, then generate first real playlist.
-
-### Blocked: Spotify rate limit
-Backfill of release_year: 491/1,360 done. Run when limit clears:
-```
-python main.py backfill-release-years
-python main.py recompute-scores
-python main.py generate
-```
+**Last updated:** Mar 21, 2026
+**Current phase:** Day 7 complete. Full pipeline working end-to-end. Playlists pushing to Spotify. Full codebase audit done. 807 tests passing.
+**Next action:** Use it daily. Future: playlist taste import, onboarding.
 
 ---
 
@@ -49,21 +41,25 @@ python main.py generate
 
 ---
 
-## What's Done (Day 5b+5c: Matching Engine Rewrite + Essentia Full Library)
+## What's Done (Day 7: Audit + Hardening)
 
-Neuro-score dot product, seed-and-expand cohesion, unified ranking, freshness nudge. Profiler decorrelated (grounding ≠ parasympathetic). Mood tags as 15% profiler weight. Essentia on 1,348/1,360 songs (99.1%). Para↔Grnd r: 0.921→0.638. 0/140 weak matches, ~45% daily turnover. Fixed Essentia --force merge bug. See `docs/HOW_IT_WORKS.md` for complete technical guide, `tasks/matching_engine_learnings.md` for session log.
+Full codebase audit (6 parallel reviewers), 25 files touched. Near-duplicate playlist dedup (69 pairs in library), no-data transparency warning, confidence clamped to [0,1], release_year=0 cleaned. Error handling hardened: conn.close() try/finally on all 16 CLI handlers, httpx timeouts, token refresh guards. Dead code removed (6 items). 807 tests passing.
 
-## What's Done (Day 4b: Accuracy Tuning)
+## What's Done (Day 6: Playlist Creation + End-to-End)
 
-48%→68% accuracy. Confidence-aware ensemble. Product accuracy 83%. See `tasks/accuracy_tuning_learnings.md`.
+Full pipeline: WHOOP state → match → Spotify push → DB log. Dynamic playlist names from neuro profile + recovery. Era cohesion with genre-aware sigma. release_year 97.7% coverage. Real playlists pushing to Spotify.
 
-## What's Done (Day 4: LLM Classification)
+## What's Done (Day 5: Matching Engine + Essentia Full Library)
 
-1360 songs classified. Profiler + LLM + Essentia hybrid. 0 failures.
+Neuro-score dot product, seed-and-expand cohesion, unified ranking, freshness nudge. Profiler decorrelated (r=0.638). Essentia on 99.1% of library. 0/140 weak matches.
+
+## What's Done (Day 4: LLM Classification + Accuracy)
+
+1360 songs classified. Profiler + LLM + Essentia hybrid. 83% product accuracy.
 
 ## What's Done (Day 3: WHOOP Intelligence)
 
-Baselines, trends, sleep analysis, 8-state classifier. 823 days validated.
+Baselines, trends, sleep analysis, 7-state classifier. 825 recovery days.
 
 ## What's Done (Day 2: Engagement Scoring)
 
@@ -77,13 +73,12 @@ Extended history ingestion, WHOOP/Spotify APIs, schema, 33K records.
 
 ## What's Next
 
-1. **Immediate (after rate limit clears):** Finish backfill, reclassify with release year, generate real playlist
-2. **Day 6:** Playlist sequencing (iso principle) + end-to-end flow
-3. **Day 7:** Polish + hardening
-4. **Future:** Playlist taste import, onboarding, remaining 12 songs (YouTube unavailable)
+1. **Playlist taste import** — co-occurrence from user playlists as cohesion signal
+2. **Onboarding** — preferences, genre exclusions, cold-start flow
+3. **12 songs** still LLM-only (no YouTube audio available)
 
 ## API Keys Status
 
 - WHOOP: registered, OAuth working, full history synced
-- Spotify: registered, OAuth working, library synced — **rate-limited until ~Mar 20 evening**
-- OpenAI: ~$0.60 credits remaining (after 2 full reclassifications today)
+- Spotify: registered, OAuth working, library synced
+- OpenAI: ~$0.60 credits remaining
