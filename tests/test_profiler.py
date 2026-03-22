@@ -166,7 +166,7 @@ class TestComputeParasympathetic:
         score = compute_parasympathetic(
             bpm=40, energy=0.0, acousticness=1.0,
             instrumentalness=1.0, valence=0.35, mode="major", danceability=0.3,
-            mood_tags=["spiritual", "meditative", "calm"],
+            mood_tags=["calm", "serene", "peaceful"],
         )
         assert 0.95 < score <= 1.0
 
@@ -556,7 +556,7 @@ class TestComputeMoodScore:
 
     def test_all_matching_tags(self):
         from config import PARA_MOOD_TAGS
-        score = compute_mood_score(["spiritual", "calm", "meditative"], PARA_MOOD_TAGS)
+        score = compute_mood_score(["calm", "serene", "peaceful"], PARA_MOOD_TAGS)
         assert score == pytest.approx(1.0)
 
     def test_no_matching_tags(self):
