@@ -48,3 +48,11 @@ scripts/models/
 
 # Spotify export data
 streaming_history/
+spotify_data/
+
+# Logs
+logs/
+
+# SQLite WAL/SHM files
+*.db-wal
+*.db-shm
