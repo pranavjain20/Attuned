@@ -13,6 +13,17 @@ load_dotenv()
 PROJECT_ROOT = Path(__file__).parent
 DB_PATH = PROJECT_ROOT / "attuned.db"
 AUDIO_CLIPS_DIR = PROJECT_ROOT / "audio_clips"
+
+
+def get_profile_db_path(profile: str | None) -> Path:
+    """Return DB path for a named profile.
+
+    No --profile flag → existing attuned.db (backward compatible).
+    --profile <name> → db/<name>.db
+    """
+    if profile is None:
+        return DB_PATH
+    return PROJECT_ROOT / "db" / f"{profile}.db"
 AUDIO_CLIP_DURATION_SECONDS = 30
 STREAMING_HISTORY_DIR = os.getenv(
     "STREAMING_HISTORY_DIR",
@@ -139,13 +150,11 @@ ERA_SIGMA_DEFAULT = 5
 # Each state defines the ideal blend of parasympathetic, sympathetic, and grounding.
 # Fatigue and physical recovery pushed further apart (gap 0.35 vs old 0.15).
 STATE_NEURO_PROFILES: dict[str, dict[str, float]] = {
-    "accumulated_fatigue":          {"para": 0.95, "symp": 0.00, "grnd": 0.05},
-    "poor_sleep":                   {"para": 0.55, "symp": 0.00, "grnd": 0.45},
-    "physical_recovery_deficit":    {"para": 0.60, "symp": 0.00, "grnd": 0.40},
-    "emotional_processing_deficit": {"para": 0.10, "symp": 0.00, "grnd": 0.90},
-    "poor_recovery":                {"para": 0.25, "symp": 0.30, "grnd": 0.45},
-    "baseline":                     {"para": 0.15, "symp": 0.50, "grnd": 0.35},
-    "peak_readiness":               {"para": 0.00, "symp": 0.90, "grnd": 0.10},
+    "accumulated_fatigue":  {"para": 0.95, "symp": 0.00, "grnd": 0.05},
+    "poor_sleep":           {"para": 0.50, "symp": 0.05, "grnd": 0.45},
+    "poor_recovery":        {"para": 0.50, "symp": 0.10, "grnd": 0.40},
+    "baseline":             {"para": 0.15, "symp": 0.50, "grnd": 0.35},
+    "peak_readiness":       {"para": 0.00, "symp": 0.90, "grnd": 0.10},
 }
 
 # ---------------------------------------------------------------------------
@@ -156,9 +165,9 @@ MOOD_TAG_WEIGHT = 0.15
 
 # Parasympathetic: absence of stimulation, rest, surrender
 PARA_MOOD_TAGS = frozenset({
-    "spiritual", "melancholy", "melancholic", "calm", "meditative", "dreamy",
+    "melancholy", "melancholic", "calm", "dreamy",
     "soothing", "serene", "relaxed", "chill", "laid-back", "peaceful",
-    "devotional", "sad",
+    "sad",
 })
 
 # Sympathetic: energy, activation, arousal
@@ -174,6 +183,7 @@ GRND_MOOD_TAGS = frozenset({
     "reflective", "introspective", "nostalgic", "romantic", "emotional",
     "bittersweet", "hopeful", "heartfelt", "sentimental", "thoughtful",
     "contemplative", "warm", "passionate", "moody",
+    "spiritual", "meditative", "devotional",
 })
 
 # Genre tags that indicate Indian music (BPM from LLM, not Essentia)

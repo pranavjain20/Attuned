@@ -5,8 +5,9 @@ CLI entry point for all commands.
 
 import logging
 import sys
+from pathlib import Path
 
-from config import STREAMING_HISTORY_DIR
+from config import STREAMING_HISTORY_DIR, get_profile_db_path
 from db.schema import get_connection
 
 logging.basicConfig(
@@ -35,7 +36,31 @@ COMMANDS = {
 }
 
 
+def _extract_profile() -> str | None:
+    """Extract --profile <name> from sys.argv early, before command dispatch.
+
+    Removes the flag and its value from sys.argv so downstream flag parsing
+    isn't confused. Returns None if not provided.
+    """
+    if "--profile" not in sys.argv:
+        return None
+    idx = sys.argv.index("--profile")
+    if idx + 1 >= len(sys.argv):
+        print("Error: --profile requires a name (e.g. --profile sister)")
+        sys.exit(1)
+    profile = sys.argv[idx + 1]
+    # Remove --profile and its value from argv
+    del sys.argv[idx:idx + 2]
+    return profile
+
+
 def main() -> None:
+    profile = _extract_profile()
+    db_path = get_profile_db_path(profile)
+
+    if profile:
+        print(f"[profile: {profile}] → {db_path}")
+
     if len(sys.argv) < 2:
         _print_usage()
         sys.exit(1)
@@ -43,40 +68,40 @@ def main() -> None:
     command = sys.argv[1]
 
     if command == "ingest-history":
-        _cmd_ingest_history()
+        _cmd_ingest_history(db_path)
     elif command == "sync-whoop":
-        _cmd_sync_whoop()
+        _cmd_sync_whoop(db_path)
     elif command == "sync-spotify":
-        _cmd_sync_spotify()
+        _cmd_sync_spotify(db_path)
     elif command == "sync-all":
-        _cmd_sync_whoop()
-        _cmd_sync_spotify()
+        _cmd_sync_whoop(db_path)
+        _cmd_sync_spotify(db_path)
     elif command == "dedup-songs":
-        _cmd_dedup_songs()
+        _cmd_dedup_songs(db_path)
     elif command == "compute-engagement":
-        _cmd_compute_engagement()
+        _cmd_compute_engagement(db_path)
     elif command == "classify-state":
-        _cmd_classify_state()
+        _cmd_classify_state(db_path)
     elif command == "download-audio":
-        _cmd_download_audio()
+        _cmd_download_audio(db_path)
     elif command == "analyze-audio":
-        _cmd_analyze_audio()
+        _cmd_analyze_audio(db_path)
     elif command == "classify-songs":
-        _cmd_classify_songs()
+        _cmd_classify_songs(db_path)
     elif command == "recompute-scores":
-        _cmd_recompute_scores()
+        _cmd_recompute_scores(db_path)
     elif command == "sync-whoop-history":
-        _cmd_sync_whoop_history()
+        _cmd_sync_whoop_history(db_path)
     elif command == "backfill-release-years":
-        _cmd_backfill_release_years()
+        _cmd_backfill_release_years(db_path)
     elif command == "match-songs":
-        _cmd_match_songs()
+        _cmd_match_songs(db_path)
     elif command == "generate":
-        _cmd_generate()
+        _cmd_generate(db_path)
     elif command == "auth-whoop":
-        _cmd_auth_whoop()
+        _cmd_auth_whoop(db_path)
     elif command == "auth-spotify":
-        _cmd_auth_spotify()
+        _cmd_auth_spotify(db_path)
     else:
         print(f"Unknown command: {command}")
         _print_usage()
@@ -84,21 +109,31 @@ def main() -> None:
 
 
 def _print_usage() -> None:
-    print("Usage: python main.py <command>\n")
+    print("Usage: python main.py [--profile <name>] <command>\n")
+    print("Options:")
+    print(f"  {'--profile <name>':<25} Use a named profile (default: main DB)")
+    print()
     print("Commands:")
     for cmd, desc in COMMANDS.items():
-        print(f"  {cmd:<20} {desc}")
-    print(f"  {'auth-whoop':<20} Run WHOOP OAuth flow")
-    print(f"  {'auth-spotify':<20} Run Spotify OAuth flow (opens browser)")
+        print(f"  {cmd:<25} {desc}")
+    print(f"  {'auth-whoop':<25} Run WHOOP OAuth flow")
+    print(f"  {'auth-spotify':<25} Run Spotify OAuth flow (opens browser)")
 
 
-def _cmd_ingest_history() -> None:
+def _cmd_ingest_history(db_path: Path) -> None:
     from spotify.sync import ingest_extended_history
     from db.queries import count_rows
 
-    conn = get_connection()
+    # Support --history-dir flag, falls back to env var
+    history_dir = STREAMING_HISTORY_DIR
+    if "--history-dir" in sys.argv:
+        idx = sys.argv.index("--history-dir")
+        if idx + 1 < len(sys.argv):
+            history_dir = sys.argv[idx + 1]
+
+    conn = get_connection(db_path)
     try:
-        result = ingest_extended_history(conn, STREAMING_HISTORY_DIR)
+        result = ingest_extended_history(conn, history_dir)
 
         print(f"\nIngestion complete:")
         print(f"  Records parsed:     {result['total_records']:,}")
@@ -121,11 +156,11 @@ def _cmd_ingest_history() -> None:
         conn.close()
 
 
-def _cmd_sync_whoop_history() -> None:
+def _cmd_sync_whoop_history(db_path: Path) -> None:
     from whoop.sync import sync_full_history
     from db.queries import count_rows
 
-    conn = get_connection()
+    conn = get_connection(db_path)
     try:
         result = sync_full_history(conn)
         print(f"\nWHOOP full history sync complete:")
@@ -138,10 +173,10 @@ def _cmd_sync_whoop_history() -> None:
         conn.close()
 
 
-def _cmd_sync_whoop() -> None:
+def _cmd_sync_whoop(db_path: Path) -> None:
     from whoop.sync import sync_today
 
-    conn = get_connection()
+    conn = get_connection(db_path)
     try:
         result = sync_today(conn)
         if result["recovery"]:
@@ -156,13 +191,13 @@ def _cmd_sync_whoop() -> None:
         conn.close()
 
 
-def _cmd_sync_spotify() -> None:
+def _cmd_sync_spotify(db_path: Path) -> None:
     from spotify.auth import get_spotify_client
     from spotify.sync import sync_liked_songs, sync_top_tracks, fetch_batch_metadata
     from spotify.dedup import consolidate_duplicate_songs
     from spotify.engagement import compute_engagement_scores
 
-    conn = get_connection()
+    conn = get_connection(db_path)
     try:
         sp = get_spotify_client(conn)
         liked = sync_liked_songs(conn, sp)
@@ -183,10 +218,10 @@ def _cmd_sync_spotify() -> None:
         conn.close()
 
 
-def _cmd_dedup_songs() -> None:
+def _cmd_dedup_songs(db_path: Path) -> None:
     from spotify.dedup import consolidate_duplicate_songs
 
-    conn = get_connection()
+    conn = get_connection(db_path)
     try:
         result = consolidate_duplicate_songs(conn)
         if result["groups"] > 0:
@@ -198,11 +233,11 @@ def _cmd_dedup_songs() -> None:
         conn.close()
 
 
-def _cmd_compute_engagement() -> None:
+def _cmd_compute_engagement(db_path: Path) -> None:
     from spotify.engagement import compute_engagement_scores
     from spotify.dedup import consolidate_duplicate_songs
 
-    conn = get_connection()
+    conn = get_connection(db_path)
     try:
         # Consolidate duplicates before scoring — dedup changes play counts
         result = consolidate_duplicate_songs(conn)
@@ -244,7 +279,7 @@ def _cmd_compute_engagement() -> None:
         conn.close()
 
 
-def _cmd_classify_state() -> None:
+def _cmd_classify_state(db_path: Path) -> None:
     from datetime import date
 
     from intelligence.state_classifier import classify_state
@@ -256,7 +291,7 @@ def _cmd_classify_state() -> None:
         if idx + 1 < len(sys.argv):
             target_date = sys.argv[idx + 1]
 
-    conn = get_connection()
+    conn = get_connection(db_path)
     try:
         result = classify_state(conn, target_date)
 
@@ -302,7 +337,7 @@ def _cmd_classify_state() -> None:
         conn.close()
 
 
-def _cmd_backfill_release_years() -> None:
+def _cmd_backfill_release_years(db_path: Path) -> None:
     import time
 
     import spotipy
@@ -310,7 +345,7 @@ def _cmd_backfill_release_years() -> None:
     from spotify.auth import get_spotify_client
     from spotify.client import parse_track
 
-    conn = get_connection()
+    conn = get_connection(db_path)
     try:
         sp = get_spotify_client(conn)
 
@@ -414,7 +449,7 @@ def _cmd_backfill_release_years() -> None:
         conn.close()
 
 
-def _cmd_match_songs() -> None:
+def _cmd_match_songs(db_path: Path) -> None:
     from datetime import date
 
     from intelligence.state_classifier import classify_state
@@ -434,7 +469,7 @@ def _cmd_match_songs() -> None:
         if idx + 1 < len(sys.argv):
             override_state = sys.argv[idx + 1]
 
-    conn = get_connection()
+    conn = get_connection(db_path)
     try:
         if override_state:
             state = override_state
@@ -491,7 +526,7 @@ def _cmd_match_songs() -> None:
         conn.close()
 
 
-def _cmd_generate() -> None:
+def _cmd_generate(db_path: Path) -> None:
     from datetime import date
 
     from matching.generator import GenerationError, generate_playlist
@@ -505,7 +540,7 @@ def _cmd_generate() -> None:
 
     dry_run = "--dry-run" in sys.argv
 
-    conn = get_connection()
+    conn = get_connection(db_path)
     try:
         sp = None
 
@@ -558,11 +593,11 @@ def _cmd_generate() -> None:
         conn.close()
 
 
-def _cmd_download_audio() -> None:
+def _cmd_download_audio(db_path: Path) -> None:
     from config import AUDIO_CLIPS_DIR
     from classification.audio import acquire_audio_clips
 
-    conn = get_connection()
+    conn = get_connection(db_path)
     try:
         if "--all" in sys.argv:
             # Download audio for ALL classified songs (for Essentia re-analysis)
@@ -590,14 +625,14 @@ def _cmd_download_audio() -> None:
         conn.close()
 
 
-def _cmd_analyze_audio() -> None:
+def _cmd_analyze_audio(db_path: Path) -> None:
     from config import AUDIO_CLIPS_DIR
     from db.queries import count_rows
     from classification.essentia_analyzer import analyze_all_songs
 
     force = "--force" in sys.argv
 
-    conn = get_connection()
+    conn = get_connection(db_path)
     try:
         if not AUDIO_CLIPS_DIR.exists():
             print("No audio_clips/ directory found. Run download-audio first.")
@@ -618,7 +653,7 @@ def _cmd_analyze_audio() -> None:
         conn.close()
 
 
-def _cmd_recompute_scores() -> None:
+def _cmd_recompute_scores(db_path: Path) -> None:
     """Recompute neurological scores from existing DB data. No API calls.
 
     Reads each song's properties + LLM direct scores from DB, re-runs the
@@ -630,7 +665,7 @@ def _cmd_recompute_scores() -> None:
     from classification.llm_classifier import _blend_neuro_scores
     from classification.profiler import compute_neurological_profile
 
-    conn = get_connection()
+    conn = get_connection(db_path)
     try:
         rows = conn.execute(
             """SELECT sc.spotify_uri, s.name, s.artist,
@@ -709,7 +744,7 @@ def _cmd_recompute_scores() -> None:
         conn.close()
 
 
-def _cmd_classify_songs() -> None:
+def _cmd_classify_songs(db_path: Path) -> None:
     from db.queries import count_rows
     from classification.llm_classifier import classify_songs
 
@@ -725,7 +760,7 @@ def _cmd_classify_songs() -> None:
 
     reclassify = "--reclassify" in sys.argv
 
-    conn = get_connection()
+    conn = get_connection(db_path)
     try:
         if reclassify:
             print(f"Re-classifying ALL songs (provider={provider}, --reclassify)...")
@@ -744,10 +779,10 @@ def _cmd_classify_songs() -> None:
         conn.close()
 
 
-def _cmd_auth_whoop() -> None:
+def _cmd_auth_whoop(db_path: Path) -> None:
     from whoop.auth import get_authorization_url, exchange_code_for_tokens
 
-    conn = get_connection()
+    conn = get_connection(db_path)
     try:
         url = get_authorization_url()
         print(f"\nOpen this URL in your browser:\n{url}\n")
@@ -758,10 +793,10 @@ def _cmd_auth_whoop() -> None:
         conn.close()
 
 
-def _cmd_auth_spotify() -> None:
+def _cmd_auth_spotify(db_path: Path) -> None:
     from spotify.auth import get_spotify_client
 
-    conn = get_connection()
+    conn = get_connection(db_path)
     try:
         sp = get_spotify_client(conn)
         user = sp.current_user()

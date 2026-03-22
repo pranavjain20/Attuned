@@ -32,11 +32,23 @@ class CallbackHandler(BaseHTTPRequestHandler):
         pass
 
 
+def _parse_profile() -> str | None:
+    """Extract --profile from argv, return profile name or None."""
+    if "--profile" not in sys.argv:
+        return None
+    idx = sys.argv.index("--profile")
+    if idx + 1 >= len(sys.argv):
+        print("Error: --profile requires a name")
+        sys.exit(1)
+    return sys.argv[idx + 1]
+
+
 def run_whoop():
     """WHOOP OAuth flow with state parameter."""
     global captured_code, expected_state
     captured_code = None
 
+    from config import get_profile_db_path
     from db.schema import get_connection
     from urllib.parse import urlencode
     from config import (
@@ -44,6 +56,11 @@ def run_whoop():
         get_whoop_client_id, get_whoop_redirect_uri,
     )
     from whoop.auth import exchange_code_for_tokens
+
+    profile = _parse_profile()
+    db_path = get_profile_db_path(profile)
+    if profile:
+        print(f"[profile: {profile}] → {db_path}")
 
     expected_state = secrets.token_urlsafe(32)
     params = {
@@ -70,7 +87,7 @@ def run_whoop():
 
     if captured_code:
         print("Got authorization code. Exchanging for tokens...")
-        conn = get_connection()
+        conn = get_connection(db_path)
         exchange_code_for_tokens(captured_code, conn)
         print("\nWHOOP authorization complete! Tokens stored.")
         conn.close()
@@ -84,12 +101,18 @@ def run_spotify():
     global captured_code
     captured_code = None
 
+    from config import get_profile_db_path
     from db.schema import get_connection
     from config import (
         SPOTIFY_SCOPES,
         get_spotify_client_id, get_spotify_redirect_uri,
     )
     from db.queries import save_token
+
+    profile = _parse_profile()
+    db_path = get_profile_db_path(profile)
+    if profile:
+        print(f"[profile: {profile}] → {db_path}")
 
     client_id = get_spotify_client_id()
     redirect_uri = get_spotify_redirect_uri()
@@ -140,7 +163,7 @@ def run_spotify():
     data = response.json()
 
     import time
-    conn = get_connection()
+    conn = get_connection(db_path)
     save_token(
         conn,
         provider="spotify",
@@ -160,14 +183,26 @@ def run_spotify():
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python oauth_server.py <whoop|spotify>")
+        print("Usage: python oauth_server.py [--profile <name>] <whoop|spotify>")
         sys.exit(1)
 
-    provider = sys.argv[1]
+    # Find the provider arg (not --profile or its value)
+    provider = None
+    i = 1
+    while i < len(sys.argv):
+        if sys.argv[i] == "--profile":
+            i += 2  # skip flag + value
+            continue
+        if sys.argv[i] in ("whoop", "spotify"):
+            provider = sys.argv[i]
+            break
+        i += 1
+
+    if provider is None:
+        print("Usage: python oauth_server.py [--profile <name>] <whoop|spotify>")
+        sys.exit(1)
+
     if provider == "whoop":
         run_whoop()
     elif provider == "spotify":
         run_spotify()
-    else:
-        print(f"Unknown provider: {provider}")
-        sys.exit(1)
