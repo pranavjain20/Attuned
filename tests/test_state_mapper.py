@@ -41,9 +41,15 @@ class TestGetStateNeuroProfile:
         assert profile["symp"] > profile["para"]
         assert profile["symp"] > profile["grnd"]
 
-    def test_emotional_processing_is_grnd_dominant(self):
-        profile = get_state_neuro_profile("emotional_processing_deficit")
-        assert profile["grnd"] > profile["para"]
+    def test_poor_sleep_is_para_and_grnd_balanced(self):
+        profile = get_state_neuro_profile("poor_sleep")
+        assert profile["para"] >= profile["grnd"] - 0.10
+        assert profile["grnd"] >= profile["para"] - 0.10
+        assert profile["symp"] < profile["para"]
+
+    def test_poor_recovery_is_peaceful(self):
+        profile = get_state_neuro_profile("poor_recovery")
+        assert profile["para"] > profile["symp"]
         assert profile["grnd"] > profile["symp"]
 
     def test_fatigue_para_higher_than_poor_sleep_para(self):
@@ -64,6 +70,12 @@ class TestGetStateNeuroProfile:
         with pytest.raises(ValueError, match="Unknown state"):
             get_state_neuro_profile("nonexistent_state")
 
+    def test_old_states_raise(self):
+        with pytest.raises(ValueError, match="Unknown state"):
+            get_state_neuro_profile("physical_recovery_deficit")
+        with pytest.raises(ValueError, match="Unknown state"):
+            get_state_neuro_profile("emotional_processing_deficit")
+
     def test_matchable_states_excludes_insufficient_data(self):
         assert "insufficient_data" not in MATCHABLE_STATES
 
@@ -74,5 +86,5 @@ class TestGetStateNeuroProfile:
         profile = get_state_neuro_profile("baseline")
         assert profile is STATE_NEURO_PROFILES["baseline"]
 
-    def test_seven_states_defined(self):
-        assert len(MATCHABLE_STATES) == 7
+    def test_five_states_defined(self):
+        assert len(MATCHABLE_STATES) == 5

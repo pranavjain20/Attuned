@@ -1,17 +1,15 @@
 """Composite physiological state classifier.
 
-Recovery-first, 5-tier system. Trusts WHOOP's recovery score as the primary
+Recovery-first, 5-state system. Trusts WHOOP's recovery score as the primary
 signal, then looks at individual metrics to determine HOW to help.
 
 Priority order:
 0. insufficient_data — <14 days HRV
 1. accumulated_fatigue — recovery < 60 AND ≥3 of last 5 days also < 60
-2. poor_sleep — both deep AND REM deficit (any recovery level)
-3. physical_recovery_deficit — deep deficit only (any recovery level)
-4. emotional_processing_deficit — REM deficit only (any recovery level)
-5. poor_recovery — recovery < 40 (acute), or < 60 one-off (≤1 recent bad)
-6. peak_readiness — recovery ≥ 80, HRV ≥ baseline, no deficits, low debt
-7. baseline — default
+2. poor_sleep — any sleep deficit (deep, REM, or both)
+3. poor_recovery — recovery < 40 (acute), or < 60 one-off (≤1 recent bad)
+4. peak_readiness — recovery ≥ 80, HRV ≥ baseline, no deficits, low debt
+5. baseline — default
 """
 
 import sqlite3
@@ -39,8 +37,6 @@ STATES = [
     "insufficient_data",
     "accumulated_fatigue",
     "poor_sleep",
-    "physical_recovery_deficit",
-    "emotional_processing_deficit",
     "poor_recovery",
     "peak_readiness",
     "baseline",
@@ -81,6 +77,7 @@ def classify_state(conn: sqlite3.Connection, date: str) -> dict:
     sleep_debt = sleep["sleep_debt_hours"] if sleep else None
     deep_deficit = sleep and sleep["deep_sleep_deficit"]
     rem_deficit = sleep and sleep["rem_sleep_deficit"]
+    any_sleep_deficit = deep_deficit or rem_deficit
 
     today_struggling = recovery_score is not None and recovery_score < RECOVERY_TIER_3_MAX
     recent_bad = _count_recent_bad_days(conn, date)
@@ -104,12 +101,9 @@ def classify_state(conn: sqlite3.Connection, date: str) -> dict:
             sleep_analysis=sleep,
         )
 
-    # P2: Poor sleep — both stages deficient (any recovery level)
-    if deep_deficit and rem_deficit:
-        reasoning = [
-            "Both deep and REM sleep are deficient",
-            "Overall poor sleep quality — body needs comprehensive recovery",
-        ]
+    # P2: Poor sleep — any sleep deficit (deep, REM, or both)
+    if any_sleep_deficit:
+        reasoning = _build_sleep_reasoning(deep_deficit, rem_deficit)
         return _build_result(
             state="poor_sleep",
             confidence="high" if not (sleep and sleep.get("insufficient_baseline")) else "medium",
@@ -122,45 +116,7 @@ def classify_state(conn: sqlite3.Connection, date: str) -> dict:
             sleep_analysis=sleep,
         )
 
-    # P3: Physical recovery deficit — deep deficit only
-    rem_not_deficit = sleep and not sleep["rem_sleep_deficit"]
-    if deep_deficit and rem_not_deficit:
-        reasoning = [
-            "Deep sleep deficit detected while REM sleep is not deficient",
-            "Body needs physical recovery — deep sleep is where tissue repair and growth hormone release happen",
-        ]
-        return _build_result(
-            state="physical_recovery_deficit",
-            confidence="high" if not sleep.get("insufficient_baseline") else "medium",
-            reasoning=reasoning,
-            metrics=metrics,
-            hrv_baseline=hrv_baseline,
-            rhr_baseline=rhr_baseline,
-            hrv_trend=hrv_trend,
-            rhr_trend=rhr_trend,
-            sleep_analysis=sleep,
-        )
-
-    # P4: Emotional processing deficit — REM deficit only
-    deep_not_deficit = sleep and not sleep["deep_sleep_deficit"]
-    if rem_deficit and deep_not_deficit:
-        reasoning = [
-            "REM sleep deficit detected while deep sleep is not deficient",
-            "REM is critical for emotional regulation and memory consolidation",
-        ]
-        return _build_result(
-            state="emotional_processing_deficit",
-            confidence="high" if not sleep.get("insufficient_baseline") else "medium",
-            reasoning=reasoning,
-            metrics=metrics,
-            hrv_baseline=hrv_baseline,
-            rhr_baseline=rhr_baseline,
-            hrv_trend=hrv_trend,
-            rhr_trend=rhr_trend,
-            sleep_analysis=sleep,
-        )
-
-    # P5: Acute bad day — tier 1-2 (recovery < 40), definitively bad
+    # P3: Acute bad day — recovery < 40, definitively bad
     if recovery_score is not None and recovery_score < RECOVERY_TIER_2_MAX:
         reasoning = [
             f"Recovery {recovery_score:.0f}% — body is definitively stressed today",
@@ -178,7 +134,7 @@ def classify_state(conn: sqlite3.Connection, date: str) -> dict:
             sleep_analysis=sleep,
         )
 
-    # P6: Mild bad day one-off — tier 3 (recovery < 60), not chronic
+    # P4: Mild bad day one-off — recovery < 60, not chronic
     if today_struggling and recent_bad <= 1:
         reasoning = [
             f"Recovery {recovery_score:.0f}% — suboptimal but recent days were mostly good",
@@ -196,7 +152,7 @@ def classify_state(conn: sqlite3.Connection, date: str) -> dict:
             sleep_analysis=sleep,
         )
 
-    # P7: Peak readiness — tier 5 (recovery ≥ 80) + all green
+    # P5: Peak readiness — recovery ≥ 80 + all green
     peak_conditions = _check_peak_conditions(
         recovery, hrv_baseline, rhr_baseline, hrv_trend, sleep, sleep_debt, debt_baseline,
     )
@@ -214,7 +170,7 @@ def classify_state(conn: sqlite3.Connection, date: str) -> dict:
             sleep_analysis=sleep,
         )
 
-    # P8: Baseline (default)
+    # P6: Baseline (default)
     if today_struggling:
         reasoning = [
             f"Recovery {recovery_score:.0f}% with {recent_bad} of last {FATIGUE_RECENT_DAYS} "
@@ -241,6 +197,24 @@ def classify_state(conn: sqlite3.Connection, date: str) -> dict:
         rhr_trend=rhr_trend,
         sleep_analysis=sleep,
     )
+
+
+def _build_sleep_reasoning(deep_deficit: bool, rem_deficit: bool) -> list[str]:
+    """Build reasoning lines for poor_sleep, noting which stages are deficient."""
+    if deep_deficit and rem_deficit:
+        return [
+            "Both deep and REM sleep are deficient",
+            "Overall poor sleep quality — body needs recovery",
+        ]
+    if deep_deficit:
+        return [
+            "Deep sleep deficit detected",
+            "Sleep quality was poor — body needs peaceful recovery",
+        ]
+    return [
+        "REM sleep deficit detected",
+        "Sleep quality was poor — body needs peaceful recovery",
+    ]
 
 
 def _count_recent_bad_days(conn: sqlite3.Connection, date: str) -> int:

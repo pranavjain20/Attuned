@@ -1,4 +1,4 @@
-"""Tests for intelligence/state_classifier.py — recovery-first, 5-tier system."""
+"""Tests for intelligence/state_classifier.py — recovery-first, 5-state system."""
 
 import pytest
 
@@ -116,13 +116,10 @@ class TestAccumulatedFatigue:
         """Today < 60 + 3 of last 5 days < 60 → accumulated_fatigue."""
         _seed_healthy_baseline(db_conn, skip_last_n=7)
 
-        # Seed 7 trend days for HRV trend computation
         trend_dates = _generate_dates_inclusive(TARGET, 7)
         hrv_vals = [55.0] * 7
         rhr_vals = [58.0] * 7
         scores = [75.0, 75.0, 45.0, 50.0, 55.0, 45.0, 50.0]
-        # Last 5 days before today: scores[1..5] = [75, 45, 50, 55, 45]
-        # That's 3 below 60. Today = 50 (below 60).
         _seed_trend_days(db_conn, trend_dates, hrv_vals, rhr_vals, scores)
 
         for i, date in enumerate(trend_dates):
@@ -143,7 +140,6 @@ class TestAccumulatedFatigue:
         trend_dates = _generate_dates_inclusive(TARGET, 7)
         hrv_vals = [55.0] * 7
         rhr_vals = [58.0] * 7
-        # Recent 5 days all bad, but today = 70 (above 60)
         scores = [75.0, 40.0, 45.0, 50.0, 40.0, 45.0, 70.0]
         _seed_trend_days(db_conn, trend_dates, hrv_vals, rhr_vals, scores)
 
@@ -165,7 +161,6 @@ class TestAccumulatedFatigue:
         trend_dates = _generate_dates_inclusive(TARGET, 7)
         hrv_vals = [55.0] * 7
         rhr_vals = [58.0] * 7
-        # Only 1 of last 5 days bad (index 2), today bad
         scores = [75.0, 75.0, 45.0, 75.0, 75.0, 75.0, 50.0]
         _seed_trend_days(db_conn, trend_dates, hrv_vals, rhr_vals, scores)
 
@@ -188,7 +183,6 @@ class TestAccumulatedFatigue:
         hrv_vals = [55.0] * 7
         rhr_vals = [58.0] * 7
         scores = [75.0, 75.0, 40.0, 45.0, 50.0, 55.0, 45.0]
-        # Last 5: [75, 40, 45, 50, 55] = 4 below 60. Today = 45 < 60.
         _seed_trend_days(db_conn, trend_dates, hrv_vals, rhr_vals, scores)
 
         for i, date in enumerate(trend_dates):
@@ -211,7 +205,6 @@ class TestAccumulatedFatigue:
         hrv_vals = [55.0] * 7
         rhr_vals = [58.0] * 7
         scores = [75.0, 75.0, 45.0, 50.0, 75.0, 75.0, 50.0]
-        # Last 5: [75, 45, 50, 75, 75] = 2 below 60. Today = 50 < 60.
         _seed_trend_days(db_conn, trend_dates, hrv_vals, rhr_vals, scores)
 
         for i, date in enumerate(trend_dates):
@@ -243,6 +236,32 @@ class TestPoorSleep:
         result = classify_state(db_conn, TARGET)
         assert result["state"] == "poor_sleep"
 
+    def test_deep_deficit_only_triggers_poor_sleep(self, db_conn):
+        """Deep deficit + REM fine → poor_sleep."""
+        _seed_healthy_baseline(db_conn, deep_ms=5_400_000, rem_ms=7_200_000)
+
+        upsert_whoop_recovery(
+            db_conn, cycle_id=500, date=TARGET,
+            recovery_score=70.0, hrv_rmssd_milli=55.0, resting_heart_rate=58.0,
+        )
+        _seed_today_sleep(db_conn, deep_ms=2_000_000, rem_ms=7_200_000, light_ms=14_400_000)
+
+        result = classify_state(db_conn, TARGET)
+        assert result["state"] == "poor_sleep"
+
+    def test_rem_deficit_only_triggers_poor_sleep(self, db_conn):
+        """REM deficit + deep fine → poor_sleep."""
+        _seed_healthy_baseline(db_conn, deep_ms=5_400_000, rem_ms=7_200_000)
+
+        upsert_whoop_recovery(
+            db_conn, cycle_id=500, date=TARGET,
+            recovery_score=70.0, hrv_rmssd_milli=55.0, resting_heart_rate=58.0,
+        )
+        _seed_today_sleep(db_conn, deep_ms=5_400_000, rem_ms=2_000_000, light_ms=14_400_000)
+
+        result = classify_state(db_conn, TARGET)
+        assert result["state"] == "poor_sleep"
+
     def test_poor_sleep_at_green_recovery(self, db_conn):
         """Poor sleep detected even at high recovery — sleep deficits override recovery level."""
         _seed_healthy_baseline(db_conn)
@@ -256,15 +275,15 @@ class TestPoorSleep:
         result = classify_state(db_conn, TARGET)
         assert result["state"] == "poor_sleep"
 
-    def test_one_deficit_does_not_trigger_poor_sleep(self, db_conn):
-        """Only deep deficit (not REM) → NOT poor_sleep."""
-        _seed_healthy_baseline(db_conn, deep_ms=5_400_000, rem_ms=7_200_000)
+    def test_no_deficit_does_not_trigger_poor_sleep(self, db_conn):
+        """No sleep deficits → NOT poor_sleep."""
+        _seed_healthy_baseline(db_conn)
 
         upsert_whoop_recovery(
             db_conn, cycle_id=500, date=TARGET,
             recovery_score=70.0, hrv_rmssd_milli=55.0, resting_heart_rate=58.0,
         )
-        _seed_today_sleep(db_conn, deep_ms=2_000_000, rem_ms=7_200_000, light_ms=14_400_000)
+        _seed_today_sleep(db_conn)
 
         result = classify_state(db_conn, TARGET)
         assert result["state"] != "poor_sleep"
@@ -276,7 +295,6 @@ class TestPoorSleep:
         trend_dates = _generate_dates_inclusive(TARGET, 7)
         hrv_vals = [55.0] * 7
         rhr_vals = [58.0] * 7
-        # 3 of last 5 bad + today bad
         scores = [75.0, 75.0, 45.0, 50.0, 55.0, 45.0, 50.0]
         _seed_trend_days(db_conn, trend_dates, hrv_vals, rhr_vals, scores)
 
@@ -291,13 +309,23 @@ class TestPoorSleep:
         result = classify_state(db_conn, TARGET)
         assert result["state"] == "accumulated_fatigue"
 
+    def test_reasoning_mentions_both_when_both_deficit(self, db_conn):
+        """Both deficits → reasoning mentions both."""
+        _seed_healthy_baseline(db_conn)
 
-# ─── Physical Recovery Deficit ────────────────────────────────────────────────
+        upsert_whoop_recovery(
+            db_conn, cycle_id=500, date=TARGET,
+            recovery_score=70.0, hrv_rmssd_milli=55.0, resting_heart_rate=58.0,
+        )
+        _seed_today_sleep(db_conn, deep_ms=2_000_000, rem_ms=2_000_000, light_ms=20_000_000)
 
+        result = classify_state(db_conn, TARGET)
+        reasoning_text = " ".join(result["reasoning"])
+        assert "deep" in reasoning_text.lower()
+        assert "rem" in reasoning_text.lower()
 
-class TestPhysicalRecoveryDeficit:
-    def test_deep_deficit_rem_not_deficit(self, db_conn):
-        """Deep sleep deficit + REM not deficit → physical recovery deficit."""
+    def test_reasoning_mentions_deep_only_when_deep_deficit(self, db_conn):
+        """Deep deficit only → reasoning mentions deep."""
         _seed_healthy_baseline(db_conn, deep_ms=5_400_000, rem_ms=7_200_000)
 
         upsert_whoop_recovery(
@@ -307,28 +335,11 @@ class TestPhysicalRecoveryDeficit:
         _seed_today_sleep(db_conn, deep_ms=2_000_000, rem_ms=7_200_000, light_ms=14_400_000)
 
         result = classify_state(db_conn, TARGET)
-        assert result["state"] == "physical_recovery_deficit"
+        reasoning_text = " ".join(result["reasoning"])
+        assert "deep" in reasoning_text.lower()
 
-    def test_not_triggered_when_rem_also_deficit(self, db_conn):
-        """Both deep and REM deficit → NOT physical deficit (→ poor_sleep)."""
-        _seed_healthy_baseline(db_conn)
-
-        upsert_whoop_recovery(
-            db_conn, cycle_id=500, date=TARGET,
-            recovery_score=70.0, hrv_rmssd_milli=55.0, resting_heart_rate=58.0,
-        )
-        _seed_today_sleep(db_conn, deep_ms=2_000_000, rem_ms=2_000_000, light_ms=20_000_000)
-
-        result = classify_state(db_conn, TARGET)
-        assert result["state"] != "physical_recovery_deficit"
-
-
-# ─── Emotional Processing Deficit ────────────────────────────────────────────
-
-
-class TestEmotionalProcessingDeficit:
-    def test_rem_deficit_deep_not_deficit(self, db_conn):
-        """REM deficit + deep not deficit → emotional processing deficit."""
+    def test_reasoning_mentions_rem_only_when_rem_deficit(self, db_conn):
+        """REM deficit only → reasoning mentions REM."""
         _seed_healthy_baseline(db_conn, deep_ms=5_400_000, rem_ms=7_200_000)
 
         upsert_whoop_recovery(
@@ -338,28 +349,16 @@ class TestEmotionalProcessingDeficit:
         _seed_today_sleep(db_conn, deep_ms=5_400_000, rem_ms=2_000_000, light_ms=14_400_000)
 
         result = classify_state(db_conn, TARGET)
-        assert result["state"] == "emotional_processing_deficit"
-
-    def test_not_triggered_when_deep_also_deficit(self, db_conn):
-        """Both stages deficit → NOT emotional deficit (→ poor_sleep)."""
-        _seed_healthy_baseline(db_conn)
-
-        upsert_whoop_recovery(
-            db_conn, cycle_id=500, date=TARGET,
-            recovery_score=70.0, hrv_rmssd_milli=55.0, resting_heart_rate=58.0,
-        )
-        _seed_today_sleep(db_conn, deep_ms=2_000_000, rem_ms=2_000_000, light_ms=20_000_000)
-
-        result = classify_state(db_conn, TARGET)
-        assert result["state"] != "emotional_processing_deficit"
+        reasoning_text = " ".join(result["reasoning"])
+        assert "rem" in reasoning_text.lower()
 
 
 # ─── Poor Recovery ─────────────────────────────────────────────────────────
 
 
 class TestPoorRecovery:
-    def test_acute_bad_day_tier_1_2_triggers(self, db_conn):
-        """Recovery < 40 (tier 1-2) → poor_recovery regardless of recent history."""
+    def test_acute_bad_day_no_sleep_deficit_triggers(self, db_conn):
+        """Recovery < 40 + no sleep deficit → poor_recovery."""
         _seed_healthy_baseline(db_conn, skip_last_n=7)
 
         trend_dates = _generate_dates_inclusive(TARGET, 7)
@@ -379,6 +378,29 @@ class TestPoorRecovery:
         result = classify_state(db_conn, TARGET)
         assert result["state"] == "poor_recovery"
 
+    def test_acute_bad_day_with_sleep_deficit_is_poor_sleep(self, db_conn):
+        """Recovery < 40 + sleep deficit → poor_sleep (P2 > P3)."""
+        _seed_healthy_baseline(db_conn, deep_ms=5_400_000, rem_ms=7_200_000, skip_last_n=7)
+
+        trend_dates = _generate_dates_inclusive(TARGET, 7)
+        hrv_vals = [55.0] * 7
+        rhr_vals = [58.0] * 7
+        scores = [75.0] * 6 + [25.0]  # Today: 25%
+        _seed_trend_days(db_conn, trend_dates, hrv_vals, rhr_vals, scores)
+
+        for i, date in enumerate(trend_dates[:-1]):
+            upsert_whoop_sleep(
+                db_conn, sleep_id=700 + i, date=date,
+                deep_sleep_ms=5_400_000, rem_sleep_ms=7_200_000,
+                light_sleep_ms=14_400_000,
+                sleep_needed_baseline_ms=27_000_000,
+            )
+        # Today: deep deficit
+        _seed_today_sleep(db_conn, deep_ms=2_000_000, rem_ms=7_200_000, light_ms=14_400_000)
+
+        result = classify_state(db_conn, TARGET)
+        assert result["state"] == "poor_sleep"
+
     def test_mild_bad_day_one_off_triggers(self, db_conn):
         """Recovery 40-59 with ≤1 recent bad day → poor_recovery."""
         _seed_healthy_baseline(db_conn, skip_last_n=7)
@@ -386,7 +408,6 @@ class TestPoorRecovery:
         trend_dates = _generate_dates_inclusive(TARGET, 7)
         hrv_vals = [55.0] * 7
         rhr_vals = [58.0] * 7
-        # Only 1 of last 5 days bad (index 2), today = 55
         scores = [75.0, 75.0, 45.0, 75.0, 75.0, 75.0, 55.0]
         _seed_trend_days(db_conn, trend_dates, hrv_vals, rhr_vals, scores)
 
@@ -408,7 +429,6 @@ class TestPoorRecovery:
         trend_dates = _generate_dates_inclusive(TARGET, 7)
         hrv_vals = [55.0] * 7
         rhr_vals = [58.0] * 7
-        # 2 of last 5 bad → gray zone (not fatigue, not one-off)
         scores = [75.0, 75.0, 45.0, 50.0, 75.0, 75.0, 50.0]
         _seed_trend_days(db_conn, trend_dates, hrv_vals, rhr_vals, scores)
 
@@ -422,29 +442,6 @@ class TestPoorRecovery:
 
         result = classify_state(db_conn, TARGET)
         assert result["state"] != "poor_recovery"
-
-    def test_sleep_deficit_overrides_acute_bad_day(self, db_conn):
-        """Recovery < 40 + deep sleep deficit → physical_recovery_deficit (P3 > P5)."""
-        _seed_healthy_baseline(db_conn, deep_ms=5_400_000, rem_ms=7_200_000, skip_last_n=7)
-
-        trend_dates = _generate_dates_inclusive(TARGET, 7)
-        hrv_vals = [55.0] * 7
-        rhr_vals = [58.0] * 7
-        scores = [75.0] * 6 + [30.0]  # Today acute bad
-        _seed_trend_days(db_conn, trend_dates, hrv_vals, rhr_vals, scores)
-
-        for i, date in enumerate(trend_dates[:-1]):
-            upsert_whoop_sleep(
-                db_conn, sleep_id=700 + i, date=date,
-                deep_sleep_ms=5_400_000, rem_sleep_ms=7_200_000,
-                light_sleep_ms=14_400_000,
-                sleep_needed_baseline_ms=27_000_000,
-            )
-        # Today: deep deficit, REM fine
-        _seed_today_sleep(db_conn, deep_ms=2_000_000, rem_ms=7_200_000, light_ms=14_400_000)
-
-        result = classify_state(db_conn, TARGET)
-        assert result["state"] == "physical_recovery_deficit"
 
 
 # ─── Peak Readiness ──────────────────────────────────────────────────────────
@@ -474,13 +471,13 @@ class TestPeakReadiness:
         assert result["confidence"] == "high"
 
     def test_recovery_70_not_peak(self, db_conn):
-        """Recovery 70% (tier 4) → NOT peak_readiness, even with everything else green."""
+        """Recovery 70% (tier 4) → NOT peak_readiness."""
         _seed_healthy_baseline(db_conn, hrv_milli=55.0, rhr=58.0, skip_last_n=7)
 
         trend_dates = _generate_dates_inclusive(TARGET, 7)
         hrv_vals = [55.0, 56.0, 57.0, 58.0, 59.0, 60.0, 61.0]
         rhr_vals = [58.0] * 7
-        scores = [80.0] * 6 + [70.0]  # Today only 70
+        scores = [80.0] * 6 + [70.0]
         _seed_trend_days(db_conn, trend_dates, hrv_vals, rhr_vals, scores)
 
         for i, date in enumerate(trend_dates):
@@ -564,7 +561,6 @@ class TestBaselineState:
         trend_dates = _generate_dates_inclusive(TARGET, 7)
         hrv_vals = [55.0] * 7
         rhr_vals = [58.0] * 7
-        # 2 of last 5 bad → gray zone
         scores = [75.0, 75.0, 45.0, 50.0, 75.0, 75.0, 50.0]
         _seed_trend_days(db_conn, trend_dates, hrv_vals, rhr_vals, scores)
 
@@ -585,7 +581,7 @@ class TestBaselineState:
 
 class TestPriorityAndEdgeCases:
     def test_fatigue_overrides_sleep_deficits(self, db_conn):
-        """When fatigue + deep deficit, fatigue wins (P1 > P3)."""
+        """When fatigue + deep deficit, fatigue wins (P1 > P2)."""
         _seed_healthy_baseline(db_conn, deep_ms=5_400_000, rem_ms=7_200_000, skip_last_n=7)
 
         trend_dates = _generate_dates_inclusive(TARGET, 7)
@@ -604,28 +600,6 @@ class TestPriorityAndEdgeCases:
 
         result = classify_state(db_conn, TARGET)
         assert result["state"] == "accumulated_fatigue"
-
-    def test_sleep_deficit_overrides_poor_recovery(self, db_conn):
-        """Deep deficit + acute bad day → physical_recovery_deficit (P3 > P5)."""
-        _seed_healthy_baseline(db_conn, deep_ms=5_400_000, rem_ms=7_200_000, skip_last_n=7)
-
-        trend_dates = _generate_dates_inclusive(TARGET, 7)
-        hrv_vals = [55.0] * 7
-        rhr_vals = [58.0] * 7
-        scores = [75.0] * 6 + [30.0]  # Acute bad
-        _seed_trend_days(db_conn, trend_dates, hrv_vals, rhr_vals, scores)
-
-        for i, date in enumerate(trend_dates[:-1]):
-            upsert_whoop_sleep(
-                db_conn, sleep_id=700 + i, date=date,
-                deep_sleep_ms=5_400_000, rem_sleep_ms=7_200_000,
-                light_sleep_ms=14_400_000,
-                sleep_needed_baseline_ms=27_000_000,
-            )
-        _seed_today_sleep(db_conn, deep_ms=2_000_000, rem_ms=7_200_000, light_ms=14_400_000)
-
-        result = classify_state(db_conn, TARGET)
-        assert result["state"] == "physical_recovery_deficit"
 
     def test_no_recovery_today(self, db_conn):
         """No recovery record for today → still classifiable."""
@@ -650,7 +624,6 @@ class TestPriorityAndEdgeCases:
     def test_no_whoop_data_today_warns_in_reasoning(self, db_conn):
         """No recovery AND no sleep for today → baseline with sync warning."""
         _seed_healthy_baseline(db_conn)
-        # Don't seed any data for TARGET date itself
 
         result = classify_state(db_conn, TARGET)
         assert result["state"] == "baseline"
@@ -722,6 +695,12 @@ class TestPriorityAndEdgeCases:
         from intelligence.state_classifier import STATES
         assert "poor_sleep" in STATES
 
+    def test_old_states_removed_from_states_list(self, db_conn):
+        """Verify collapsed states are gone."""
+        from intelligence.state_classifier import STATES
+        assert "physical_recovery_deficit" not in STATES
+        assert "emotional_processing_deficit" not in STATES
+
     def test_recovery_exactly_at_boundaries(self, db_conn):
         """Recovery exactly at 40, 60, 80 — boundary behavior."""
         _seed_healthy_baseline(db_conn, skip_last_n=7)
@@ -762,8 +741,8 @@ class TestPriorityAndEdgeCases:
             )
 
         result = classify_state(db_conn, TARGET)
-        # 40 is NOT < 40, so P5 doesn't fire. But 40 IS < 60, so P6 checks.
-        # With 0 recent bad days, P6 fires → poor_recovery
+        # 40 is NOT < 40, so P3 doesn't fire. But 40 IS < 60, so P4 checks.
+        # With 0 recent bad days, P4 fires → poor_recovery
         assert result["state"] == "poor_recovery"
 
     def test_peak_blocked_by_declining_hrv_trend(self, db_conn):
@@ -789,8 +768,6 @@ class TestPriorityAndEdgeCases:
 
     def test_peak_blocked_when_hrv_trend_unavailable(self, db_conn):
         """HRV trend returns None (< 3 days in 7-day window) → peak blocked."""
-        # Baseline data ends 8 days before TARGET — leaves a gap so the
-        # 7-day trend window has only today's data (1 day, needs 3).
         _seed_healthy_baseline(db_conn, hrv_milli=55.0, rhr=58.0, skip_last_n=8)
 
         upsert_whoop_recovery(
@@ -830,7 +807,7 @@ class TestPriorityAndEdgeCases:
         assert result["state"] != "peak_readiness"
 
     def test_gray_zone_assertion_is_baseline(self, db_conn):
-        """Gray zone (2 of 5 bad) explicitly lands on baseline, not just 'not poor_recovery'."""
+        """Gray zone (2 of 5 bad) explicitly lands on baseline."""
         _seed_healthy_baseline(db_conn, skip_last_n=7)
 
         trend_dates = _generate_dates_inclusive(TARGET, 7)
@@ -875,7 +852,6 @@ class TestPriorityAndEdgeCases:
         trend_dates = _generate_dates_inclusive(TARGET, 7)
         hrv_vals = [55.0] * 7
         rhr_vals = [58.0] * 7
-        # Exactly 3 of last 5 bad
         scores = [75.0, 75.0, 45.0, 50.0, 55.0, 75.0, 50.0]
         _seed_trend_days(db_conn, trend_dates, hrv_vals, rhr_vals, scores)
 
@@ -904,13 +880,13 @@ class TestPriorityAndEdgeCases:
         assert result["insufficient_data"] is False
 
     def test_poor_sleep_at_very_low_recovery_no_fatigue(self, db_conn):
-        """Recovery 20% + no recent bad days + both deficits → poor_sleep, not poor_recovery."""
+        """Recovery 20% + no recent bad days + both deficits → poor_sleep."""
         _seed_healthy_baseline(db_conn, skip_last_n=7)
 
         trend_dates = _generate_dates_inclusive(TARGET, 7)
         hrv_vals = [55.0] * 7
         rhr_vals = [58.0] * 7
-        scores = [75.0] * 6 + [20.0]  # Only today bad
+        scores = [75.0] * 6 + [20.0]
         _seed_trend_days(db_conn, trend_dates, hrv_vals, rhr_vals, scores)
 
         for i, date in enumerate(trend_dates[:-1]):
@@ -954,7 +930,6 @@ class TestPriorityAndEdgeCases:
         trend_dates = _generate_dates_inclusive(TARGET, 7)
         hrv_vals = [55.0] * 7
         rhr_vals = [58.0] * 7
-        # 2 real bad days + 2 None days + 1 good day in the 5-day window
         scores = [75.0, 75.0, 45.0, None, None, 50.0, 50.0]
         _seed_trend_days(db_conn, trend_dates, hrv_vals, rhr_vals, scores)
 
@@ -967,6 +942,4 @@ class TestPriorityAndEdgeCases:
             )
 
         result = classify_state(db_conn, TARGET)
-        # Only 2 non-null bad days (45, 50) in lookback — not enough for fatigue
-        # Today = 50 < 60, so poor_recovery (one-off) or baseline
         assert result["state"] != "accumulated_fatigue"
