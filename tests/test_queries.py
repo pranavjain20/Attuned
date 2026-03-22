@@ -617,6 +617,17 @@ class TestGetSongClassifications:
 
 
 class TestGetAllClassifiedSongs:
+    @staticmethod
+    def _add_personal_play(conn, uri):
+        """Add a personal-device listening history entry so the song passes the autoplay filter."""
+        conn.execute(
+            """INSERT OR IGNORE INTO listening_history
+               (spotify_uri, played_at, ms_played, platform)
+               VALUES (?, '2026-01-01T12:00:00Z', 60000, 'ios')""",
+            (uri,),
+        )
+        conn.commit()
+
     def test_joins_song_metadata(self, db_conn):
         queries.upsert_song(db_conn, "uri:1", "My Song", "My Artist", "My Album")
         db_conn.execute(
@@ -627,6 +638,7 @@ class TestGetAllClassifiedSongs:
             "spotify_uri": "uri:1", "bpm": 120, "energy": 0.7,
             "classification_source": "essentia",
         })
+        self._add_personal_play(db_conn, "uri:1")
         results = queries.get_all_classified_songs(db_conn)
         assert len(results) == 1
         assert results[0]["name"] == "My Song"
@@ -644,6 +656,7 @@ class TestGetAllClassifiedSongs:
             queries.upsert_song_classification(db_conn, {
                 "spotify_uri": uri, "bpm": 100, "classification_source": "essentia",
             })
+            self._add_personal_play(db_conn, uri)
         db_conn.commit()
         results = queries.get_all_classified_songs(db_conn)
         scores = [r["engagement_score"] for r in results]
@@ -652,6 +665,29 @@ class TestGetAllClassifiedSongs:
     def test_empty_when_no_classifications(self, db_conn):
         queries.upsert_song(db_conn, "uri:1", "Song", "Artist")
         assert queries.get_all_classified_songs(db_conn) == []
+
+    def test_excludes_speaker_only_songs(self, db_conn):
+        """Songs with only smart speaker plays are excluded."""
+        queries.upsert_song(db_conn, "uri:1", "Real Song", "Artist")
+        queries.upsert_song(db_conn, "uri:2", "Alexa Song", "Artist")
+        for uri in ["uri:1", "uri:2"]:
+            queries.upsert_song_classification(db_conn, {
+                "spotify_uri": uri, "bpm": 100, "classification_source": "essentia",
+            })
+        # uri:1 has a phone play
+        self._add_personal_play(db_conn, "uri:1")
+        # uri:2 only has Alexa plays
+        db_conn.execute(
+            """INSERT OR IGNORE INTO listening_history
+               (spotify_uri, played_at, ms_played, platform)
+               VALUES ('uri:2', '2026-01-01T12:00:00Z', 60000,
+                       'Partner amazon_salmon Amazon;Echo_Dot')""",
+        )
+        db_conn.commit()
+        results = queries.get_all_classified_songs(db_conn)
+        uris = [r["spotify_uri"] for r in results]
+        assert "uri:1" in uris
+        assert "uri:2" not in uris
 
 
 class TestCountRows:

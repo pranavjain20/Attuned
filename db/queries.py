@@ -539,13 +539,27 @@ def get_song_classifications(
 
 
 def get_all_classified_songs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    """Fetch all classified songs joined with song metadata for the matching engine."""
+    """Fetch all classified songs joined with song metadata for the matching engine.
+
+    Excludes songs that were only ever played on smart speakers (Alexa autoplay).
+    A song must have at least one play >30s from a personal device (phone/desktop/web).
+    """
     rows = conn.execute(
         """SELECT sc.*, s.name, s.artist, s.album, s.duration_ms,
                   s.play_count, s.engagement_score, s.last_played,
                   s.release_year
            FROM song_classifications sc
            JOIN songs s ON sc.spotify_uri = s.spotify_uri
+           WHERE EXISTS (
+               SELECT 1 FROM listening_history lh
+               WHERE lh.spotify_uri = sc.spotify_uri
+                 AND lh.ms_played > 30000
+                 AND (   LOWER(lh.platform) LIKE '%ios%'
+                      OR LOWER(lh.platform) LIKE '%android%'
+                      OR LOWER(lh.platform) LIKE '%mac%'
+                      OR LOWER(lh.platform) LIKE '%windows%'
+                      OR LOWER(lh.platform) LIKE '%web%')
+           )
            ORDER BY s.engagement_score DESC"""
     ).fetchall()
     results = []

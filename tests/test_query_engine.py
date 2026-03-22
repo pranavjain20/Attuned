@@ -304,6 +304,16 @@ class TestComputeSelectionScores:
 
 class TestSelectSongs:
 
+    @staticmethod
+    def _add_personal_play(conn, uri, idx=0):
+        """Add personal-device play so songs pass the autoplay filter."""
+        conn.execute(
+            """INSERT OR IGNORE INTO listening_history
+               (spotify_uri, played_at, ms_played, platform)
+               VALUES (?, ?, 60000, 'ios')""",
+            (uri, f"2026-01-{(idx % 28) + 1:02d}T{idx % 24:02d}:00:00Z"),
+        )
+
     # Genre pools for seeding test songs with cohesion signal
     _GENRE_POOLS = [
         (["rock", "indie"], ["energetic", "uplifting"]),
@@ -342,6 +352,13 @@ class TestSelectSongs:
                 "mood_tags": mood_tags,
                 "classification_source": "test",
             })
+            # Add personal-device play so songs pass the autoplay filter
+            conn.execute(
+                """INSERT OR IGNORE INTO listening_history
+                   (spotify_uri, played_at, ms_played, platform)
+                   VALUES (?, ?, 60000, 'ios')""",
+                (uri, f"2026-01-{(i % 28) + 1:02d}T12:00:00Z"),
+            )
         conn.commit()
 
     def test_select_returns_up_to_max_playlist_size(self, db_conn):
@@ -395,6 +412,7 @@ class TestSelectSongs:
                 "mood_tags": ["energetic", "uplifting"],
                 "classification_source": "test",
             })
+            self._add_personal_play(db_conn, uri, i)
         for i in range(30):
             uri = f"spotify:track:bolly{i:03d}"
             upsert_song(db_conn, uri, f"Bollywood {i}", "Hindi Artist",
@@ -408,6 +426,7 @@ class TestSelectSongs:
                 "mood_tags": ["romantic", "nostalgic"],
                 "classification_source": "test",
             })
+            self._add_personal_play(db_conn, uri, 30 + i)
         db_conn.commit()
         result = select_songs(db_conn, "accumulated_fatigue", "2026-03-19")
         # Most selected songs should share the same genre cluster
@@ -434,6 +453,7 @@ class TestSelectSongs:
                 "spotify_uri": uri, "parasympathetic": 0.8, "sympathetic": 0.05,
                 "grounding": 0.1, "confidence": 0.7, "classification_source": "test",
             })
+            self._add_personal_play(db_conn, uri, i)
         db_conn.commit()
         result = select_songs(db_conn, "accumulated_fatigue", "2026-03-19")
         assert result["match_stats"]["total_candidates"] == 5
@@ -478,7 +498,7 @@ class TestSelectSongs:
                      "Neeraj Shridhar", sources=["test"], last_played="2026-03-18")
         db_conn.execute("UPDATE songs SET play_count = 3 WHERE spotify_uri = ?", (uri_less,))
 
-        for uri in [uri_more, uri_less]:
+        for idx, uri in enumerate([uri_more, uri_less]):
             upsert_song_classification(db_conn, {
                 "spotify_uri": uri, "parasympathetic": 0.8, "sympathetic": 0.05,
                 "grounding": 0.1, "confidence": 0.7,
@@ -487,6 +507,7 @@ class TestSelectSongs:
                 "mood_tags": ["uplifting", "energetic"],
                 "classification_source": "test",
             })
+            self._add_personal_play(db_conn, uri, idx)
 
         # Seed enough other songs to fill the pool
         self._seed_songs(db_conn, count=30)
@@ -530,6 +551,7 @@ class TestSelectSongs:
                 "mood_tags": ["calm", "soothing"],
                 "classification_source": "test",
             })
+            self._add_personal_play(db_conn, uri, i)
 
         # Seed 2 near-duplicates with very high para scores so they're both top candidates
         dup_uri_a = "spotify:track:dup_alpha"
@@ -551,6 +573,7 @@ class TestSelectSongs:
             "mood_tags": ["calm", "soothing"],
             "classification_source": "test",
         })
+        self._add_personal_play(db_conn, dup_uri_a, 50)
 
         upsert_song(db_conn, dup_uri_b, "Kabira (From 'Bollywood Essentials')",
                      "Arijit Singh", sources=["test"], last_played="2026-03-17")
@@ -569,6 +592,7 @@ class TestSelectSongs:
             "mood_tags": ["calm", "soothing"],
             "classification_source": "test",
         })
+        self._add_personal_play(db_conn, dup_uri_b, 51)
         db_conn.commit()
 
         result = select_songs(db_conn, "accumulated_fatigue", "2026-03-19")
