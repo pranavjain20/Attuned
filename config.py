@@ -92,6 +92,11 @@ RECOVERY_TIER_4_MAX = 80       # Functional / okay (above = great)
 # Accumulated fatigue detection
 FATIGUE_RECENT_DAYS = 5        # Look back window for multi-day pattern
 FATIGUE_BAD_DAYS_MIN = 3       # Min bad days in window → fatigue
+
+# Recovery delta modifier — adjusts neuro profile when day-over-day recovery change is extreme
+RECOVERY_DELTA_THRESHOLD_SD = 1.5   # z-score must exceed this (not equal) to trigger
+RECOVERY_DELTA_NUDGE = 0.10         # Fixed weight added to target dimension
+RECOVERY_DELTA_EXEMPT_STATES = frozenset({"accumulated_fatigue", "peak_readiness"})
 TOKEN_EXPIRY_BUFFER_SECONDS = 300  # 5-minute buffer before refresh
 
 # ---------------------------------------------------------------------------

@@ -1,21 +1,27 @@
 """Tests for matching/query_engine.py — neuro-score song scoring and selection."""
 
 import json
+from datetime import datetime, timedelta
 
 import pytest
 
 from db.queries import (
+    get_consecutive_playlist_days,
     get_recent_playlist_track_uris,
     insert_generated_playlist,
     upsert_song,
     upsert_song_classification,
 )
 from matching.query_engine import (
+    _apply_lead_track_ordering,
     _dedup_near_duplicates,
     _normalize_title,
     compute_confidence_multiplier,
+    compute_engagement_p75,
+    compute_min_repeat_gap,
     compute_neuro_match,
     compute_selection_scores,
+    is_current_banger,
     score_song,
     select_songs,
 )
@@ -235,14 +241,32 @@ class TestScoreSong:
         song = self._make_song("uri:1", para=0.8)
         score_clean, _ = score_song(song, profile)
         score_nudged, bd = score_song(song, profile, {"uri:1": 1})
-        assert bd["freshness_nudge"] == pytest.approx(0.02)
-        assert score_nudged == pytest.approx(score_clean - 0.02, abs=0.001)
+        assert bd["freshness_nudge"] == pytest.approx(0.04)
+        assert score_nudged == pytest.approx(score_clean - 0.04, abs=0.001)
 
     def test_freshness_nudge_for_two_days_ago(self):
         profile = {"para": 0.85, "symp": 0.00, "grnd": 0.15}
         song = self._make_song("uri:1", para=0.8)
         _, bd = score_song(song, profile, {"uri:1": 2})
+        assert bd["freshness_nudge"] == pytest.approx(0.03)
+
+    def test_freshness_nudge_for_three_days_ago(self):
+        profile = {"para": 0.85, "symp": 0.00, "grnd": 0.15}
+        song = self._make_song("uri:1", para=0.8)
+        _, bd = score_song(song, profile, {"uri:1": 3})
+        assert bd["freshness_nudge"] == pytest.approx(0.02)
+
+    def test_freshness_nudge_for_four_days_ago(self):
+        profile = {"para": 0.85, "symp": 0.00, "grnd": 0.15}
+        song = self._make_song("uri:1", para=0.8)
+        _, bd = score_song(song, profile, {"uri:1": 4})
         assert bd["freshness_nudge"] == pytest.approx(0.01)
+
+    def test_no_freshness_nudge_for_five_days_ago(self):
+        profile = {"para": 0.85, "symp": 0.00, "grnd": 0.15}
+        song = self._make_song("uri:1", para=0.8)
+        _, bd = score_song(song, profile, {"uri:1": 5})
+        assert bd["freshness_nudge"] == 0.0
 
     def test_no_nudge_when_not_in_recent_playlists(self):
         profile = {"para": 0.85, "symp": 0.00, "grnd": 0.15}
@@ -371,6 +395,24 @@ class TestSelectSongs:
         result = select_songs(db_conn, "accumulated_fatigue", "2026-03-19")
         assert result["state"] == "accumulated_fatigue"
         assert "para" in result["neuro_profile"]
+
+    def test_neuro_profile_override_used(self, db_conn):
+        """When override provided, use it instead of default state profile."""
+        self._seed_songs(db_conn, count=30)
+        override = {"para": 0.10, "symp": 0.80, "grnd": 0.10}
+        result = select_songs(db_conn, "accumulated_fatigue", "2026-03-19",
+                              neuro_profile_override=override)
+        assert result["neuro_profile"] == override
+        # Should still report the correct state
+        assert result["state"] == "accumulated_fatigue"
+
+    def test_no_override_uses_default_profile(self, db_conn):
+        """Without override, should use standard state profile."""
+        self._seed_songs(db_conn, count=30)
+        result = select_songs(db_conn, "accumulated_fatigue", "2026-03-19")
+        from config import STATE_NEURO_PROFILES
+        expected = STATE_NEURO_PROFILES["accumulated_fatigue"]
+        assert result["neuro_profile"] == expected
 
     def test_select_with_empty_library(self, db_conn):
         result = select_songs(db_conn, "baseline", "2026-03-19")
@@ -603,6 +645,229 @@ class TestSelectSongs:
 
         # The removed duplicate (lower plays) should not appear
         assert dup_uri_b not in uris
+
+
+# ---------------------------------------------------------------------------
+# Lead track ordering tests
+# ---------------------------------------------------------------------------
+
+class TestLeadTrackOrdering:
+
+    @staticmethod
+    def _make_song(uri, selection_score, engagement_score=None, name="Song"):
+        return {
+            "spotify_uri": uri,
+            "name": name,
+            "selection_score": selection_score,
+            "engagement_score": engagement_score,
+        }
+
+    def test_high_engagement_promoted_to_front(self):
+        """A song with high engagement in the top 10 should jump to lead position."""
+        songs = [
+            self._make_song("uri:0", 0.90, engagement_score=0.2, name="Top neuro"),
+            self._make_song("uri:1", 0.89, engagement_score=0.95, name="High engagement"),
+            self._make_song("uri:2", 0.88, engagement_score=0.1, name="Low engagement"),
+            self._make_song("uri:3", 0.87, engagement_score=0.9, name="Also high"),
+        ] + [self._make_song(f"uri:{i}", 0.80 - i * 0.01) for i in range(4, 20)]
+
+        result = _apply_lead_track_ordering(songs)
+
+        # High engagement songs should be in the first 3 positions
+        lead_uris = {s["spotify_uri"] for s in result[:3]}
+        assert "uri:1" in lead_uris  # 0.89*0.7 + 0.95*0.3 = 0.908
+        assert "uri:3" in lead_uris  # 0.87*0.7 + 0.9*0.3  = 0.879
+
+    def test_neuro_still_dominates_lead_score(self):
+        """70% neuro weight means a much better neuro match beats engagement."""
+        songs = [
+            self._make_song("uri:0", 0.95, engagement_score=0.1, name="Great neuro"),
+            self._make_song("uri:1", 0.60, engagement_score=1.0, name="Great engagement"),
+        ] + [self._make_song(f"uri:{i}", 0.50) for i in range(2, 10)]
+
+        result = _apply_lead_track_ordering(songs)
+        # 0.95*0.7 + 0.1*0.3 = 0.695 vs 0.60*0.7 + 1.0*0.3 = 0.72
+        # The high-engagement song wins the lead score here
+        assert result[0]["spotify_uri"] == "uri:1"
+
+    def test_no_engagement_treated_as_zero(self):
+        """Songs without engagement_score shouldn't crash."""
+        songs = [
+            self._make_song("uri:0", 0.90, engagement_score=None),
+            self._make_song("uri:1", 0.89, engagement_score=0.8),
+        ] + [self._make_song(f"uri:{i}", 0.80) for i in range(2, 10)]
+
+        result = _apply_lead_track_ordering(songs)
+        # uri:1 (0.89*0.7 + 0.8*0.3 = 0.863) beats uri:0 (0.90*0.7 + 0 = 0.63)
+        assert result[0]["spotify_uri"] == "uri:1"
+
+    def test_rest_of_playlist_keeps_selection_score_order(self):
+        """Positions 4+ should stay sorted by selection_score."""
+        songs = [self._make_song(f"uri:{i}", 0.90 - i * 0.01, engagement_score=0.5)
+                 for i in range(15)]
+
+        result = _apply_lead_track_ordering(songs)
+        rest_scores = [s["selection_score"] for s in result[3:]]
+        assert rest_scores == sorted(rest_scores, reverse=True)
+
+    def test_few_songs_returns_unchanged(self):
+        """With <= 3 songs, no reordering needed."""
+        songs = [
+            self._make_song("uri:0", 0.90, engagement_score=0.1),
+            self._make_song("uri:1", 0.80, engagement_score=0.9),
+        ]
+        result = _apply_lead_track_ordering(songs)
+        assert len(result) == 2
+        # No reordering — returned as-is
+        assert result[0]["spotify_uri"] == "uri:0"
+
+    def test_preserves_all_songs(self):
+        """Lead track ordering shouldn't add or remove songs."""
+        songs = [self._make_song(f"uri:{i}", 0.90 - i * 0.01, engagement_score=0.5)
+                 for i in range(20)]
+        result = _apply_lead_track_ordering(songs)
+        assert len(result) == 20
+        assert {s["spotify_uri"] for s in result} == {s["spotify_uri"] for s in songs}
+
+    def test_only_top_pool_eligible_for_lead(self):
+        """Songs outside the top 10 shouldn't jump to lead even with high engagement."""
+        songs = [self._make_song(f"uri:{i}", 0.90 - i * 0.01, engagement_score=0.1)
+                 for i in range(10)]
+        # Song at position 11 has amazing engagement but low neuro
+        songs.append(self._make_song("uri:outsider", 0.70, engagement_score=1.0))
+
+        result = _apply_lead_track_ordering(songs)
+        lead_uris = {s["spotify_uri"] for s in result[:3]}
+        assert "uri:outsider" not in lead_uris
+
+
+# ---------------------------------------------------------------------------
+# Hard cap: min repeat gap
+# ---------------------------------------------------------------------------
+
+class TestComputeMinRepeatGap:
+
+    def test_small_library(self):
+        # 150 songs → log2(1) = 0 → max(1, 0) = 1
+        assert compute_min_repeat_gap(150, is_current_banger=False) == 1
+
+    def test_small_library_banger(self):
+        # 150 → base 1, banger discount → max(0, 0) = 0
+        assert compute_min_repeat_gap(150, is_current_banger=True) == 0
+
+    def test_medium_library(self):
+        # 600 → log2(4) = 2
+        assert compute_min_repeat_gap(600, is_current_banger=False) == 2
+
+    def test_medium_library_banger(self):
+        # 600 → base 2, banger → 1
+        assert compute_min_repeat_gap(600, is_current_banger=True) == 1
+
+    def test_large_library(self):
+        # 1200 → log2(8) = 3
+        assert compute_min_repeat_gap(1200, is_current_banger=False) == 3
+
+    def test_large_library_banger(self):
+        # 1200 → base 3, banger → 2
+        assert compute_min_repeat_gap(1200, is_current_banger=True) == 2
+
+    def test_very_large_library(self):
+        # 2400 → log2(16) = 4
+        assert compute_min_repeat_gap(2400, is_current_banger=False) == 4
+
+    def test_zero_library(self):
+        assert compute_min_repeat_gap(0, is_current_banger=False) == 0
+
+    def test_scales_logarithmically(self):
+        """Doubling library from 600→1200 adds 1 day, not 2."""
+        gap_600 = compute_min_repeat_gap(600, is_current_banger=False)
+        gap_1200 = compute_min_repeat_gap(1200, is_current_banger=False)
+        assert gap_1200 - gap_600 == 1
+
+
+class TestIsCurrentBanger:
+
+    def test_high_engagement_recent(self):
+        today = datetime.now().strftime("%Y-%m-%d")
+        song = {"engagement_score": 0.80, "last_played": today}
+        assert is_current_banger(song, engagement_p75=0.58) is True
+
+    def test_high_engagement_old(self):
+        old_date = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
+        song = {"engagement_score": 0.80, "last_played": old_date}
+        assert is_current_banger(song, engagement_p75=0.58) is False
+
+    def test_low_engagement_recent(self):
+        today = datetime.now().strftime("%Y-%m-%d")
+        song = {"engagement_score": 0.30, "last_played": today}
+        assert is_current_banger(song, engagement_p75=0.58) is False
+
+    def test_no_engagement(self):
+        song = {"engagement_score": None, "last_played": "2026-03-20"}
+        assert is_current_banger(song, engagement_p75=0.58) is False
+
+    def test_no_last_played(self):
+        song = {"engagement_score": 0.80, "last_played": None}
+        assert is_current_banger(song, engagement_p75=0.58) is False
+
+    def test_exactly_30_days_ago(self):
+        cutoff = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        song = {"engagement_score": 0.80, "last_played": cutoff}
+        assert is_current_banger(song, engagement_p75=0.58) is True
+
+    def test_31_days_ago(self):
+        old = (datetime.now() - timedelta(days=31)).strftime("%Y-%m-%d")
+        song = {"engagement_score": 0.80, "last_played": old}
+        assert is_current_banger(song, engagement_p75=0.58) is False
+
+
+class TestComputeEngagementP75:
+
+    def test_normal_distribution(self):
+        songs = [{"engagement_score": i * 0.1} for i in range(1, 11)]
+        # 10 songs, top quartile = index 2 (10//4)
+        p75 = compute_engagement_p75(songs)
+        assert p75 == pytest.approx(0.8, abs=0.05)
+
+    def test_no_engagement_returns_zero(self):
+        songs = [{"engagement_score": None}, {"name": "no score"}]
+        assert compute_engagement_p75(songs) == 0.0
+
+    def test_empty_list(self):
+        assert compute_engagement_p75([]) == 0.0
+
+
+class TestGetConsecutivePlaylistDays:
+
+    def test_three_consecutive_days(self, db_conn):
+        insert_generated_playlist(db_conn, date="2026-03-17", detected_state="baseline",
+                                  track_uris=["spotify:track:a"])
+        insert_generated_playlist(db_conn, date="2026-03-18", detected_state="baseline",
+                                  track_uris=["spotify:track:a", "spotify:track:b"])
+        insert_generated_playlist(db_conn, date="2026-03-19", detected_state="baseline",
+                                  track_uris=["spotify:track:a", "spotify:track:b"])
+        result = get_consecutive_playlist_days(db_conn, "2026-03-20")
+        assert result["spotify:track:a"] == 3
+        assert result["spotify:track:b"] == 2  # appeared on 3/18 and 3/19
+
+    def test_gap_breaks_streak(self, db_conn):
+        insert_generated_playlist(db_conn, date="2026-03-17", detected_state="baseline",
+                                  track_uris=["spotify:track:a"])
+        # No playlist on 3/18
+        insert_generated_playlist(db_conn, date="2026-03-19", detected_state="baseline",
+                                  track_uris=["spotify:track:a"])
+        result = get_consecutive_playlist_days(db_conn, "2026-03-20")
+        assert result["spotify:track:a"] == 1  # streak broken by gap
+
+    def test_no_playlists(self, db_conn):
+        assert get_consecutive_playlist_days(db_conn, "2026-03-20") == {}
+
+    def test_only_counts_from_yesterday(self, db_conn):
+        """Tracks from 2+ days ago without yesterday don't count."""
+        insert_generated_playlist(db_conn, date="2026-03-18", detected_state="baseline",
+                                  track_uris=["spotify:track:a"])
+        result = get_consecutive_playlist_days(db_conn, "2026-03-20")
+        assert result == {}  # no playlist on 3/19, so no streak
 
 
 # ---------------------------------------------------------------------------

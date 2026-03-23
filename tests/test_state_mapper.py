@@ -3,7 +3,11 @@
 import pytest
 
 from config import STATE_NEURO_PROFILES
-from matching.state_mapper import MATCHABLE_STATES, get_state_neuro_profile
+from matching.state_mapper import (
+    MATCHABLE_STATES,
+    apply_recovery_delta_modifier,
+    get_state_neuro_profile,
+)
 
 
 class TestGetStateNeuroProfile:
@@ -88,3 +92,99 @@ class TestGetStateNeuroProfile:
 
     def test_five_states_defined(self):
         assert len(MATCHABLE_STATES) == 5
+
+
+class TestApplyRecoveryDeltaModifier:
+    """Tests for apply_recovery_delta_modifier()."""
+
+    def _baseline_profile(self):
+        return {"para": 0.15, "symp": 0.50, "grnd": 0.35}
+
+    def test_significant_positive_boosts_symp(self):
+        profile = self._baseline_profile()
+        adjusted, reason = apply_recovery_delta_modifier(profile, delta=56.0, delta_sd=25.4, state="baseline")
+        assert adjusted["symp"] > profile["symp"]
+        assert reason is not None
+        assert "boosting energy" in reason
+        assert "++" not in reason  # no double plus sign
+
+    def test_significant_positive_sums_to_one(self):
+        profile = self._baseline_profile()
+        adjusted, _ = apply_recovery_delta_modifier(profile, delta=56.0, delta_sd=25.4, state="baseline")
+        total = adjusted["para"] + adjusted["symp"] + adjusted["grnd"]
+        assert total == pytest.approx(1.0, abs=0.001)
+
+    def test_significant_negative_boosts_para(self):
+        profile = self._baseline_profile()
+        adjusted, reason = apply_recovery_delta_modifier(profile, delta=-50.0, delta_sd=25.4, state="baseline")
+        assert adjusted["para"] > profile["para"]
+        assert reason is not None
+        assert "boosting calming" in reason
+
+    def test_significant_negative_sums_to_one(self):
+        profile = self._baseline_profile()
+        adjusted, _ = apply_recovery_delta_modifier(profile, delta=-50.0, delta_sd=25.4, state="baseline")
+        total = adjusted["para"] + adjusted["symp"] + adjusted["grnd"]
+        assert total == pytest.approx(1.0, abs=0.001)
+
+    def test_normal_delta_no_change(self):
+        profile = self._baseline_profile()
+        adjusted, reason = apply_recovery_delta_modifier(profile, delta=10.0, delta_sd=25.4, state="baseline")
+        assert reason is None
+        assert adjusted == profile
+
+    def test_exactly_at_threshold_no_change(self):
+        """Must exceed threshold, not equal."""
+        profile = self._baseline_profile()
+        # z = 30.0 / 20.0 = 1.5 exactly → should NOT trigger
+        adjusted, reason = apply_recovery_delta_modifier(profile, delta=30.0, delta_sd=20.0, state="baseline")
+        assert reason is None
+        assert adjusted == profile
+
+    def test_exempt_state_accumulated_fatigue(self):
+        profile = {"para": 0.95, "symp": 0.00, "grnd": 0.05}
+        adjusted, reason = apply_recovery_delta_modifier(profile, delta=56.0, delta_sd=25.4,
+                                                         state="accumulated_fatigue")
+        assert reason is None
+        assert adjusted == profile
+
+    def test_exempt_state_peak_readiness(self):
+        profile = {"para": 0.00, "symp": 0.90, "grnd": 0.10}
+        adjusted, reason = apply_recovery_delta_modifier(profile, delta=-50.0, delta_sd=25.4,
+                                                         state="peak_readiness")
+        assert reason is None
+        assert adjusted == profile
+
+    def test_zero_sd_no_change(self):
+        profile = self._baseline_profile()
+        adjusted, reason = apply_recovery_delta_modifier(profile, delta=56.0, delta_sd=0.0, state="baseline")
+        assert reason is None
+        assert adjusted == profile
+
+    def test_no_weight_goes_negative(self):
+        """Even extreme nudges should not produce negative weights."""
+        profile = {"para": 0.01, "symp": 0.01, "grnd": 0.98}
+        adjusted, reason = apply_recovery_delta_modifier(profile, delta=56.0, delta_sd=25.4, state="baseline")
+        for key in adjusted:
+            assert adjusted[key] >= 0.0, f"{key} went negative: {adjusted[key]}"
+        total = sum(adjusted.values())
+        assert total == pytest.approx(1.0, abs=0.001)
+
+    def test_input_dict_not_mutated(self):
+        profile = self._baseline_profile()
+        original = dict(profile)
+        apply_recovery_delta_modifier(profile, delta=56.0, delta_sd=25.4, state="baseline")
+        assert profile == original
+
+    def test_non_exempt_states_can_trigger(self):
+        """poor_sleep, poor_recovery, baseline should all allow modifier."""
+        for state in ["poor_sleep", "poor_recovery", "baseline"]:
+            profile = self._baseline_profile()
+            _, reason = apply_recovery_delta_modifier(profile, delta=56.0, delta_sd=25.4, state=state)
+            assert reason is not None, f"{state} should allow modifier"
+
+    def test_all_weights_in_valid_range(self):
+        profile = self._baseline_profile()
+        adjusted, _ = apply_recovery_delta_modifier(profile, delta=56.0, delta_sd=25.4, state="baseline")
+        for key, val in adjusted.items():
+            assert 0.0 <= val <= 1.0, f"{key} = {val} out of [0, 1]"

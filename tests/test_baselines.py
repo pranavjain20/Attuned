@@ -7,6 +7,8 @@ import pytest
 from db.queries import upsert_whoop_recovery, upsert_whoop_sleep
 from intelligence.baselines import (
     compute_hrv_baseline,
+    compute_recovery_delta,
+    compute_recovery_delta_baseline,
     compute_rhr_baseline,
     compute_sleep_debt,
     compute_sleep_debt_baseline,
@@ -436,4 +438,168 @@ class TestComputeSleepDebtBaseline:
 
     def test_empty_db(self, db_conn):
         result = compute_sleep_debt_baseline(db_conn, "2026-03-17")
+        assert result is None
+
+
+# ─── Recovery Delta ──────────────────────────────────────────────────────────
+
+
+class TestComputeRecoveryDelta:
+    def test_positive_jump(self, db_conn):
+        """Today > yesterday → positive delta."""
+        upsert_whoop_recovery(db_conn, cycle_id=1, date="2026-03-16", recovery_score=24.0,
+                              hrv_rmssd_milli=40.0, resting_heart_rate=60.0)
+        upsert_whoop_recovery(db_conn, cycle_id=2, date="2026-03-17", recovery_score=80.0,
+                              hrv_rmssd_milli=55.0, resting_heart_rate=58.0)
+        result = compute_recovery_delta(db_conn, "2026-03-17")
+        assert result == pytest.approx(56.0)
+
+    def test_negative_drop(self, db_conn):
+        upsert_whoop_recovery(db_conn, cycle_id=1, date="2026-03-16", recovery_score=80.0,
+                              hrv_rmssd_milli=55.0, resting_heart_rate=58.0)
+        upsert_whoop_recovery(db_conn, cycle_id=2, date="2026-03-17", recovery_score=30.0,
+                              hrv_rmssd_milli=35.0, resting_heart_rate=65.0)
+        result = compute_recovery_delta(db_conn, "2026-03-17")
+        assert result == pytest.approx(-50.0)
+
+    def test_zero_delta(self, db_conn):
+        upsert_whoop_recovery(db_conn, cycle_id=1, date="2026-03-16", recovery_score=60.0,
+                              hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        upsert_whoop_recovery(db_conn, cycle_id=2, date="2026-03-17", recovery_score=60.0,
+                              hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        result = compute_recovery_delta(db_conn, "2026-03-17")
+        assert result == pytest.approx(0.0)
+
+    def test_missing_today(self, db_conn):
+        upsert_whoop_recovery(db_conn, cycle_id=1, date="2026-03-16", recovery_score=60.0,
+                              hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        result = compute_recovery_delta(db_conn, "2026-03-17")
+        assert result is None
+
+    def test_missing_yesterday(self, db_conn):
+        upsert_whoop_recovery(db_conn, cycle_id=2, date="2026-03-17", recovery_score=60.0,
+                              hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        result = compute_recovery_delta(db_conn, "2026-03-17")
+        assert result is None
+
+    def test_null_recovery_score_today(self, db_conn):
+        upsert_whoop_recovery(db_conn, cycle_id=1, date="2026-03-16", recovery_score=60.0,
+                              hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        upsert_whoop_recovery(db_conn, cycle_id=2, date="2026-03-17", recovery_score=None,
+                              hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        result = compute_recovery_delta(db_conn, "2026-03-17")
+        assert result is None
+
+    def test_empty_db(self, db_conn):
+        result = compute_recovery_delta(db_conn, "2026-03-17")
+        assert result is None
+
+
+# ─── Recovery Delta Baseline ────────────────────────────────────────────────
+
+
+class TestComputeRecoveryDeltaBaseline:
+    def test_happy_path_with_20_days(self, db_conn):
+        """20 consecutive days → 19 delta pairs, should return valid stats."""
+        dates = _generate_dates("2026-03-17", 20)
+        # Alternating recovery: 50, 70, 50, 70... → deltas of +20, -20, +20, -20...
+        scores = [50.0 + (i % 2) * 20.0 for i in range(20)]
+        _insert_recoveries(db_conn, dates, [50.0] * 20)
+        for date, score in zip(dates, scores):
+            db_conn.execute(
+                "UPDATE whoop_recovery SET recovery_score = ? WHERE date = ?",
+                (score, date),
+            )
+
+        result = compute_recovery_delta_baseline(db_conn, "2026-03-17")
+        assert result is not None
+        assert result["count"] == 19  # 20 days → 19 consecutive pairs
+        assert result["sd"] > 0  # alternating → non-zero SD
+
+    def test_returns_none_below_min_days(self, db_conn):
+        """Fewer than 14 delta pairs → None."""
+        dates = _generate_dates("2026-03-17", 10)
+        _insert_recoveries(db_conn, dates, [50.0] * 10)
+        for i, date in enumerate(dates):
+            db_conn.execute(
+                "UPDATE whoop_recovery SET recovery_score = ? WHERE date = ?",
+                (60.0 + i, date),
+            )
+
+        result = compute_recovery_delta_baseline(db_conn, "2026-03-17")
+        assert result is None  # 10 days → 9 pairs < 14
+
+    def test_skips_null_recovery_scores(self, db_conn):
+        """Null recovery scores excluded from delta computation."""
+        dates = _generate_dates("2026-03-17", 20)
+        _insert_recoveries(db_conn, dates, [50.0] * 20)
+        # Set some scores to null — breaks consecutive pairs
+        for date in dates[:5]:
+            db_conn.execute(
+                "UPDATE whoop_recovery SET recovery_score = NULL WHERE date = ?",
+                (date,),
+            )
+
+        result = compute_recovery_delta_baseline(db_conn, "2026-03-17")
+        # 15 non-null days out of 20, but some pairs broken by nulls
+        if result is not None:
+            assert result["count"] < 19
+
+    def test_non_consecutive_dates_skip_gaps(self, db_conn):
+        """Gaps in dates should not produce delta pairs."""
+        # Insert days 1, 2, 3, then skip to 10, 11, 12, skip to 20, 21, 22...
+        from datetime import datetime, timedelta
+        base = datetime.strptime("2026-03-17", "%Y-%m-%d")
+        gap_dates = []
+        for cluster_start in [1, 10, 20, 30, 40]:
+            for offset in range(3):
+                gap_dates.append((base - timedelta(days=cluster_start + offset)).strftime("%Y-%m-%d"))
+        # 5 clusters × 3 = 15 days, but only 2 consecutive pairs per cluster = 10 pairs
+        _insert_recoveries(db_conn, gap_dates, [50.0] * 15)
+        for i, date in enumerate(gap_dates):
+            db_conn.execute(
+                "UPDATE whoop_recovery SET recovery_score = ? WHERE date = ?",
+                (50.0 + i * 2.0, date),
+            )
+
+        result = compute_recovery_delta_baseline(db_conn, "2026-03-17")
+        # Only 2 pairs per cluster × 5 clusters = 10 pairs < 14 → None
+        assert result is None
+
+    def test_all_identical_scores_sd_zero(self, db_conn):
+        """All identical recovery scores → deltas all 0 → SD = 0."""
+        dates = _generate_dates("2026-03-17", 20)
+        _insert_recoveries(db_conn, dates, [50.0] * 20)
+        for date in dates:
+            db_conn.execute(
+                "UPDATE whoop_recovery SET recovery_score = 70.0 WHERE date = ?",
+                (date,),
+            )
+
+        result = compute_recovery_delta_baseline(db_conn, "2026-03-17")
+        assert result is not None
+        assert result["mean"] == pytest.approx(0.0)
+        assert result["sd"] == pytest.approx(0.0)
+
+    def test_excludes_target_date(self, db_conn):
+        """Target date itself should not be in the baseline window."""
+        dates = _generate_dates("2026-03-17", 20) + ["2026-03-17"]
+        _insert_recoveries(db_conn, dates, [50.0] * 21)
+        # Set target date to extreme value
+        db_conn.execute(
+            "UPDATE whoop_recovery SET recovery_score = 999.0 WHERE date = '2026-03-17'",
+        )
+        for date in dates[:-1]:
+            db_conn.execute(
+                "UPDATE whoop_recovery SET recovery_score = 60.0 WHERE date = ?",
+                (date,),
+            )
+
+        result = compute_recovery_delta_baseline(db_conn, "2026-03-17")
+        if result is not None:
+            # Mean should be ~0 (all 60.0), not affected by 999
+            assert abs(result["mean"]) < 1.0
+
+    def test_empty_db(self, db_conn):
+        result = compute_recovery_delta_baseline(db_conn, "2026-03-17")
         assert result is None

@@ -7,8 +7,10 @@ from datetime import date, datetime
 import spotipy
 
 from db.queries import insert_generated_playlist
+from intelligence.baselines import compute_recovery_delta, compute_recovery_delta_baseline
 from intelligence.state_classifier import classify_state
 from matching.query_engine import select_songs
+from matching.state_mapper import apply_recovery_delta_modifier
 from spotify.playlist import (
     SPOTIFY_DESCRIPTION_MAX_LENGTH,
     SpotifyPlaylistError,
@@ -16,6 +18,45 @@ from spotify.playlist import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _filter_unavailable_tracks(
+    sp: spotipy.Spotify,
+    songs: list[dict],
+) -> list[dict]:
+    """Remove songs that are no longer playable on Spotify.
+
+    Calls sp.tracks() once (batch up to 50) and drops any track where
+    is_playable is False or missing. Logs each dropped track.
+    """
+    if not songs:
+        return songs
+
+    uris = [s["spotify_uri"] for s in songs]
+    try:
+        response = sp.tracks(uris)
+    except Exception:
+        logger.warning("Failed to check track availability — skipping filter")
+        return songs
+
+    unavailable_uris: set[str] = set()
+    for track in response.get("tracks", []):
+        if track is None:
+            continue
+        if not track.get("is_playable", True):
+            uri = track.get("uri", "")
+            unavailable_uris.add(uri)
+            logger.info(
+                "Dropping unavailable track: '%s' — %s (uri=%s)",
+                track.get("name", "?"),
+                track.get("artists", [{}])[0].get("name", "?"),
+                uri,
+            )
+
+    if unavailable_uris:
+        logger.info("Filtered %d unavailable track(s)", len(unavailable_uris))
+
+    return [s for s in songs if s["spotify_uri"] not in unavailable_uris]
 
 
 class GenerationError(Exception):
@@ -221,8 +262,24 @@ def generate_playlist(
             "Cannot generate playlist — insufficient WHOOP data (need 14+ days of HRV)"
         )
 
+    # 1b. Recovery delta modifier — nudge neuro profile for big day-over-day swings
+    neuro_profile_override = None
+    delta_reason = None
+    recovery_delta = compute_recovery_delta(conn, date_str)
+    delta_baseline = compute_recovery_delta_baseline(conn, date_str)
+    if recovery_delta is not None and delta_baseline is not None and delta_baseline["sd"] > 0:
+        from matching.state_mapper import get_state_neuro_profile
+        base_profile = get_state_neuro_profile(state)
+        adjusted, delta_reason = apply_recovery_delta_modifier(
+            base_profile, recovery_delta, delta_baseline["sd"], state,
+        )
+        if delta_reason is not None:
+            neuro_profile_override = adjusted
+            classification["reasoning"].append(delta_reason)
+            logger.info("Recovery delta modifier: %s", delta_reason)
+
     # 2. Match songs
-    match_result = select_songs(conn, state, date_str)
+    match_result = select_songs(conn, state, date_str, neuro_profile_override=neuro_profile_override)
     songs = match_result["songs"]
 
     if not songs:
@@ -230,6 +287,14 @@ def generate_playlist(
             f"No songs matched for state '{state}'. "
             "Is the library classified? Run: python main.py classify-songs"
         )
+
+    # 2b. Filter unavailable tracks (Spotify may have removed them)
+    if sp is not None:
+        songs = _filter_unavailable_tracks(sp, songs)
+        if not songs:
+            raise GenerationError(
+                f"All matched songs for state '{state}' are unavailable on Spotify"
+            )
 
     # 3. Format outputs
     metrics = classification.get("metrics", {})

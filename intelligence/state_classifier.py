@@ -27,6 +27,7 @@ from config import (
 from db.queries import get_recoveries_in_range, get_recovery_by_date
 from intelligence.baselines import (
     compute_hrv_baseline,
+    compute_recovery_delta,
     compute_rhr_baseline,
     compute_sleep_debt_baseline,
 )
@@ -58,6 +59,14 @@ def classify_state(conn: sqlite3.Connection, date: str) -> dict:
     debt_baseline = compute_sleep_debt_baseline(conn, date)
 
     metrics = _extract_metrics(recovery, sleep)
+
+    # Add recovery delta (informational — for CLI display)
+    delta = compute_recovery_delta(conn, date)
+    if delta is not None:
+        metrics["recovery_delta"] = round(delta, 1)
+        # Compute yesterday's score from delta
+        if recovery and recovery["recovery_score"] is not None:
+            metrics["yesterday_recovery_score"] = round(recovery["recovery_score"] - delta, 1)
 
     # P0: Insufficient data
     if hrv_baseline is None:
