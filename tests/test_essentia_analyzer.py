@@ -451,3 +451,105 @@ class TestAnalyzeAllSongs:
         stats = analyze_all_songs(db_conn, tmp_path, force=True)
         assert stats["analyzed"] == 0
         mock_analyze.assert_not_called()
+
+    @patch("classification.essentia_analyzer.analyze_audio")
+    def test_update_with_llm_does_not_overwrite_energy_acousticness(
+        self, mock_analyze, db_conn, tmp_path,
+    ):
+        """When Essentia re-analyzes a song that has LLM data, energy/acousticness are preserved
+        but essentia_energy/essentia_acousticness ARE written."""
+        self._insert_song(db_conn, "uri:llm")
+        from classification.audio import uri_to_filename
+        (tmp_path / uri_to_filename("uri:llm")).write_bytes(b"audio")
+
+        # Seed LLM classification (source includes "llm")
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:llm",
+            "bpm": 120, "energy": 0.45, "acousticness": 0.60,
+            "valence": 0.5, "danceability": 0.6,
+            "classification_source": "llm",
+        })
+
+        # Essentia returns different energy/acousticness
+        mock_analyze.return_value = {
+            "bpm": 122, "bpm_confidence": 2.5, "key": "C", "mode": "major",
+            "energy": 0.80, "acousticness": 0.20,
+            "instrumentalness": 0.3, "danceability": 0.5,
+        }
+
+        stats = analyze_all_songs(db_conn, tmp_path, force=True)
+        assert stats["analyzed"] == 1
+
+        rows = queries.get_song_classifications(db_conn, ["uri:llm"])
+        # BPM/key/mode should be updated from Essentia
+        assert rows[0]["bpm"] == 122
+        assert rows[0]["key"] == "C"
+        assert rows[0]["mode"] == "major"
+        # Merged energy/acousticness should NOT be overwritten (preserved from LLM merge)
+        assert rows[0]["energy"] == 0.45
+        assert rows[0]["acousticness"] == 0.60
+        # But essentia_* columns SHOULD be populated with raw Essentia values
+        assert rows[0]["essentia_energy"] == 0.80
+        assert rows[0]["essentia_acousticness"] == 0.20
+        # Source should include both
+        assert "essentia" in rows[0]["classification_source"]
+        assert "llm" in rows[0]["classification_source"]
+
+    @patch("classification.essentia_analyzer.analyze_audio")
+    def test_insert_populates_essentia_columns(self, mock_analyze, db_conn, tmp_path):
+        """INSERT path populates essentia_energy/essentia_acousticness."""
+        self._insert_song(db_conn, "uri:new")
+        from classification.audio import uri_to_filename
+        (tmp_path / uri_to_filename("uri:new")).write_bytes(b"audio")
+
+        mock_analyze.return_value = {
+            "bpm": 95, "bpm_confidence": 2.0, "key": "D", "mode": "minor",
+            "energy": 0.35, "acousticness": 0.70,
+            "instrumentalness": 0.1, "danceability": 0.4,
+        }
+
+        stats = analyze_all_songs(db_conn, tmp_path)
+        assert stats["analyzed"] == 1
+
+        rows = queries.get_song_classifications(db_conn, ["uri:new"])
+        assert rows[0]["essentia_energy"] == 0.35
+        assert rows[0]["essentia_acousticness"] == 0.70
+        # For Essentia-only, energy and essentia_energy should match
+        assert rows[0]["energy"] == 0.35
+        assert rows[0]["acousticness"] == 0.70
+
+    @patch("classification.essentia_analyzer.analyze_audio")
+    def test_essentia_reanalysis_updates_essentia_columns(
+        self, mock_analyze, db_conn, tmp_path,
+    ):
+        """Re-analyzing an essentia+llm song updates essentia_* columns."""
+        self._insert_song(db_conn, "uri:reanalyze")
+        from classification.audio import uri_to_filename
+        (tmp_path / uri_to_filename("uri:reanalyze")).write_bytes(b"audio")
+
+        # Seed essentia+llm classification
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:reanalyze",
+            "bpm": 120, "energy": 0.50, "acousticness": 0.55,
+            "essentia_energy": 0.60, "essentia_acousticness": 0.40,
+            "valence": 0.5, "danceability": 0.6,
+            "classification_source": "essentia+llm",
+        })
+
+        # New Essentia analysis returns different values
+        mock_analyze.return_value = {
+            "bpm": 118, "bpm_confidence": 3.0, "key": "G", "mode": "major",
+            "energy": 0.75, "acousticness": 0.25,
+            "instrumentalness": 0.2, "danceability": 0.5,
+        }
+
+        stats = analyze_all_songs(db_conn, tmp_path, force=True)
+        assert stats["analyzed"] == 1
+
+        rows = queries.get_song_classifications(db_conn, ["uri:reanalyze"])
+        # essentia_* columns updated to new values
+        assert rows[0]["essentia_energy"] == 0.75
+        assert rows[0]["essentia_acousticness"] == 0.25
+        # Merged energy/acousticness preserved (LLM present)
+        assert rows[0]["energy"] == 0.50
+        assert rows[0]["acousticness"] == 0.55

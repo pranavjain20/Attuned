@@ -28,6 +28,7 @@ COMMANDS = {
     "download-audio": "Download 30-second audio clips (Spotify preview + yt-dlp)",
     "analyze-audio": "Run Essentia analysis on audio clips",
     "classify-songs": "Run LLM classification on unclassified songs",
+    "validate-classifications": "Validate existing classifications and flag suspicious songs",
     "recompute-scores": "Recompute neuro scores from existing DB data (no API calls)",
     "match-songs": "Match songs to a physiological state (testing/preview)",
     "generate": "Generate today's playlist from WHOOP state + matched songs",
@@ -88,6 +89,8 @@ def main() -> None:
         _cmd_analyze_audio(db_path)
     elif command == "classify-songs":
         _cmd_classify_songs(db_path)
+    elif command == "validate-classifications":
+        _cmd_validate_classifications(db_path)
     elif command == "recompute-scores":
         _cmd_recompute_scores(db_path)
     elif command == "sync-whoop-history":
@@ -324,6 +327,13 @@ def _cmd_classify_state(db_path: Path) -> None:
                 print(f"  REM:       {rem_h:.1f}h")
             if "sleep_debt_hours" in metrics and metrics["sleep_debt_hours"] is not None:
                 print(f"  Debt:      {metrics['sleep_debt_hours']:.1f}h")
+            if "recovery_delta" in metrics:
+                delta = metrics["recovery_delta"]
+                yesterday = metrics.get("yesterday_recovery_score")
+                if yesterday is not None:
+                    print(f"  Delta:     {delta:+.0f}pp (yesterday: {yesterday:.0f}%)")
+                else:
+                    print(f"  Delta:     {delta:+.0f}pp")
 
         baselines = result.get("baselines", {})
         if baselines.get("hrv"):
@@ -654,15 +664,19 @@ def _cmd_analyze_audio(db_path: Path) -> None:
 
 
 def _cmd_recompute_scores(db_path: Path) -> None:
-    """Recompute neurological scores from existing DB data. No API calls.
+    """Recompute neurological scores + re-merge energy/acousticness. No API calls.
 
-    Reads each song's properties + LLM direct scores from DB, re-runs the
-    formula + blend with current parameters, and updates the scores in-place.
-    Use after changing formula params (sigmoid/gaussian) or blend weights.
+    For essentia+llm songs: extracts original LLM energy/acousticness from
+    raw_response, re-runs the merge logic with current Essentia values from DB.
+    For all songs: re-runs formula + blend with current parameters.
     """
     import json
 
-    from classification.llm_classifier import _blend_neuro_scores
+    from classification.llm_classifier import (
+        _blend_neuro_scores,
+        _merge_acousticness,
+        _merge_energy,
+    )
     from classification.profiler import compute_neurological_profile
 
     conn = get_connection(db_path)
@@ -670,39 +684,29 @@ def _cmd_recompute_scores(db_path: Path) -> None:
         rows = conn.execute(
             """SELECT sc.spotify_uri, s.name, s.artist,
                       sc.bpm, sc.felt_tempo, sc.energy, sc.acousticness,
+                      sc.essentia_energy, sc.essentia_acousticness,
                       sc.instrumentalness, sc.valence, sc.mode, sc.danceability,
-                      sc.genre_tags, sc.mood_tags, sc.raw_response
+                      sc.genre_tags, sc.mood_tags, sc.raw_response,
+                      sc.classification_source
                FROM song_classifications sc
                JOIN songs s ON sc.spotify_uri = s.spotify_uri
                WHERE sc.valence IS NOT NULL"""
         ).fetchall()
 
         updated = 0
+        remerged = 0
         def _clamp01(v: float | None) -> float | None:
             return max(0.0, min(1.0, float(v))) if v is not None else None
 
         for row in rows:
             d = dict(row)
             mood_tags = json.loads(d["mood_tags"]) if d.get("mood_tags") else None
+            source = d.get("classification_source") or ""
 
-            # Use felt_tempo for scoring when available
-            scoring_bpm = d.get("felt_tempo") or d.get("bpm")
-
-            # Recompute formula scores
-            neuro = compute_neurological_profile(
-                bpm=scoring_bpm,
-                energy=d.get("energy"),
-                acousticness=d.get("acousticness"),
-                instrumentalness=d.get("instrumentalness"),
-                valence=d.get("valence"),
-                mode=d.get("mode"),
-                danceability=d.get("danceability"),
-                mood_tags=mood_tags,
-            )
-
-            # Extract LLM direct scores from raw_response by matching title/artist.
+            # Extract LLM values from raw_response by matching title/artist.
             # Each raw_response contains a batch of ~5 songs — must match the right one.
             llm_para, llm_symp, llm_grounding = None, None, None
+            llm_energy, llm_acousticness = None, None
             song_name = (d.get("name") or "").lower().strip()
             song_artist = (d.get("artist") or "").lower().strip()
             if d.get("raw_response"):
@@ -715,9 +719,44 @@ def _cmd_recompute_scores(db_path: Path) -> None:
                             llm_para = song_result.get("para_score")
                             llm_symp = song_result.get("symp_score")
                             llm_grounding = song_result.get("grounding_score")
+                            llm_energy = song_result.get("energy")
+                            llm_acousticness = song_result.get("acousticness")
                             break
                 except (json.JSONDecodeError, KeyError):
                     pass
+
+            # Re-merge energy/acousticness for essentia+llm songs.
+            # Use essentia_* columns (original Essentia values) as source,
+            # not energy/acousticness (which may already be merged values).
+            # This makes recompute-scores idempotent.
+            # If essentia_* columns are NULL (not yet backfilled via analyze-audio
+            # --force), keep the existing merged values in energy/acousticness.
+            energy = d.get("energy")
+            acousticness = d.get("acousticness")
+            if source == "essentia+llm" and llm_energy is not None:
+                essentia_e = d.get("essentia_energy")
+                if essentia_e is not None:
+                    energy = _merge_energy(essentia_e, _clamp01(llm_energy))
+                    remerged += 1
+            if source == "essentia+llm" and llm_acousticness is not None:
+                essentia_a = d.get("essentia_acousticness")
+                if essentia_a is not None:
+                    acousticness = _merge_acousticness(essentia_a, _clamp01(llm_acousticness))
+
+            # Use felt_tempo for scoring when available
+            scoring_bpm = d.get("felt_tempo") or d.get("bpm")
+
+            # Recompute formula scores
+            neuro = compute_neurological_profile(
+                bpm=scoring_bpm,
+                energy=energy,
+                acousticness=acousticness,
+                instrumentalness=d.get("instrumentalness"),
+                valence=d.get("valence"),
+                mode=d.get("mode"),
+                danceability=d.get("danceability"),
+                mood_tags=mood_tags,
+            )
 
             llm_para = _clamp01(llm_para)
             llm_symp = _clamp01(llm_symp)
@@ -726,20 +765,22 @@ def _cmd_recompute_scores(db_path: Path) -> None:
             # Ensemble: combine formula + LLM using structural knowledge
             blended = _blend_neuro_scores(
                 neuro, llm_para, llm_symp, llm_grounding,
-                bpm=d.get("bpm"), energy=d.get("energy"),
+                bpm=d.get("bpm"), energy=energy,
             )
 
             conn.execute(
                 """UPDATE song_classifications
-                   SET parasympathetic = ?, sympathetic = ?, grounding = ?
+                   SET energy = ?, acousticness = ?,
+                       parasympathetic = ?, sympathetic = ?, grounding = ?
                    WHERE spotify_uri = ?""",
-                (blended["parasympathetic"], blended["sympathetic"],
+                (energy, acousticness,
+                 blended["parasympathetic"], blended["sympathetic"],
                  blended["grounding"], d["spotify_uri"]),
             )
             updated += 1
 
         conn.commit()
-        print(f"Recomputed scores for {updated:,} songs (no API calls)")
+        print(f"Recomputed scores for {updated:,} songs ({remerged:,} re-merged energy/acousticness)")
     finally:
         conn.close()
 
@@ -769,12 +810,73 @@ def _cmd_classify_songs(db_path: Path) -> None:
         stats = classify_songs(conn, provider=provider, reclassify=reclassify)
 
         print(f"\nLLM classification complete:")
-        print(f"  Classified:      {stats['classified']:,}")
-        print(f"  Failed:          {stats['failed']:,}")
-        print(f"  Skipped:         {stats['skipped']:,}")
-        print(f"  Low confidence:  {stats['low_confidence']:,}")
-        print(f"  Batches:         {stats['batches']:,}")
+        print(f"  Classified:        {stats['classified']:,}")
+        print(f"  Failed:            {stats['failed']:,}")
+        print(f"  Skipped:           {stats['skipped']:,}")
+        print(f"  Low confidence:    {stats['low_confidence']:,}")
+        print(f"  Validation flags:  {stats['validation_flags']:,}")
+        print(f"  Batches:           {stats['batches']:,}")
         print(f"\nTotal classifications: {count_rows(conn, 'song_classifications'):,}")
+    finally:
+        conn.close()
+
+
+def _cmd_validate_classifications(db_path: Path) -> None:
+    from classification.validator import validate_all_classifications
+
+    apply = "--apply" in sys.argv
+
+    conn = get_connection(db_path)
+    try:
+        flagged = validate_all_classifications(conn)
+
+        if not flagged:
+            print("No validation flags found — all classifications look clean.")
+            return
+
+        total_songs = conn.execute(
+            "SELECT COUNT(*) as cnt FROM song_classifications WHERE valence IS NOT NULL"
+        ).fetchone()["cnt"]
+        print(f"\nValidation summary:")
+        print(f"  Total classified:  {total_songs:,}")
+        print(f"  Songs flagged:     {len(flagged):,} ({len(flagged) / total_songs * 100:.1f}%)")
+
+        total_flags = sum(len(s["flags"]) for s in flagged)
+        print(f"  Total flags:       {total_flags:,}")
+
+        # Rule distribution
+        rule_counts: dict[str, int] = {}
+        for song in flagged:
+            for f in song["flags"]:
+                rule_counts[f["rule"]] = rule_counts.get(f["rule"], 0) + 1
+        print(f"\nFlags by rule:")
+        for rule, count in sorted(rule_counts.items(), key=lambda x: -x[1]):
+            print(f"  {rule:<35} {count:,}")
+
+        # Top 15 flagged songs
+        print(f"\nTop 15 flagged songs:")
+        print(f"  {'#':<4} {'Song':<30} {'Artist':<20} {'Conf':>6} {'Adj':>6} {'Flags'}")
+        print(f"  {'-'*100}")
+        for i, song in enumerate(flagged[:15], 1):
+            name = (song["name"] or "")[:28]
+            artist = (song["artist"] or "")[:18]
+            flag_rules = ", ".join(f["rule"] for f in song["flags"])
+            print(f"  {i:<4} {name:<30} {artist:<20} "
+                  f"{song['original_confidence']:>5.2f} {song['adjusted_confidence']:>6.2f}  "
+                  f"{flag_rules}")
+
+        if apply:
+            updated = 0
+            for song in flagged:
+                conn.execute(
+                    "UPDATE song_classifications SET confidence = ? WHERE spotify_uri = ?",
+                    (song["adjusted_confidence"], song["spotify_uri"]),
+                )
+                updated += 1
+            conn.commit()
+            print(f"\nApplied: updated confidence for {updated:,} songs")
+        else:
+            print(f"\nDry run — no changes made. Use --apply to update confidence in DB.")
     finally:
         conn.close()
 

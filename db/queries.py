@@ -427,8 +427,9 @@ def get_songs_needing_llm(
             """SELECT s.spotify_uri, s.name, s.artist, s.album, s.duration_ms,
                       s.play_count, s.engagement_score, s.release_year,
                       sc.bpm AS essentia_bpm, sc.key AS essentia_key,
-                      sc.mode AS essentia_mode, sc.energy AS essentia_energy,
-                      sc.acousticness AS essentia_acousticness,
+                      sc.mode AS essentia_mode,
+                      sc.essentia_energy AS essentia_energy,
+                      sc.essentia_acousticness AS essentia_acousticness,
                       sc.classification_source
                FROM songs s
                LEFT JOIN song_classifications sc ON s.spotify_uri = sc.spotify_uri
@@ -441,8 +442,9 @@ def get_songs_needing_llm(
             """SELECT s.spotify_uri, s.name, s.artist, s.album, s.duration_ms,
                       s.play_count, s.engagement_score, s.release_year,
                       sc.bpm AS essentia_bpm, sc.key AS essentia_key,
-                      sc.mode AS essentia_mode, sc.energy AS essentia_energy,
-                      sc.acousticness AS essentia_acousticness,
+                      sc.mode AS essentia_mode,
+                      sc.essentia_energy AS essentia_energy,
+                      sc.essentia_acousticness AS essentia_acousticness,
                       sc.classification_source
                FROM songs s
                LEFT JOIN song_classifications sc ON s.spotify_uri = sc.spotify_uri
@@ -468,8 +470,9 @@ def upsert_song_classification(conn: sqlite3.Connection, data: dict[str, Any]) -
                (spotify_uri, bpm, key, mode, energy, valence, acousticness,
                 danceability, instrumentalness, mood_tags, genre_tags,
                 confidence, parasympathetic, sympathetic, grounding,
-                classification_source, raw_response, classified_at, felt_tempo)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                classification_source, raw_response, classified_at, felt_tempo,
+                essentia_energy, essentia_acousticness)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(spotify_uri) DO UPDATE SET
                bpm = excluded.bpm,
                key = excluded.key,
@@ -488,7 +491,9 @@ def upsert_song_classification(conn: sqlite3.Connection, data: dict[str, Any]) -
                classification_source = excluded.classification_source,
                raw_response = excluded.raw_response,
                classified_at = excluded.classified_at,
-               felt_tempo = excluded.felt_tempo""",
+               felt_tempo = excluded.felt_tempo,
+               essentia_energy = excluded.essentia_energy,
+               essentia_acousticness = excluded.essentia_acousticness""",
         (
             data["spotify_uri"],
             data.get("bpm"),
@@ -509,6 +514,8 @@ def upsert_song_classification(conn: sqlite3.Connection, data: dict[str, Any]) -
             data.get("raw_response"),
             data.get("classified_at"),
             data.get("felt_tempo"),
+            data.get("essentia_energy"),
+            data.get("essentia_acousticness"),
         ),
     )
     conn.commit()

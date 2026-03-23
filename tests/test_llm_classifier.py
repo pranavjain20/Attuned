@@ -11,6 +11,8 @@ from classification.llm_classifier import (
     _call_anthropic,
     _compute_confidence,
     _match_result_to_song,
+    _merge_acousticness,
+    _merge_energy,
     _merge_with_essentia,
     _pick_best_bpm,
     _validate_song_result,
@@ -134,11 +136,13 @@ class TestBuildPrompt:
         prompt = _build_prompt(songs)
         assert "[duration: 4.0min]" in prompt
 
-    def test_includes_essentia_energy_and_acousticness(self):
+    def test_excludes_essentia_energy_and_acousticness(self):
+        """Essentia energy/acousticness are NOT passed as hints (echo chamber)."""
         songs = [_make_song(essentia_energy=0.72, essentia_acousticness=0.31)]
         prompt = _build_prompt(songs)
-        assert "energy=0.72" in prompt
-        assert "acousticness=0.31" in prompt
+        assert "energy=0.72" not in prompt
+        assert "acousticness=0.31" not in prompt
+        assert "[audio:" not in prompt
 
     def test_excludes_essentia_bpm(self):
         """Essentia BPM should NOT be in the prompt (causes LLM confusion)."""
@@ -147,8 +151,9 @@ class TestBuildPrompt:
         assert "measured_bpm" not in prompt
         assert "bpm=120" not in prompt
 
-    def test_no_audio_hints_without_essentia(self):
-        songs = [_make_song()]  # No Essentia data
+    def test_no_audio_hints_ever(self):
+        """No audio hints in prompt — even when Essentia data exists."""
+        songs = [_make_song(essentia_energy=0.5, essentia_acousticness=0.5)]
         prompt = _build_prompt(songs)
         assert "[audio:" not in prompt
 
@@ -584,7 +589,7 @@ class TestMergeWithEssentia:
         """LLM BPM is primary. When they agree, averages."""
         llm = {"bpm": 118, "valence": 0.6, "danceability": 0.7,
                "instrumentalness": 0.1, "genre_tags": ["pop", "dance"],
-               "mood_tags": ["happy"]}
+               "mood_tags": ["happy"], "energy": 0.65, "acousticness": 0.35}
         song = _make_song(
             essentia_bpm=120, essentia_key="A", essentia_mode="minor",
             essentia_energy=0.7, essentia_acousticness=0.3,
@@ -593,6 +598,7 @@ class TestMergeWithEssentia:
         merged = _merge_with_essentia(llm, song)
         assert merged["bpm"] == 119  # Average of 118 and 120
         assert merged["key"] == "A"
+        # Energy: gap=0.05 <= 0.3, Essentia primary
         assert merged["energy"] == 0.7
         assert merged["classification_source"] == "essentia+llm"
 
@@ -600,7 +606,7 @@ class TestMergeWithEssentia:
         """Essentia half-tempo error → LLM BPM wins."""
         llm = {"bpm": 171, "valence": 0.9, "danceability": 0.8,
                "instrumentalness": 0.1, "genre_tags": ["pop"],
-               "mood_tags": ["energetic"]}
+               "mood_tags": ["energetic"], "energy": 0.7, "acousticness": 0.3}
         song = _make_song(
             essentia_bpm=86, essentia_key="F#", essentia_mode="minor",
             essentia_energy=0.65, essentia_acousticness=0.35,
@@ -689,8 +695,8 @@ class TestMergeWithEssentia:
         merged = _merge_with_essentia(llm, song)
         assert merged["felt_tempo"] is None
 
-    def test_essentia_key_mode_energy_acousticness_preserved(self):
-        """Essentia always provides key/mode/energy/acousticness."""
+    def test_essentia_key_mode_preserved(self):
+        """Essentia always provides key/mode."""
         llm = {"bpm": 120, "valence": 0.6, "danceability": 0.7,
                "instrumentalness": 0.1, "genre_tags": ["pop"],
                "mood_tags": ["happy"]}
@@ -702,8 +708,6 @@ class TestMergeWithEssentia:
         merged = _merge_with_essentia(llm, song)
         assert merged["key"] == "C"
         assert merged["mode"] == "major"
-        assert merged["energy"] == 0.5
-        assert merged["acousticness"] == 0.6
 
 
 # ---------------------------------------------------------------------------
@@ -734,6 +738,7 @@ class TestClassifySongs:
             "spotify_uri": uri,
             "bpm": 120, "key": "A", "mode": "minor",
             "energy": 0.7, "acousticness": 0.3,
+            "essentia_energy": 0.7, "essentia_acousticness": 0.3,
             "classification_source": "essentia",
         })
 
@@ -927,12 +932,13 @@ class TestClassifySongs:
     @patch("classification.llm_classifier._call_openai")
     def test_octave_error_corrected_in_full_pipeline(self, mock_call, db_conn):
         """End-to-end: Essentia octave error should be corrected by LLM BPM."""
-        self._seed_essentia_song(db_conn)  # Essentia BPM=120
+        self._seed_essentia_song(db_conn)  # Essentia BPM=120, energy=0.7
 
         def mock_response(prompt):
             return _make_llm_response([{
                 "title": "Essentia Song", "artist": "Essentia Artist",
-                "bpm": 60, "danceability": 0.3, "instrumentalness": 0.2,
+                "bpm": 60, "energy": 0.2, "acousticness": 0.7,
+                "danceability": 0.3, "instrumentalness": 0.2,
                 "valence": 0.3, "mood_tags": ["calm"],
                 "genre_tags": ["ambient"],
             }])
@@ -943,7 +949,8 @@ class TestClassifySongs:
         rows = queries.get_song_classifications(db_conn, ["uri:ess"])
         assert rows[0]["bpm"] == 60  # LLM BPM wins (Essentia 120 is 2x octave error)
         assert rows[0]["key"] == "A"  # Essentia key preserved
-        assert rows[0]["energy"] == 0.7  # Essentia energy preserved
+        # Energy: Essentia=0.7, LLM=0.2, gap=0.5 > 0.3 → blend 50/50 = 0.45
+        assert abs(rows[0]["energy"] - 0.45) < 0.01
 
     @patch("classification.llm_classifier._call_openai")
     def test_invalid_provider_raises(self, mock_call, db_conn):
@@ -1160,8 +1167,10 @@ class TestMergeWithEssentiaExtra:
         assert merged["acousticness"] == 0.31
         assert merged["classification_source"] == "llm"
 
-    def test_essentia_plus_llm_source_preserves_essentia_data(self):
-        """Song with classification_source='essentia+llm' preserves Essentia key/mode/energy/acousticness."""
+    def test_essentia_plus_llm_source_uses_merge_logic(self):
+        """Song with classification_source='essentia+llm' uses smart merge for energy/acousticness."""
+        # Energy: Essentia=0.85, LLM=0.50, gap=0.35 > 0.3 → blend 50/50 = 0.675
+        # Acousticness: Essentia=0.15, LLM=0.50, gap=0.35 > 0.3 → LLM wins = 0.50
         llm = {"bpm": 120, "valence": 0.6, "danceability": 0.7,
                "instrumentalness": 0.1, "genre_tags": ["pop"],
                "mood_tags": ["happy"], "energy": 0.50, "acousticness": 0.50}
@@ -1173,9 +1182,99 @@ class TestMergeWithEssentiaExtra:
         merged = _merge_with_essentia(llm, song)
         assert merged["key"] == "D"
         assert merged["mode"] == "minor"
-        assert merged["energy"] == 0.85
-        assert merged["acousticness"] == 0.15
+        assert merged["energy"] == round((0.85 + 0.50) / 2, 4)  # blend
+        assert merged["acousticness"] == 0.50  # LLM wins
         assert merged["classification_source"] == "essentia+llm"
+
+
+# ---------------------------------------------------------------------------
+# _merge_energy
+# ---------------------------------------------------------------------------
+
+class TestMergeEnergy:
+    def test_agreement_uses_essentia(self):
+        """Gap <= 0.3: Essentia primary (onset rate reliable)."""
+        assert _merge_energy(0.7, 0.65) == 0.7
+
+    def test_disagreement_blends_50_50(self):
+        """Gap > 0.3: blend 50/50."""
+        result = _merge_energy(0.8, 0.2)
+        assert result == 0.5
+
+    def test_exact_threshold_uses_essentia(self):
+        """Gap exactly 0.3: agreement → Essentia primary."""
+        assert _merge_energy(0.6, 0.3) == 0.6
+
+    def test_just_above_threshold_blends(self):
+        """Gap 0.31: disagreement → blend."""
+        result = _merge_energy(0.61, 0.3)
+        assert abs(result - round((0.61 + 0.3) / 2, 4)) < 0.001
+
+    def test_essentia_none_returns_llm(self):
+        assert _merge_energy(None, 0.5) == 0.5
+
+    def test_llm_none_returns_essentia(self):
+        assert _merge_energy(0.7, None) == 0.7
+
+    def test_both_none_returns_none(self):
+        assert _merge_energy(None, None) is None
+
+    def test_result_rounded_to_four_decimals(self):
+        result = _merge_energy(0.777, 0.333)
+        # gap=0.444 > 0.3, blend = (0.777+0.333)/2 = 0.555
+        assert result == 0.555
+        s = str(result)
+        if "." in s:
+            assert len(s.split(".")[1]) <= 4
+
+
+# ---------------------------------------------------------------------------
+# _merge_acousticness
+# ---------------------------------------------------------------------------
+
+class TestMergeAcousticness:
+    def test_agreement_averages(self):
+        """Gap <= 0.3: average (both plausible)."""
+        result = _merge_acousticness(0.5, 0.6)
+        assert result == 0.55
+
+    def test_disagreement_llm_wins(self):
+        """Gap > 0.3: LLM wins (spectral flatness structurally wrong)."""
+        result = _merge_acousticness(0.96, 0.2)
+        assert result == 0.2
+
+    def test_exact_threshold_averages(self):
+        """Gap exactly 0.3: agreement → average."""
+        result = _merge_acousticness(0.6, 0.3)
+        assert result == round((0.6 + 0.3) / 2, 4)
+
+    def test_just_above_threshold_llm_wins(self):
+        """Gap 0.31: disagreement → LLM wins."""
+        result = _merge_acousticness(0.61, 0.3)
+        assert result == 0.3
+
+    def test_essentia_none_returns_llm(self):
+        assert _merge_acousticness(None, 0.5) == 0.5
+
+    def test_llm_none_returns_essentia(self):
+        assert _merge_acousticness(0.7, None) == 0.7
+
+    def test_both_none_returns_none(self):
+        assert _merge_acousticness(None, None) is None
+
+    def test_blinding_lights_case(self):
+        """Blinding Lights: Essentia acousticness=0.96 (wrong), LLM should win."""
+        # LLM would say ~0.1 for synthwave
+        result = _merge_acousticness(0.96, 0.1)
+        assert result == 0.1  # gap=0.86, LLM wins
+
+    def test_result_rounded_to_four_decimals(self):
+        result = _merge_acousticness(0.333, 0.222)
+        # gap=0.111 <= 0.3, average = (0.333+0.222)/2 = 0.2775
+        assert result == 0.2775
+        s = str(result)
+        if "." in s:
+            assert len(s.split(".")[1]) <= 4
 
 
 # ---------------------------------------------------------------------------
@@ -1295,6 +1394,182 @@ class TestRecomputeScores:
 # ---------------------------------------------------------------------------
 # _call_anthropic malformed response tests
 # ---------------------------------------------------------------------------
+
+class TestRecomputeIdempotency:
+    """Verify recompute-scores is idempotent when essentia_* columns are populated."""
+
+    def test_recompute_with_essentia_columns_is_idempotent(self, db_conn):
+        """Running recompute twice with essentia_* columns produces identical results."""
+        import json as _json
+
+        from classification.llm_classifier import (
+            _blend_neuro_scores,
+            _merge_acousticness,
+            _merge_energy,
+        )
+        from classification.profiler import compute_neurological_profile
+
+        # Seed song
+        queries.upsert_song(db_conn, "uri:idem", "Idempotent Song", "Idempotent Artist")
+        db_conn.execute(
+            "UPDATE songs SET play_count = 15 WHERE spotify_uri = ?", ("uri:idem",)
+        )
+        db_conn.commit()
+
+        raw_response = _json.dumps({"songs": [{
+            "title": "Idempotent Song", "artist": "Idempotent Artist",
+            "bpm": 100, "energy": 0.50, "acousticness": 0.40,
+            "danceability": 0.6, "instrumentalness": 0.1,
+            "valence": 0.55,
+            "mood_tags": ["upbeat"], "genre_tags": ["pop"],
+            "para_score": 0.3, "symp_score": 0.6, "grounding_score": 0.4,
+        }]})
+
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:idem",
+            "bpm": 100, "energy": 0.60, "acousticness": 0.45,
+            "essentia_energy": 0.70, "essentia_acousticness": 0.50,
+            "danceability": 0.6, "instrumentalness": 0.1,
+            "valence": 0.55, "mode": "major",
+            "genre_tags": ["pop"], "mood_tags": ["upbeat"],
+            "classification_source": "essentia+llm",
+            "raw_response": raw_response,
+            "parasympathetic": 0.0, "sympathetic": 0.0, "grounding": 0.0,
+        })
+
+        def _run_recompute():
+            def _clamp01(v):
+                return max(0.0, min(1.0, float(v))) if v is not None else None
+
+            rows = db_conn.execute(
+                """SELECT sc.spotify_uri, s.name, s.artist,
+                          sc.bpm, sc.felt_tempo, sc.energy, sc.acousticness,
+                          sc.essentia_energy, sc.essentia_acousticness,
+                          sc.instrumentalness, sc.valence, sc.mode, sc.danceability,
+                          sc.genre_tags, sc.mood_tags, sc.raw_response,
+                          sc.classification_source
+                   FROM song_classifications sc
+                   JOIN songs s ON sc.spotify_uri = s.spotify_uri
+                   WHERE sc.valence IS NOT NULL"""
+            ).fetchall()
+
+            for row in rows:
+                d = dict(row)
+                mood_tags = _json.loads(d["mood_tags"]) if d.get("mood_tags") else None
+                source = d.get("classification_source") or ""
+                llm_energy, llm_acousticness = None, None
+                llm_para, llm_symp, llm_grounding = None, None, None
+                song_name = (d.get("name") or "").lower().strip()
+                song_artist = (d.get("artist") or "").lower().strip()
+                if d.get("raw_response"):
+                    raw = _json.loads(d["raw_response"])
+                    for song_result in raw.get("songs", []):
+                        if (str(song_result.get("title", "")).lower().strip() == song_name
+                                and str(song_result.get("artist", "")).lower().strip() == song_artist):
+                            llm_para = song_result.get("para_score")
+                            llm_symp = song_result.get("symp_score")
+                            llm_grounding = song_result.get("grounding_score")
+                            llm_energy = song_result.get("energy")
+                            llm_acousticness = song_result.get("acousticness")
+                            break
+
+                energy = d.get("energy")
+                acousticness = d.get("acousticness")
+                if source == "essentia+llm" and llm_energy is not None:
+                    energy = _merge_energy(d.get("essentia_energy"), _clamp01(llm_energy))
+                if source == "essentia+llm" and llm_acousticness is not None:
+                    acousticness = _merge_acousticness(d.get("essentia_acousticness"), _clamp01(llm_acousticness))
+
+                scoring_bpm = d.get("felt_tempo") or d.get("bpm")
+                neuro = compute_neurological_profile(
+                    bpm=scoring_bpm, energy=energy, acousticness=acousticness,
+                    instrumentalness=d.get("instrumentalness"), valence=d.get("valence"),
+                    mode=d.get("mode"), danceability=d.get("danceability"),
+                    mood_tags=mood_tags,
+                )
+                blended = _blend_neuro_scores(
+                    neuro, _clamp01(llm_para), _clamp01(llm_symp), _clamp01(llm_grounding),
+                    bpm=d.get("bpm"), energy=energy,
+                )
+
+                db_conn.execute(
+                    """UPDATE song_classifications
+                       SET energy = ?, acousticness = ?,
+                           parasympathetic = ?, sympathetic = ?, grounding = ?
+                       WHERE spotify_uri = ?""",
+                    (energy, acousticness,
+                     blended["parasympathetic"], blended["sympathetic"],
+                     blended["grounding"], d["spotify_uri"]),
+                )
+            db_conn.commit()
+
+        # Run 1
+        _run_recompute()
+        row1 = dict(db_conn.execute(
+            "SELECT energy, acousticness, parasympathetic, sympathetic, grounding "
+            "FROM song_classifications WHERE spotify_uri = 'uri:idem'"
+        ).fetchone())
+
+        # Run 2 — should produce identical results
+        _run_recompute()
+        row2 = dict(db_conn.execute(
+            "SELECT energy, acousticness, parasympathetic, sympathetic, grounding "
+            "FROM song_classifications WHERE spotify_uri = 'uri:idem'"
+        ).fetchone())
+
+        assert row1 == row2, f"Recompute not idempotent: run1={row1}, run2={row2}"
+
+    def test_recompute_essentia_plus_llm_uses_essentia_columns(self, db_conn):
+        """essentia+llm songs use essentia_* columns, not energy/acousticness, for merge."""
+        import json as _json
+
+        from classification.llm_classifier import _merge_acousticness, _merge_energy
+
+        queries.upsert_song(db_conn, "uri:src", "Source Song", "Source Artist")
+        db_conn.execute(
+            "UPDATE songs SET play_count = 10 WHERE spotify_uri = ?", ("uri:src",)
+        )
+        db_conn.commit()
+
+        raw_response = _json.dumps({"songs": [{
+            "title": "Source Song", "artist": "Source Artist",
+            "bpm": 90, "energy": 0.30, "acousticness": 0.80,
+            "danceability": 0.4, "instrumentalness": 0.2, "valence": 0.3,
+            "mood_tags": ["calm"], "genre_tags": ["ambient"],
+            "para_score": 0.7, "symp_score": 0.1, "grounding_score": 0.5,
+        }]})
+
+        # Set energy/acousticness to MERGED values (different from essentia_*)
+        # essentia_energy=0.70 vs energy=0.35 — with llm_energy=0.30:
+        #   _merge_energy(0.70, 0.30) = blend(0.70+0.30)/2 = 0.50 (gap=0.40>0.3)
+        #   _merge_energy(0.35, 0.30) = 0.35 (gap=0.05<=0.3, Essentia primary)
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:src",
+            "bpm": 90, "energy": 0.35, "acousticness": 0.75,
+            "essentia_energy": 0.70, "essentia_acousticness": 0.30,
+            "valence": 0.3, "danceability": 0.4, "instrumentalness": 0.2,
+            "mode": "minor", "mood_tags": ["calm"], "genre_tags": ["ambient"],
+            "classification_source": "essentia+llm",
+            "raw_response": raw_response,
+            "parasympathetic": 0.5, "sympathetic": 0.2, "grounding": 0.4,
+        })
+
+        # The merge should use essentia_energy=0.70 (not energy=0.35) with llm_energy=0.30
+        expected_energy = _merge_energy(0.70, 0.30)
+        expected_acousticness = _merge_acousticness(0.30, 0.80)
+
+        # Verify these differ from what you'd get using the merged column values
+        wrong_energy = _merge_energy(0.35, 0.30)
+        assert expected_energy != wrong_energy, "Test setup: essentia_* must differ from merged"
+
+        # Now run the recompute equivalent
+        row = db_conn.execute(
+            """SELECT sc.essentia_energy, sc.essentia_acousticness
+               FROM song_classifications sc WHERE sc.spotify_uri = 'uri:src'"""
+        ).fetchone()
+        assert row["essentia_energy"] == 0.70
+        assert row["essentia_acousticness"] == 0.30
+
 
 class TestCallAnthropicMalformedResponse:
     def test_call_anthropic_handles_non_json_response(self):

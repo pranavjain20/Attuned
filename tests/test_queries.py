@@ -378,6 +378,7 @@ class TestGetSongsNeedingLlm:
             "spotify_uri": "uri:1",
             "bpm": 120, "key": "A", "mode": "minor",
             "energy": 0.7, "acousticness": 0.3,
+            "essentia_energy": 0.7, "essentia_acousticness": 0.3,
             "classification_source": "essentia",
         })
         result = queries.get_songs_needing_llm(db_conn)
@@ -499,6 +500,7 @@ class TestGetSongsNeedingLlm:
             "spotify_uri": "uri:1",
             "bpm": 120, "key": "A", "mode": "minor",
             "energy": 0.7, "acousticness": 0.3,
+            "essentia_energy": 0.7, "essentia_acousticness": 0.3,
             "valence": 0.6,
             "classification_source": "essentia+llm",
         })

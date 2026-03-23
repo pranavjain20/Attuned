@@ -24,6 +24,7 @@ def create_tables(conn: sqlite3.Connection) -> None:
     _migrate_add_classified_at(conn)
     _migrate_add_felt_tempo(conn)
     _migrate_add_release_year(conn)
+    _migrate_add_essentia_columns(conn)
 
 
 def _migrate_add_recent_play_ratio(conn: sqlite3.Connection) -> None:
@@ -64,6 +65,21 @@ def _migrate_add_release_year(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError as e:
         if "duplicate column" not in str(e).lower():
             raise
+
+
+def _migrate_add_essentia_columns(conn: sqlite3.Connection) -> None:
+    """Add essentia_energy and essentia_acousticness to song_classifications.
+
+    Stores original Essentia values separately from the merged energy/acousticness,
+    making recompute-scores idempotent (always merges from original sources).
+    """
+    for col in ("essentia_energy", "essentia_acousticness"):
+        try:
+            conn.execute(f"ALTER TABLE song_classifications ADD COLUMN {col} REAL")
+            conn.commit()
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
 
 
 _SCHEMA_SQL = """
