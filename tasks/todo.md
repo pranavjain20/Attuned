@@ -224,18 +224,42 @@
 - [x] Guard: when `essentia_*` NULL, keep existing merged values (don't regress to LLM-only)
 - [x] 957 tests passing (16 new/updated)
 
-### Pending (real data verification)
-- [ ] Run `python main.py analyze-audio --force` — populates `essentia_*` columns
-- [ ] Run `python main.py recompute-scores` — now idempotent with `essentia_*` columns
-- [ ] Run `python main.py validate-classifications` — Essentia-LLM disagreement check now works
-- [ ] Design quality comparison framework (before/after snapshots)
-- [ ] Run `python main.py classify-songs --reclassify` (~$1.35)
-- [ ] Post-reclassify validation + playlist comparison
-- [ ] Commit all changes (atomic, by concern)
+---
 
-### Future (from today's research)
-- [ ] Implement HRV CV modifier in `state_mapper.py` (same pattern as recovery delta modifier)
-- [ ] Quality testing framework — automated before/after comparison for classification changes
+## Current Pipeline — What's Left
+
+### Pranav backfill (existing data)
+- [ ] 1. `python main.py analyze-audio --force` — populate `essentia_*` for 1,348 songs (~10-15 min)
+- [ ] 2. `python main.py recompute-scores` — re-merge using real `essentia_*` values (~2 sec)
+- [ ] 3. `python main.py validate-classifications` — full disagreement picture
+- [ ] 4. `python main.py classify-songs --reclassify` — updated prompt, no echo chamber (~$1.35)
+- [ ] 5. `python main.py recompute-scores` — after reclassify
+- [ ] 6. `python main.py validate-classifications` — final state
+- [ ] 7. Commit results
+
+### Not yet implemented
+- [ ] 8. HRV CV modifier in `state_mapper.py` (same pattern as recovery delta modifier)
+- [ ] 9. Quality testing framework (automated before/after comparison)
+
+### Komal
+- [ ] 10. `python main.py --profile komal sync-spotify` (755 songs missing duration)
+- [ ] 11. `python main.py --profile komal analyze-audio`
+- [ ] 12. `python main.py --profile komal classify-songs` (~$2-3)
+- [ ] 13. `python main.py --profile komal generate --dry-run`
+
+### Data gaps (both profiles)
+- [ ] 14. Finish release_year backfill (Pranav: ~869 missing, Komal: unknown)
+- [ ] 15. 12 Pranav songs still LLM-only (no YouTube audio)
+
+### Dependencies
+- 1→2→3 sequential (backfill essentia, recompute, validate)
+- 4→5→6→7 sequential (reclassify, recompute, validate, commit)
+- 10→11→12→13 sequential (Komal pipeline)
+- Chains A (1-7), B (10-13), C (8-9) are independent — can run in parallel
+- Steps 4 and 12 cost money ($1.35 and $2-3)
+- Steps 14-15 independent of everything, low priority
+
+---
 
 ## Future: Personalization Features (deferred — design research done)
 _Research completed in docs/era_cohesion_research.md and docs/playlist_cohesion_research.md_

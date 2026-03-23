@@ -1,8 +1,8 @@
 # Attuned — Current Status
 
-**Last updated:** Mar 22, 2026
-**Current phase:** Day 8 in progress. Fixed Essentia/LLM merge logic + validator cleanup + idempotent recompute. 957 tests passing. Pending: `analyze-audio --force` to populate essentia_* columns, then `recompute-scores`. Reclassification with independent LLM values (~$1.35).
-**Next action:** Run `analyze-audio --force` (populates essentia_* columns), then `recompute-scores` (now idempotent), then `classify-songs --reclassify`.
+**Last updated:** Mar 23, 2026
+**Current phase:** Day 8. All code committed and pushed (4 atomic commits). 957 tests passing. Backfill partially started: 131/1,348 songs have `essentia_*` columns populated. Need to finish `analyze-audio --force` in terminal (too long for Claude's 10-min command timeout), then steps 2-7.
+**Next action:** See tasks/todo.md "Current Pipeline — What's Left" for the full 15-step plan with dependencies.
 
 ---
 
