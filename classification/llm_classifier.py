@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from classification.profiler import compute_neurological_profile
+from classification.validator import validate_classification
 from config import (
     LLM_BATCH_SIZE,
     LLM_MAX_RETRIES,
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = """You are a music database. For each song, recall the precise values from music databases (Spotify, MusicBrainz, Discogs). Return factual data, not estimates.
 
-Some songs include audio analysis data (energy, acousticness measured from actual audio) and duration. Use these as additional signals — e.g. if energy=0.15, the song is quiet; if duration is 10min, it's likely devotional or ambient.
+Some songs include duration. Use it as an additional signal — e.g. if duration is 10min, it's likely devotional or ambient.
 
 Return a JSON object with a "songs" array. Each element must have:
 - "title": exact song title (for matching)
@@ -58,7 +59,6 @@ Valence calibration — valence measures EMOTIONAL positiveness, not melodic bea
 Rules:
 - Use the FULL 0.0-1.0 range. Quiet acoustic ballads should be near 0.1, not 0.5.
 - BPM must be an integer. Look up the actual BPM, don't guess from genre.
-- When audio features are provided, use them to inform your classification.
 - For Indian songs: use genre tags like "bollywood", "hindi", "punjabi", "sufi", etc.
 - For Bollywood/Indian music: the listed "artist" may be the composer (Pritam, A.R. Rahman) or the singer (Arijit Singh, Atif Aslam). If the listed artist alone doesn't help you identify the song, consider who the other person is (the singer if the artist is the composer, or vice versa) — that may help you recall the song's actual sound and mood.
 - Return ONLY valid JSON. No markdown, no explanations."""
@@ -67,10 +67,11 @@ Rules:
 def _build_prompt(songs: list[dict[str, Any]]) -> str:
     """Build the user prompt listing songs to classify.
 
-    Includes duration and Essentia audio features (energy, acousticness) when
-    available to give the LLM more context — especially helpful for obscure songs.
-    Essentia BPM is intentionally excluded to avoid confusing the LLM on songs
-    it already knows (experiment showed Essentia octave errors override correct recall).
+    Includes duration when available. Essentia energy/acousticness are intentionally
+    NOT passed as hints — investigation showed the LLM parrots Essentia hints 96%
+    of the time, creating an echo chamber. In the 54 cases where the LLM fought
+    the hint, it was correct every time. Independent LLM values enable proper
+    comparison during merge.
     """
     lines = ["Classify these songs:\n"]
     for i, song in enumerate(songs, 1):
@@ -91,17 +92,6 @@ def _build_prompt(songs: list[dict[str, Any]]) -> str:
         if duration_ms:
             dur_min = duration_ms / 60000
             parts.append(f"[duration: {dur_min:.1f}min]")
-
-        # Essentia audio features (energy + acousticness only, NOT BPM)
-        audio_hints = []
-        essentia_energy = song.get("essentia_energy")
-        essentia_acousticness = song.get("essentia_acousticness")
-        if essentia_energy is not None:
-            audio_hints.append(f"energy={essentia_energy:.2f}")
-        if essentia_acousticness is not None:
-            audio_hints.append(f"acousticness={essentia_acousticness:.2f}")
-        if audio_hints:
-            parts.append(f"[audio: {', '.join(audio_hints)}]")
 
         lines.append(" ".join(parts))
     return "\n".join(lines)
@@ -322,6 +312,51 @@ def _pick_best_bpm(
     return llm_bpm
 
 
+def _merge_energy(
+    essentia_energy: float | None,
+    llm_energy: float | None,
+) -> float | None:
+    """Merge Essentia and LLM energy values.
+
+    Essentia onset rate is mostly reliable for energy. Strategy:
+    - Agreement (gap <= 0.3): Essentia primary (more precise audio measurement)
+    - Disagreement (gap > 0.3): blend 50/50 (neither is clearly right)
+    """
+    if essentia_energy is None:
+        return llm_energy
+    if llm_energy is None:
+        return essentia_energy
+
+    gap = abs(essentia_energy - llm_energy)
+    if gap <= 0.3:
+        return essentia_energy
+    return round((essentia_energy + llm_energy) / 2, 4)
+
+
+def _merge_acousticness(
+    essentia_acousticness: float | None,
+    llm_acousticness: float | None,
+) -> float | None:
+    """Merge Essentia and LLM acousticness values.
+
+    Essentia spectral flatness is structurally wrong for acousticness — it
+    measures tonal vs noise-like, not acoustic vs electronic. 25% of songs
+    have acousticness > 0.9, including synthwave ("Blinding Lights" = 0.96).
+    Strategy:
+    - Agreement (gap <= 0.3): average (both sources plausible)
+    - Disagreement (gap > 0.3): LLM wins (cultural knowledge beats spectral proxy)
+    """
+    if essentia_acousticness is None:
+        return llm_acousticness
+    if llm_acousticness is None:
+        return essentia_acousticness
+
+    gap = abs(essentia_acousticness - llm_acousticness)
+    if gap <= 0.3:
+        return round((essentia_acousticness + llm_acousticness) / 2, 4)
+    return llm_acousticness
+
+
 def _merge_with_essentia(
     llm_result: dict[str, Any],
     song: dict[str, Any],
@@ -330,7 +365,9 @@ def _merge_with_essentia(
 
     Rules:
     - BPM: LLM primary, Essentia for cross-validation (octave error detection)
-    - Key/Mode/Energy/Acousticness: Always Essentia when present
+    - Key/Mode: Always Essentia when present
+    - Energy: Essentia primary on agreement, blend on disagreement
+    - Acousticness: Average on agreement, LLM wins on disagreement
     - Danceability/Instrumentalness/Valence/Mood/Genre: Always LLM
     """
     has_essentia = "essentia" in (song.get("classification_source") or "")
@@ -344,17 +381,23 @@ def _merge_with_essentia(
     essentia_bpm = song.get("essentia_bpm") if has_essentia else None
     merged["bpm"] = _pick_best_bpm(llm_result.get("bpm"), essentia_bpm)
 
-    # Key/Mode/Energy/Acousticness: Essentia when available
+    # Key/Mode: Essentia when available
     if has_essentia:
         merged["key"] = song.get("essentia_key")
         merged["mode"] = song.get("essentia_mode")
-        merged["energy"] = song.get("essentia_energy")
-        merged["acousticness"] = song.get("essentia_acousticness")
     else:
         merged["key"] = None
         merged["mode"] = None
-        # Use LLM energy/acousticness estimates as fallback when no Essentia.
-        # Less accurate than Essentia (~42% vs ~71%) but better than default 0.5.
+
+    # Energy/Acousticness: smart merge when Essentia available, LLM fallback
+    if has_essentia:
+        merged["energy"] = _merge_energy(
+            song.get("essentia_energy"), llm_result.get("energy"),
+        )
+        merged["acousticness"] = _merge_acousticness(
+            song.get("essentia_acousticness"), llm_result.get("acousticness"),
+        )
+    else:
         merged["energy"] = llm_result.get("energy")
         merged["acousticness"] = llm_result.get("acousticness")
 
@@ -501,7 +544,8 @@ def classify_songs(
     if provider not in ("openai", "anthropic"):
         raise ValueError(f"Unknown provider: {provider}. Use 'openai' or 'anthropic'.")
     call_fn = _call_openai if provider == "openai" else _call_anthropic
-    stats = {"classified": 0, "failed": 0, "skipped": 0, "batches": 0, "low_confidence": 0}
+    stats = {"classified": 0, "failed": 0, "skipped": 0, "batches": 0,
+             "low_confidence": 0, "validation_flags": 0}
 
     songs = get_songs_needing_llm(conn, reclassify=reclassify)
     if not songs:
@@ -599,6 +643,19 @@ def classify_songs(
             merged["raw_response"] = raw_response
             merged["classified_at"] = datetime.now(timezone.utc).isoformat()
 
+            # Post-classification validation: reduce confidence for suspicious songs
+            has_essentia = "essentia" in (song.get("classification_source") or "")
+            validation = validate_classification(
+                merged,
+                essentia_energy=song.get("essentia_energy") if has_essentia else None,
+                essentia_acousticness=song.get("essentia_acousticness") if has_essentia else None,
+                llm_energy=validated.get("energy"),
+                llm_acousticness=validated.get("acousticness"),
+            )
+            if validation.flags:
+                merged["confidence"] = validation.adjusted_confidence
+                stats["validation_flags"] += len(validation.flags)
+
             upsert_song_classification(conn, merged)
             stats["classified"] += 1
 
@@ -620,7 +677,9 @@ def classify_songs(
             )
 
     logger.info(
-        "LLM classification complete: %d classified, %d failed, %d skipped, %d low confidence",
-        stats["classified"], stats["failed"], stats["skipped"], stats["low_confidence"],
+        "LLM classification complete: %d classified, %d failed, %d skipped, "
+        "%d low confidence, %d validation flags",
+        stats["classified"], stats["failed"], stats["skipped"],
+        stats["low_confidence"], stats["validation_flags"],
     )
     return stats
