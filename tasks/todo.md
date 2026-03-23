@@ -199,14 +199,43 @@
 - [ ] Finish release_year backfill: `python main.py backfill-release-years`
 - [ ] Push first real playlist to Spotify: `python main.py generate`
 
-## Day 7: Polish + Hardening
-- [ ] Tune era sigma/weights based on real playlist output with full release_year data
-- [ ] End-of-project audit: re-read every file, check for hacks, dead code, missing edge cases
-- [ ] Full test suite review: coverage gaps, missing edge cases, assertion strength
-- [ ] Run all 7 states, verify playlist quality: correct songs, good names, good descriptions
-- [ ] Error handling review: what happens with no internet, expired tokens, empty library
-- [ ] STATUS.md final update
-- [ ] Clean up scripts/ (remove plot_fatigue.py or keep)
+## Day 7: Polish + Hardening (DONE)
+- [x] Full codebase audit, 25 files touched, 807 tests passing
+- [x] Near-duplicate dedup, no-data transparency, confidence clamped, error handling hardened
+
+## Day 8: Essentia/LLM Merge Fix + Validator Cleanup
+### Done (code changes)
+- [x] Remove Essentia energy/acousticness hints from LLM prompt (echo chamber fix)
+- [x] Add `_merge_energy()` / `_merge_acousticness()` smart merge helpers
+- [x] Fix `_merge_with_essentia()` to use smart merge instead of blind Essentia trust
+- [x] Guard Essentia re-analysis: don't overwrite energy/acousticness when LLM data exists
+- [x] Remove genre outlier validation (182/300 false positives)
+- [x] Update `_check_essentia_llm_disagreement()` to compare original values
+- [x] Extend `recompute-scores` to re-merge energy/acousticness
+- [x] Create docs/CLASSIFICATION_VALIDATION.md
+- [x] 941 tests passing (134 new/updated)
+- [x] HRV CV research — confirmed gap between spec and implementation
+- [x] Add `essentia_energy`/`essentia_acousticness` columns for idempotent recompute
+- [x] Schema migration (`_migrate_add_essentia_columns`)
+- [x] Essentia analyzer always writes raw values to `essentia_*` columns
+- [x] `get_songs_needing_llm` reads from `essentia_*` columns (not merged `energy`/`acousticness`)
+- [x] `recompute-scores` reads from `essentia_*` columns (idempotent)
+- [x] `validate_all_classifications` passes `essentia_*` values to disagreement check
+- [x] Guard: when `essentia_*` NULL, keep existing merged values (don't regress to LLM-only)
+- [x] 957 tests passing (16 new/updated)
+
+### Pending (real data verification)
+- [ ] Run `python main.py analyze-audio --force` — populates `essentia_*` columns
+- [ ] Run `python main.py recompute-scores` — now idempotent with `essentia_*` columns
+- [ ] Run `python main.py validate-classifications` — Essentia-LLM disagreement check now works
+- [ ] Design quality comparison framework (before/after snapshots)
+- [ ] Run `python main.py classify-songs --reclassify` (~$1.35)
+- [ ] Post-reclassify validation + playlist comparison
+- [ ] Commit all changes (atomic, by concern)
+
+### Future (from today's research)
+- [ ] Implement HRV CV modifier in `state_mapper.py` (same pattern as recovery delta modifier)
+- [ ] Quality testing framework — automated before/after comparison for classification changes
 
 ## Future: Personalization Features (deferred — design research done)
 _Research completed in docs/era_cohesion_research.md and docs/playlist_cohesion_research.md_

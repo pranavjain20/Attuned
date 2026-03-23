@@ -129,22 +129,10 @@ The classifier takes today's data + baselines + trends and assigns one of six co
 Each state maps to specific song property targets (detailed in Section 8).
 
 ### Step 6: Song Matching
-The matching engine searches your classified song library for songs whose properties fall within the target ranges for your detected state. Songs are ranked by a weighted combination:
+The matching engine scores every classified song by the neurological dot product between the song's neuro vector (parasympathetic, sympathetic, grounding) and the state's neuro profile. Scores are adjusted by classification confidence and a small freshness nudge for songs in recent playlists (4-day window). The top 60 candidates feed into a cohesion layer (seed-and-expand) that selects a sonically coherent subset of 15-20 songs sharing genre and mood DNA.
 
-- **Property match score (60%)** — how closely the song's properties match the target ranges
-- **Engagement score (30%)** — how much you actually like this song, based on real listening behavior (play count, completion rate, skip rate, active vs. passive plays)
-- **Variety factor (10%)** — preference for songs not played in recent playlists
-
-If too few songs match the strict criteria (common with a 679-song library), the engine progressively relaxes filters — widens the BPM range, lowers acousticness thresholds, etc. — until 15-20 songs qualify. It logs what was relaxed and why.
-
-### Step 7: Playlist Sequencing (The Iso Principle)
-Songs aren't thrown into the playlist randomly. They're ordered using the iso principle from music therapy: start near where the listener IS and gradually transition toward where they NEED to be.
-
-- First 2-3 songs: match the detected physiological state (within +/- 5 BPM and +/- 0.1 energy of current state)
-- Middle songs: each one shifts 10-15 BPM and 0.1-0.15 energy toward the target
-- Last 3-4 songs: arrive at the target state
-
-This matters because the nervous system resists abrupt shifts. You can't jump from 60 BPM to 140 BPM — the body won't follow. But if you start at 65, then 75, then 85, then 100, then 120, the nervous system entrains to each step.
+### Step 7: Lead Track Ordering
+The first 3 songs set the emotional tone before you press play. After scoring and cohesion selection, the top 10 candidates are re-ranked for positions 1-3 by blending neuro score (70%) with engagement (30%). Songs you genuinely love float to the front — but only from the pool that's already neurologically matched. Positions 4+ stay in pure neuro-score order.
 
 ### Step 8: Playlist Creation
 A new Spotify playlist is created with:
@@ -383,6 +371,36 @@ Spotify's audio features API is deprecated for new apps — we can't get BPM, en
 This means a song classified with low confidence has its property match score halved — the system trusts its properties less, so it's less likely to be selected when strict matching matters. In relaxed matching (where property constraints are loosened), confidence matters less because the system is already compromising on precision.
 
 **Why LLM accuracy is "good enough" for now:** With a 679-song library, the matching engine doesn't have enough songs to benefit from razor-sharp precision. The difference between "the LLM says ~80 BPM" and "Essentia measured 82 BPM" doesn't matter when you're picking from a pool this size. Tempo and energy (the two most important properties at 60% combined weight) are also the two most accurately classified by the LLM. The weakest property (valence at 60-70% accuracy) also has the lowest weight (10%).
+
+### 5.2b Essentia Audio Analysis + Merge Logic
+
+Essentia (open-source audio analysis) extracts properties from actual audio clips. 99.1% of the library has Essentia data. Each property has different reliability, so the merge with LLM values is property-specific:
+
+**BPM — LLM primary, Essentia for cross-validation.** Essentia's beat tracker has octave errors (2x/0.5x BPM) on ~20% of songs, especially Indian music with tabla patterns. LLM knows the correct BPM for well-known songs. When both agree (within 20%), average them. When Essentia is 2x or 0.5x of LLM, it's an octave error — trust LLM. Otherwise trust LLM (broader knowledge).
+
+**Key/Mode — Always Essentia.** Audio analysis is ground truth for key detection. The main failure mode is dominant confusion (detecting the 5th instead of root), but dominant keys are musically compatible — 92% of detections are usable.
+
+**Energy — Essentia primary on agreement, blend on disagreement.** Essentia uses onset rate (rhythmic attacks per second), which works well — it's immune to mastering loudness and correlates with perceived intensity. When Essentia and LLM agree (gap ≤0.3), Essentia wins (precise audio measurement). When they disagree (gap >0.3), blend 50/50 — neither source is clearly right.
+
+**Acousticness — Average on agreement, LLM wins on disagreement.** Essentia uses spectral flatness as a proxy, which is structurally wrong — it measures tonal vs noise-like spectrum, not acoustic vs electronic instrumentation. A clean synthwave track has clear harmonics (low flatness → high "acousticness"), while a breathy acoustic recording with room noise can score lower. Evidence: 25% of the library had acousticness >0.9, including "Blinding Lights" (synthwave, 0.96) and "Single Ladies" (produced pop, 1.00). When sources agree (gap ≤0.3), average them — both plausible. When they disagree (gap >0.3), LLM wins — cultural knowledge about what "acoustic" means beats a broken spectral proxy.
+
+**Danceability, Instrumentalness, Valence, Mood/Genre tags — Always LLM.** Essentia's danceability (DFA) measures rhythmic regularity, not danceability (42% accuracy). ZCR doesn't detect vocals (46% wrong). Valence and tags require semantic understanding that audio analysis can't provide.
+
+**Why no Essentia hints in the LLM prompt:** Early versions passed Essentia energy/acousticness as hints (`[audio: energy=0.18, acousticness=0.96]`). The LLM parroted the hint 96% of the time — it treated the value as authoritative rather than advisory. In all 54 cases where the LLM independently disagreed with the hint, the LLM was correct. Hints created dependency, not cross-validation. Removing them lets the LLM give independent values for proper comparison during merge.
+
+**Essentia re-analysis guard:** When Essentia re-analyzes a song that already has LLM data, only BPM/key/mode and the dedicated `essentia_energy`/`essentia_acousticness` columns are updated. The merged `energy`/`acousticness` columns are preserved from the LLM merge to prevent broken spectral flatness from overwriting corrected values. The `essentia_*` columns store raw Essentia values separately from merged values, making `recompute-scores` idempotent — it always merges from original sources rather than re-merging already-merged values.
+
+### 5.2c Post-Classification Validation
+
+A validation layer sits between merge and DB storage. It reduces confidence for suspicious classifications — never mutates properties. Songs with lower confidence get less weight in the matching engine.
+
+**Cross-property coherence:** Flags contradictory combinations — low BPM (<70) + high energy (>0.7), high acousticness (>0.7) + high energy (>0.8), calm mood tags + BPM >120, energetic mood tags + BPM <70. Penalty: 0.08-0.10 per flag.
+
+**Essentia-LLM disagreement:** Compares original Essentia vs original LLM values (not the merged result). Flags gaps >0.3 on energy or acousticness. This doesn't override the merge — it just marks the classification as less certain. Penalty: 0.08-0.10.
+
+**Neuro score sanity:** Flags physiologically impossible score combinations — all three neuro scores >0.6 (a song can't be simultaneously very calming, very energizing, and very grounding), or para + symp both >0.6. Penalty: 0.08-0.10.
+
+**Computed confidence (not self-reported):** LLMs always self-report high confidence — GPT-4o-mini returned 1.0 on every song including niche kirtan tracks. Instead, confidence is computed from cross-validation: base 0.5 for having a classification, +0.2 for having Essentia data, +0.3 for BPM agreement between Essentia and LLM (within 20%, excluding octave errors).
 
 ### 5.3 Why YOUR Music Matters (The Familiarity Effect)
 
@@ -644,46 +662,67 @@ The classifier evaluates states top-to-bottom and returns the first match. This 
 
 ### 8.1 The Selection Formula
 
-Once the state is classified and target property ranges are defined, the matching engine scores every classified song:
+The matching engine scores every classified song using a neurological dot product, not per-property range matching. Each state maps to a neuro profile — a weighted blend of parasympathetic, sympathetic, and grounding targets (summing to 1.0). Each song has three corresponding neuro scores (0.0-1.0) computed from its acoustic properties. The core score is the normalized dot product between the song's neuro vector and the state's neuro profile:
 
 ```
-selection_weight = property_match_score * 0.60
-                 + engagement_score    * 0.30
-                 + variety_factor      * 0.10
+neuro_match = dot(song_vector, state_profile) / magnitude(state_profile)
+selection_score = neuro_match × confidence_multiplier × familiarity_multiplier - freshness_nudge
 ```
 
-**Property match score (60%):** How closely the song's classified properties fall within the target ranges for the detected state. A song that perfectly matches all seven property targets scores 1.0. A song outside the ranges scores lower.
+**Neuro match (primary):** How closely the song's neurological impact aligns with what the body needs. A song with high parasympathetic score paired with a fatigue state (high para weight) scores near 1.0. The same song paired with peak readiness (high symp weight) scores near 0.0.
 
-**Engagement score (30%):** How much you actually like this song based on real listening behavior (play count, completion rate, active play rate, skip rate, recency). A song you've played 50 times and never skip scores higher than one you've played 6 times and skip half the time.
+**Confidence multiplier:** Songs classified with higher confidence (Essentia + LLM agreement, ≥0.7) get full weight (1.0×). LLM-only classifications (0.5-0.7) get 0.85×. Low confidence (<0.5) gets 0.6×.
 
-**Variety factor (10%):** Preference for songs not played in recent playlists. Recency penalty: -50% if played in yesterday's playlist, -25% if 2 days ago. This prevents the system from generating the same 15 songs every day.
+**Familiarity multiplier:** Songs with 5+ meaningful plays (engagement data available) are unaffected (1.0×). Songs without engagement data get a 0.95× penalty — a slight preference for songs you know and love when scores are close.
 
-**Why these percentages:** The science has to come first — a song with perfect engagement but wrong properties defeats the purpose. But within the set of scientifically appropriate songs, engagement should heavily influence selection because familiar, loved music amplifies the physiological effect (Section 6.3). Variety gets the smallest weight because it matters less than getting the right songs, but it prevents staleness.
+**Freshness nudge:** A small subtractive penalty for songs that appeared in recent playlists. This is NOT multiplicative — it only breaks ties among similarly-scored songs and never overrides a genuinely better neurological match.
 
-**Property match score formula:**
-For each of the seven properties, compute how well the song fits the state's target range:
-- Inside range: score based on proximity to range center (1.0 at center, 0.7 at edges)
-- Outside range: score decays with distance from nearest edge (sigmoid decay)
+| Days Since Last Playlist | Nudge |
+|---|---|
+| 1 (yesterday) | -0.04 |
+| 2 | -0.03 |
+| 3 | -0.02 |
+| 4 | -0.01 |
+| 5+ | 0 (full score) |
 
-Weight each property using the research-backed weights (tempo 0.35, energy 0.25, acousticness 0.10, instrumentalness 0.10, valence 0.10, mode 0.05, danceability 0.05). Sum to get property_match_score (0.0-1.0).
+Typical adjacent-song score gap is 0.005-0.012, so a 0.04 nudge pushes a song down ~8-10 positions on day 1 — enough to rotate it out of the playlist. By day 5 it returns at full score.
 
-Note: The neurological scores (parasympathetic/sympathetic/grounding from Section 7) are used for playlist description and logging — they tell the story of what the playlist does. Selection uses per-property range matching against the state's target ranges, which is more flexible and allows the matching engine to reason about individual properties during progressive relaxation.
+**Design decision (uniform cooldown):** The freshness nudge is state-independent. We considered reducing the cooldown when the same state repeats (e.g., back-to-back fatigue days), but the math already handles this: the nudge is subtractive, so a truly dominant match (score 0.92 with a 0.04 nudge = 0.88) still beats the pool. The nudge only rotates out songs in the tight cluster. State-dependent logic would add complexity for marginal gain, and multi-day state repeats are rare enough that we'd rather revisit with data than over-engineer now.
 
-### 8.2 Progressive Filter Relaxation
+**Hard cap for dominant songs:** The subtractive nudge can't touch songs that score far above the selection cutoff (e.g., Senorita at 0.934 minus 0.04 = 0.894, still comfortably in a playlist where the 20th song is 0.837). For these, a hard cap enforces a minimum gap between appearances based on library size:
 
-With a 679-song library, strict criteria might only return 3-5 matching songs. The engine needs 15-20 for a proper playlist. When too few songs match:
+```
+min_gap = max(1, round(log2(library_size / 150)))
+```
 
-1. First relaxation: widen BPM range by +/-10 BPM
-2. Second relaxation: lower acousticness threshold by 0.1
-3. Third relaxation: widen energy range by +/-0.1
-4. Fourth relaxation: relax instrumentalness and valence constraints
-5. Terminal fallback: drop all property constraints, select purely by engagement score. Log warning: "Insufficient library coverage for [state] — playlist selected by engagement only"
+This scales logarithmically — doubling a library from 600 to 1200 songs adds 1 day of gap, not doubling it. The formula reflects diminishing returns: going from 200 to 400 songs is a huge jump in rotation depth, but 2000 to 4000 barely matters.
 
-Continue until 15-20 songs qualify.
+**Current bangers get a 1-day discount.** A "current banger" is a song in the top quartile of engagement scores that was also played in the last 30 days. Both conditions must be true — high engagement alone (an old favorite you haven't touched in months) doesn't qualify, and recency alone (a new song you've played 3 times) doesn't qualify either. Only songs that are both deeply loved AND currently in rotation earn the shorter break.
 
-Every relaxation is logged — the playlist description notes what was relaxed and why. This transparency matters: you should know when the system had to compromise.
+| Library Size | Base Gap | Banger Gap |
+|---|---|---|
+| 150 | 1 day | 0 (nudge only) |
+| 300 | 1 day | 0 (nudge only) |
+| 600 | 2 days | 1 day |
+| 1,200 | 3 days | 2 days |
+| 2,400 | 4 days | 3 days |
 
-The relaxation order is deliberate: BPM is relaxed first because a song at 80 BPM instead of 70 is still calming, just slightly less so. Acousticness is second because it's a moderate-weight property. Energy is third because it's the second-most impactful property.
+Songs that have appeared for `min_gap` or more consecutive days are excluded from the candidate pool entirely — they don't even enter scoring or cohesion. This is a hard exclusion, not another nudge.
+
+**Why engagement is NOT in the selection score:** Engagement used to be 30% of selection. We removed it because every classified song already has 2+ meaningful listens — they've already passed the quality bar. Adding engagement to scoring created a "greatest hits" bias where the same 15 songs dominated every playlist regardless of state. Neurological match is the whole point; engagement now influences only lead track ordering (see 8.5) and the hard cap's banger discount.
+
+### 8.2 Cohesion-Based Selection (Seed-and-Expand)
+
+Rather than per-property range matching with progressive relaxation, the engine uses a cohesion-based approach:
+
+1. Score ALL classified songs by neuro_match × confidence.
+2. Take the top 60 candidates (all neurologically correct for the state).
+3. Run seed-and-expand cohesion to pick a sonically coherent subset of 20 — the seed is the highest-scoring song, then expand by adding songs with high genre/mood similarity to the growing cluster.
+4. If fewer than 15 songs pass the similarity threshold, progressively relax the cohesion threshold until 15-20 songs qualify.
+
+This produces playlists that feel like they belong together — not just individually matched songs thrown into a list, but a coherent set that shares genre and mood DNA.
+
+Every relaxation is logged — the playlist reasoning notes what was relaxed and how many times.
 
 ### 8.3 Why 15-20 Songs
 
@@ -691,6 +730,59 @@ The relaxation order is deliberate: BPM is relaxed first because a song at 80 BP
 - The iso principle (Section 10) needs at least 3 transition songs
 - Total target: 15-30 minutes of music
 - 15-20 songs provides enough for the iso transition arc while keeping the playlist a reasonable length
+
+### 8.4 Recovery Delta Modifier
+
+**The problem:** Going from 24% → 80% recovery feels dramatically different from a steady 80%. The state classifier sees "80% = baseline" in both cases, but the bounce-back carries a distinct physical energy that a static state can't capture.
+
+**The solution:** A modifier that sits between state classification and song selection. It nudges the neuro profile weights when the day-over-day recovery change is personally significant — not a new state, just a tweak to the existing one.
+
+**How it triggers:**
+- Compute today's recovery minus yesterday's (the delta)
+- Compute the personal standard deviation of consecutive-day recovery deltas from the 30-day baseline window
+- If the delta's z-score exceeds 1.5 SD: nudge. If not: no change.
+
+The threshold is personal. Pranav's recovery delta SD is ~25.4, so a significant change for him is ~38+ points. Komal's will be different based on her data.
+
+**What the nudge does:**
+- Positive jump (z > 1.5 SD) → add 0.10 to sympathetic weight (more energy)
+- Negative drop (z < -1.5 SD) → add 0.10 to parasympathetic weight (more calming)
+- The other two weights shrink proportionally, then everything renormalizes to sum=1.0
+
+**Why a fixed nudge, not proportional scaling:** Heuristic over theory. A 0.10 shift is enough to noticeably change the playlist character (a few more upbeat songs on a bounce-back day) without overriding the state's intent. Proportional scaling would require tuning a curve with no empirical basis.
+
+**Exempt states:** Accumulated fatigue and peak readiness are already at their extremes. A single-day delta shouldn't override a multi-day fatigue pattern or a confirmed peak state.
+
+**Why not a new state:** The delta isn't a body state — it's a modifier on one. A 24→80 bounce-back is still functionally "baseline" in terms of what the body needs; the energy just deserves a slight bump. Creating a new state would complicate the classifier priority chain for something that's really just a weighting tweak.
+
+### 8.5 Lead Track Ordering
+
+**The problem:** Songs sorted purely by neuro score put the "best neurological match" first. But the first 2-3 songs set the emotional tone before you even press play — when you're sad and open the playlist, the first songs you *see* need to hit. When you're hyped, seeing an energetic favorite at the top validates the playlist before you hear a note.
+
+**The solution:** After scoring and cohesion selection, the top 10 candidates (already neurologically appropriate) are re-ranked for the first 3 positions using a blended lead score:
+
+```
+lead_score = selection_score × 0.70 + engagement_score × 0.30
+```
+
+The 3 highest lead-score songs become the playlist openers. Positions 4+ stay in pure neuro-score order.
+
+**Why this works:**
+- The pool is limited to the top 10 — only songs that are already great neurological matches compete. A mediocre neuro match can't jump to position 1 just because you play it a lot.
+- 70/30 blend means neuro match still dominates. But when two songs are close in neuro score (0.83 vs 0.82), the one you've listened to 40 times and never skip wins the lead position.
+- Engagement score is already 0-1 and captures play count, completion rate, active play rate, skip rate, and recency — it's a real signal for "this song means something to you."
+- The freshness nudge still applies before lead track ordering — a song that was in yesterday's playlist gets nudged down in the neuro score, which reduces its lead score too. So lead tracks rotate naturally.
+
+**Design decision:** We considered mood-tag-based lead selection (prioritize "energetic" tags for peak readiness, "warm" for fatigue) but engagement is harder data. Mood tags are LLM-classified; engagement is ground truth from your listening behavior.
+
+### 8.6 Unavailable Track Filtering
+
+Before creating the Spotify playlist, the engine validates the final track list against the Spotify API (`sp.tracks()`). Any track with `is_playable=False` — removed from Spotify, region-locked, or otherwise unavailable — is silently dropped. This prevents greyed-out songs from appearing in playlists.
+
+- Single API call (batch of up to 50 URIs)
+- If the API call fails, the filter is skipped (graceful degradation — better to have a playlist with a potentially unavailable song than no playlist)
+- Dry runs skip the check (no Spotify client)
+- Dropped tracks are logged but don't block generation (18-19 songs is fine, MIN_PLAYLIST_SIZE=15)
 
 ---
 
@@ -746,9 +838,9 @@ The first 2-3 songs in any playlist target the starting profile. The last 3-4 so
 
 ### 10.1 Naming and Description
 
-- **Playlist name:** `Mar 17 — Accumulated Fatigue` (date + detected state)
-- **Spotify description:** Compact 300-character summary. State name, key metrics (recovery %, HRV vs. baseline), targeted properties.
-- **Full reasoning (database only):** All WHOOP metrics, baseline comparisons, trend analysis, why each song was selected, what filters were relaxed, the complete state classification logic.
+- **Playlist name:** `Mar 17 — Slow Down` or `Mar 19 — Full Send` (date + dynamic label based on neuro profile and recovery intensity — names reflect what the music is doing, not clinical state names)
+- **Spotify description:** Compact 300-character summary. What the music is doing ("Calming your nervous system"), dominant genre, top mood tags.
+- **Full reasoning (database only):** All WHOOP metrics, baseline comparisons, trend analysis, match stats (candidates, selected, cohesion), neuro profile weights, the complete state classification logic.
 
 ### 10.2 Why New Playlists, Not One Standing Playlist
 
@@ -817,3 +909,49 @@ These features use available data but aren't needed for v1:
 - **Behavioral feedback loop:** Learning from play/skip behavior on generated playlists to calibrate classifications. Requires the system to be running first.
 - **WHOOP webhook automation:** Auto-generating playlists when recovery is calculated each morning. v1 uses manual trigger.
 - **Conversational DJ:** Natural language interface ("give me something for a walk"). Separate feature entirely.
+
+---
+
+## Design Decision Log
+
+### Mar 22, 2026
+
+#### Essentia Acousticness Is Structurally Wrong
+
+Spectral flatness measures tonal vs noise-like spectrum, not acoustic vs electronic instrumentation. These are different things — a tightly-produced synthwave track has clear harmonics (low flatness → high "acousticness"), while a breathy acoustic recording with room noise can have higher flatness. The proxy was chosen because it was the best available Essentia algorithm (67% bucket accuracy, better than spectral centroid at 33%), but investigation showed the 33% failure cases are not random — they're structurally biased toward electronic pop with clean production getting scored as acoustic.
+
+Evidence: 25% of the library had acousticness >0.9. Specific cases: "Blinding Lights" (synthwave) = 0.96, "Single Ladies" (Beyoncé, heavily produced pop) = 1.00. These are not edge cases — they represent a systematic bias in the measurement.
+
+**Decision:** Essentia acousticness cannot be trusted as ground truth. When Essentia and LLM disagree on acousticness (gap >0.3), LLM wins — it has cultural knowledge about what "acoustic" means that spectral flatness cannot capture. When they agree (gap ≤0.3), average them.
+
+#### LLM Hints Create Echo Chambers, Not Cross-Validation
+
+The prompt included `[audio: energy=0.18, acousticness=0.96]` from Essentia to give the LLM more context. The assumption was the LLM would use these as one signal among many. In practice, the LLM parroted the hint 96% of the time — it treated the hint as authoritative rather than advisory.
+
+In the 54 cases where the LLM returned a value significantly different from the hint, the LLM was correct every time. The hint was actively suppressing the LLM's independent judgment.
+
+**Decision:** Remove all Essentia energy/acousticness hints from the LLM prompt. Independent LLM values are necessary for the merge logic to work — you can't cross-validate two sources when one is copying from the other. Duration hints are kept (no echo chamber risk, genuinely helpful for identifying long devotional tracks).
+
+#### Energy Merge: Essentia Onset Rate Is Mostly Reliable
+
+Unlike spectral flatness for acousticness, Essentia's onset rate energy measurement works reasonably well — it counts rhythmic attacks per second, which correlates with perceived intensity. The structural failure mode is different: it can over-count on tabla/percussion-heavy Indian tracks and under-count on sustained electronic builds.
+
+**Decision:** Energy merge trusts Essentia when sources agree (gap ≤0.3, onset rate is precise audio measurement). On disagreement (gap >0.3), blend 50/50 — neither source is clearly right, split the difference.
+
+#### Genre Outlier Validation Penalizes Musical Diversity
+
+The validator flagged songs >2 SD from their genre mean for BPM and energy. Of 300 flags, 182 were false positives — songs that are genuinely unusual within their genre but correctly classified. The #1 engagement song (Bernie's Chalisa, a devotional track with unusual rhythmic structure for its genre tags) was flagged.
+
+The fundamental problem: genre tags are not normally distributed populations with clear boundaries. A song tagged ["bollywood", "devotional", "hindi"] can legitimately have BPM and energy values that differ dramatically from the "bollywood" mean. Flagging it as suspicious punishes the library's diversity.
+
+**Decision:** Remove genre outlier validation entirely. The cross-property coherence checks (low BPM + high energy, etc.) and Essentia-LLM disagreement checks catch actual problems without penalizing legitimate variety.
+
+#### HRV CV: Computed but Unused — A Spec-to-Code Gap
+
+HRV CV (coefficient of variation) is computed in both `baselines.py` (30-day window) and `trends.py` (7-day window). Config defines thresholds (`CV_ELEVATED=0.15`, `CV_SIGNIFICANT=0.20`). SYSTEM_LOGIC.md (Section 4, #4 in metric hierarchy) designs CV as a neuro profile modifier with three scenarios and music strategies.
+
+None of this is implemented. CV is displayed in CLI output and discarded.
+
+Research support is strong: Plews et al. 2012 found CV of 7-day LnRMSSD detected non-functional overreaching as a leading indicator (changed before performance dropped). Buchheit 2014 found CV >15% = elevated variability, >20% = significant instability, with rising CV being an early warning of overtraining.
+
+**Decision:** Implement CV as a neuro profile modifier — same pattern as `apply_recovery_delta_modifier()` in `state_mapper.py`. Use 7-day CV (from `compute_hrv_trend()`), not 30-day. CV should not change state classification (it tells you about ANS regulation quality, not what state you're in). It modifies HOW the matching engine responds to the state. Exempt accumulated_fatigue and peak_readiness (already at extremes).

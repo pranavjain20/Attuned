@@ -1,8 +1,8 @@
 # Attuned — Current Status
 
-**Last updated:** Mar 21, 2026
-**Current phase:** Day 7 complete. Full pipeline working end-to-end. Playlists pushing to Spotify. Full codebase audit done. 807 tests passing.
-**Next action:** Use it daily. Future: playlist taste import, onboarding.
+**Last updated:** Mar 22, 2026
+**Current phase:** Day 8 in progress. Fixed Essentia/LLM merge logic + validator cleanup + idempotent recompute. 957 tests passing. Pending: `analyze-audio --force` to populate essentia_* columns, then `recompute-scores`. Reclassification with independent LLM values (~$1.35).
+**Next action:** Run `analyze-audio --force` (populates essentia_* columns), then `recompute-scores` (now idempotent), then `classify-songs --reclassify`.
 
 ---
 
@@ -37,7 +37,7 @@
 - Jee Le Zaraa (Talaash) misclassified as upbeat (energy 0.7, valence 0.8) — actually slow/dark. Release year in prompt should fix on reclassification.
 - 64% of classified songs still missing release_year (rate-limited)
 
-### 774 tests passing.
+### 957 tests passing.
 
 ---
 
