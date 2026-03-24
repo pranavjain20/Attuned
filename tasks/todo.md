@@ -249,22 +249,43 @@
 - [x] Doc cleanup — each doc has one job (committed, pushed)
 - [x] Today's playlist regenerated — "Fuel Up" (baseline, not fatigue)
 - [x] `fetch_batch_metadata` fix — fills ALL missing metadata in one pass (974 tests passing)
-- [ ] `onboard` CLI command — single command for new user setup (in progress)
-- [ ] `docs/ONBOARDING.md` — step-by-step onboarding guide (in progress)
+- [x] `onboard` CLI command — single command for new user setup (committed, pushed)
+- [x] `docs/ONBOARDING.md` — step-by-step onboarding guide (committed, pushed)
+- [x] 3-second throttle on single-track metadata fallback (committed, pushed)
+- [x] Full codebase audit — 10 issues found across all API layers, all fixed (committed, pushed)
+  - Spotify availability check batched to 50, URI validation, fallback time estimate warning
+  - LLM 60-second timeout on OpenAI + Anthropic calls
+  - Essentia logs actual exceptions, warns on zero analyzed
+  - WHOOP pagination validates response structure
+  - Classification merge warns on missing critical fields
+- [x] 974 tests passing, 7 commits pushed
+
+### Komal onboarding — additional
+- [x] `sync-whoop-history --profile komal` — 485 recovery days (up from 482), up to 2026-03-24
+
+---
+
+## Blocked (Spotify API lockout until ~Mar 25, 5:30 PM)
+
+Both profiles hit 19-hour Spotify rate limit lockout. Batch `/v1/tracks` endpoint returns 403 (dev mode app restriction), fallback to individual calls was unthrottled and triggered escalating lockout. Now fixed with 3-second delay in fallback path.
+
+### When lockout clears — run these:
+- [ ] `python main.py sync-spotify` — fill Pranav's 3,068 missing release_years/duration_ms
+- [ ] `python main.py --profile komal sync-spotify` — fill Komal's 5,248 missing metadata
 
 ---
 
 ## What's Left
 
-### Komal — immediate
-- [ ] Sync WHOOP + generate real playlist: `sync-whoop-history --profile komal` → `generate --profile komal`
-- [ ] Re-run `sync-spotify --profile komal` to fill missing release_years (after metadata fix)
-- [ ] Download audio: `download-audio --profile komal` (~2-4 hours, yt-dlp)
-- [ ] Essentia analysis: `analyze-audio --profile komal`
-- [ ] Recompute scores: `recompute-scores --profile komal` (NO reclassification needed — prompt is already correct)
+### Komal — full pipeline (sequential, after lockout clears)
+- [ ] Re-run `sync-spotify --profile komal` to fill missing metadata
+- [ ] `download-audio --profile komal` (~2-4 hours, yt-dlp)
+- [ ] `analyze-audio --profile komal`
+- [ ] `recompute-scores --profile komal` (NO reclassification needed — prompt is already correct)
+- [ ] `generate --profile komal` — first real playlist (only after full pipeline complete)
 
-### Pranav — immediate
-- [ ] Re-run `sync-spotify` to fill 3,490 missing release_years (after metadata fix, ~2 min)
+### Pranav — after lockout
+- [ ] Re-run `sync-spotify` to fill missing metadata
 - [ ] 12 songs still LLM-only (no YouTube audio) — low priority, marginal impact
 
 ### Code changes — not yet built
