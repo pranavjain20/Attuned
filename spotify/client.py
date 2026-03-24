@@ -1,6 +1,7 @@
 """Spotify API data extraction — liked songs, top tracks, metadata."""
 
 import logging
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -73,9 +74,11 @@ def get_tracks_metadata(sp: Any, track_ids: list[str]) -> list[dict[str, Any]]:
         else:
             logger.warning("Batch fetch failed (%s), falling back to single-track fetch", e)
 
-    # Fallback: one at a time
+    # Fallback: one at a time with 3-second delay to avoid rate limits.
+    # The batch endpoint returns 403 on Spotify apps in development mode.
+    # Without throttling, rapid-fire individual calls trigger 429 lockout.
     parsed = []
-    for track_id in track_ids:
+    for i, track_id in enumerate(track_ids):
         try:
             track = sp.track(track_id)
             if track:
@@ -84,6 +87,10 @@ def get_tracks_metadata(sp: Any, track_ids: list[str]) -> list[dict[str, Any]]:
                     parsed.append(p)
         except Exception:
             logger.warning("Failed to fetch metadata for track %s", track_id)
+        if i < len(track_ids) - 1:
+            time.sleep(3)
+        if (i + 1) % 50 == 0:
+            logger.info("Metadata fallback: %d/%d tracks fetched", i + 1, len(track_ids))
     return parsed
 
 
