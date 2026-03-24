@@ -5,6 +5,7 @@ CLI entry point for all commands.
 
 import logging
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from config import STREAMING_HISTORY_DIR, get_profile_db_path
@@ -18,6 +19,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 COMMANDS = {
+    "onboard": "Run full onboarding pipeline for a new user",
     "ingest-history": "Parse extended streaming history JSON into the database",
     "sync-whoop": "Pull today's WHOOP recovery + sleep data",
     "sync-spotify": "Sync liked songs, top tracks, and fetch metadata from Spotify",
@@ -68,7 +70,9 @@ def main() -> None:
 
     command = sys.argv[1]
 
-    if command == "ingest-history":
+    if command == "onboard":
+        _cmd_onboard(db_path)
+    elif command == "ingest-history":
         _cmd_ingest_history(db_path)
     elif command == "sync-whoop":
         _cmd_sync_whoop(db_path)
@@ -121,6 +125,194 @@ def _print_usage() -> None:
         print(f"  {cmd:<25} {desc}")
     print(f"  {'auth-whoop':<25} Run WHOOP OAuth flow")
     print(f"  {'auth-spotify':<25} Run Spotify OAuth flow (opens browser)")
+
+
+# ---------------------------------------------------------------------------
+# Onboarding pipeline
+# ---------------------------------------------------------------------------
+
+ONBOARD_STEPS: list[tuple[str, str]] = [
+    ("verify-auth", "Verify WHOOP + Spotify tokens"),
+    ("ingest-history", "Ingest extended streaming history"),
+    ("sync-whoop-history", "Sync full WHOOP recovery + sleep history"),
+    ("sync-spotify", "Sync Spotify library + engagement scores"),
+    ("download-audio", "Download audio clips for Essentia analysis"),
+    ("analyze-audio", "Run Essentia audio analysis"),
+    ("classify-songs", "Classify songs via LLM"),
+    ("recompute-scores", "Recompute neurological scores"),
+    ("generate-preview", "Generate preview playlist (dry run)"),
+]
+
+
+def _onboard_step_verify_auth(db_path: Path) -> None:
+    from db.queries import get_token
+
+    conn = get_connection(db_path)
+    try:
+        whoop = get_token(conn, "whoop")
+        spotify = get_token(conn, "spotify")
+        missing = []
+        if not whoop:
+            missing.append("WHOOP (run: python oauth_server.py whoop)")
+        if not spotify:
+            missing.append("Spotify (run: python oauth_server.py spotify)")
+        if missing:
+            for m in missing:
+                print(f"  Missing: {m}")
+            raise RuntimeError("Complete OAuth flows before onboarding")
+        print("  WHOOP token: OK")
+        print("  Spotify token: OK")
+    finally:
+        conn.close()
+
+
+def _onboard_step_ingest_history(db_path: Path) -> None:
+    _cmd_ingest_history(db_path)
+
+
+def _onboard_step_sync_whoop_history(db_path: Path) -> None:
+    _cmd_sync_whoop_history(db_path)
+
+
+def _onboard_step_sync_spotify(db_path: Path) -> None:
+    _cmd_sync_spotify(db_path)
+
+
+def _onboard_step_download_audio(db_path: Path) -> None:
+    _cmd_download_audio(db_path)
+
+
+def _onboard_step_analyze_audio(db_path: Path) -> None:
+    _cmd_analyze_audio(db_path)
+
+
+def _onboard_step_classify_songs(db_path: Path) -> None:
+    _cmd_classify_songs(db_path)
+
+
+def _onboard_step_recompute_scores(db_path: Path) -> None:
+    _cmd_recompute_scores(db_path)
+
+
+def _onboard_step_generate_preview(db_path: Path) -> None:
+    from matching.generator import GenerationError, generate_playlist
+
+    conn = get_connection(db_path)
+    try:
+        try:
+            result = generate_playlist(conn, sp=None, dry_run=True)
+        except GenerationError as e:
+            print(f"  Preview failed: {e}")
+            print("  (This is OK — you can run 'generate' later once you have enough data)")
+            return
+
+        print(f"  State:  {result['state'].replace('_', ' ').title()}")
+        print(f"  Tracks: {len(result['songs'])}")
+        print(f"\n  Tracks:")
+        for i, song in enumerate(result["songs"], 1):
+            name = (song["name"] or "")[:40]
+            artist = (song["artist"] or "")[:25]
+            print(f"    {i:2d}. {name} — {artist}")
+    finally:
+        conn.close()
+
+
+_ONBOARD_STEP_FUNCTIONS: dict[str, Callable[[Path], None]] = {
+    "verify-auth": _onboard_step_verify_auth,
+    "ingest-history": _onboard_step_ingest_history,
+    "sync-whoop-history": _onboard_step_sync_whoop_history,
+    "sync-spotify": _onboard_step_sync_spotify,
+    "download-audio": _onboard_step_download_audio,
+    "analyze-audio": _onboard_step_analyze_audio,
+    "classify-songs": _onboard_step_classify_songs,
+    "recompute-scores": _onboard_step_recompute_scores,
+    "generate-preview": _onboard_step_generate_preview,
+}
+
+
+def _cmd_onboard(db_path: Path) -> None:
+    """Run full onboarding pipeline for a new user."""
+    # Parse onboard-specific flags
+    history_dir = None
+    if "--history-dir" in sys.argv:
+        idx = sys.argv.index("--history-dir")
+        if idx + 1 < len(sys.argv):
+            history_dir = sys.argv[idx + 1]
+
+    skip_audio = "--skip-audio" in sys.argv
+
+    resume_from = None
+    if "--resume-from" in sys.argv:
+        idx = sys.argv.index("--resume-from")
+        if idx + 1 < len(sys.argv):
+            resume_from = sys.argv[idx + 1]
+
+    # Validate --resume-from step name
+    step_names = [name for name, _ in ONBOARD_STEPS]
+    if resume_from and resume_from not in step_names:
+        print(f"Error: unknown step '{resume_from}'")
+        print(f"Valid steps: {', '.join(step_names)}")
+        sys.exit(1)
+
+    # Determine which steps to skip
+    skipping = resume_from is not None
+    steps_to_run: list[tuple[str, str]] = []
+    for name, description in ONBOARD_STEPS:
+        if skipping:
+            if name == resume_from:
+                skipping = False
+            else:
+                continue
+        # Skip ingest-history if no --history-dir
+        if name == "ingest-history" and not history_dir:
+            continue
+        # Skip audio steps if --skip-audio
+        if name in ("download-audio", "analyze-audio") and skip_audio:
+            continue
+        steps_to_run.append((name, description))
+
+    total = len(steps_to_run)
+
+    print("=" * 60)
+    print("  Attuned Onboarding")
+    print("=" * 60)
+    print(f"\n  Database: {db_path}")
+    print(f"  Steps:    {total}")
+    if history_dir:
+        print(f"  History:  {history_dir}")
+    if skip_audio:
+        print(f"  Audio:    skipped (--skip-audio)")
+    if resume_from:
+        print(f"  Resuming: from {resume_from}")
+    print()
+
+    for i, (name, description) in enumerate(steps_to_run, 1):
+        print(f"[{i}/{total}] {description} ({name})")
+        print("-" * 50)
+
+        step_fn = _ONBOARD_STEP_FUNCTIONS[name]
+        try:
+            step_fn(db_path)
+        except Exception as e:
+            print(f"\n{'!' * 50}")
+            print(f"  Step failed: {name}")
+            print(f"  Error: {e}")
+            print(f"\n  To resume:")
+            print(f"    python main.py --profile <name> onboard --resume-from {name}")
+            if history_dir:
+                print(f"    (add --history-dir {history_dir} if needed)")
+            if skip_audio:
+                print(f"    (add --skip-audio if desired)")
+            print(f"{'!' * 50}")
+            sys.exit(1)
+
+        print()
+
+    print("=" * 60)
+    print("  Onboarding complete!")
+    print("=" * 60)
+    print(f"\n  Next: python main.py --profile <name> generate")
+    print(f"  (Run daily to get your WHOOP-informed playlist)\n")
 
 
 def _cmd_ingest_history(db_path: Path) -> None:

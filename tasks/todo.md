@@ -226,65 +226,54 @@
 
 ---
 
-## Current Pipeline — What's Left
+## What's Done (Day 9)
 
-### Pranav backfill (existing data)
-- [ ] 1. `python main.py analyze-audio --force` — populate `essentia_*` for 1,348 songs (~10-15 min)
-- [ ] 2. `python main.py recompute-scores` — re-merge using real `essentia_*` values (~2 sec)
-- [ ] 3. `python main.py validate-classifications` — full disagreement picture
-- [ ] 4. `python main.py classify-songs --reclassify` — updated prompt, no echo chamber (~$1.35)
-- [ ] 5. `python main.py recompute-scores` — after reclassify
-- [ ] 6. `python main.py validate-classifications` — final state
-- [ ] 7. Commit results
+### Pranav backfill (steps 1-6)
+- [x] 1. `analyze-audio --force` — 1,350 songs analyzed, 0 failures
+- [x] 2. `recompute-scores` — 1,346 re-merged from essentia_* columns
+- [x] 3. `validate-classifications` — 983 flagged (72%, mostly acousticness gaps)
+- [x] 4. `classify-songs --reclassify` — 1,360 reclassified, 0 failures, ~$1.35
+- [x] 5. `recompute-scores` — 1,360 recomputed
+- [x] 6. `validate-classifications` — **zero flags** (reclassification fixed everything)
+- [x] 7. No code to commit (DB is gitignored)
 
-### Not yet implemented
-- [ ] 8. HRV CV modifier in `state_mapper.py` (same pattern as recovery delta modifier)
-- [ ] 9. Quality testing framework (automated before/after comparison)
+### Komal onboarding (steps 10-12)
+- [x] 10. `sync-spotify --profile komal` — 752 liked + 3,816 top tracks, 2,504 engagement-scored
+- [x] 12. `classify-songs --profile komal` — 3,953 classified, 0 failures, ~$3.50
+- [x] 13. `generate --profile komal --dry-run` — "Fuel Up", 20 tracks (baseline, no WHOOP sync)
 
-### Komal
-- [ ] 10. `python main.py --profile komal sync-spotify` (755 songs missing duration)
-- [ ] 11. `python main.py --profile komal analyze-audio`
-- [ ] 12. `python main.py --profile komal classify-songs` (~$2-3)
-- [ ] 13. `python main.py --profile komal generate --dry-run`
-
-### Data gaps (both profiles)
-- [ ] 14. Finish release_year backfill (Pranav: ~869 missing, Komal: unknown)
-- [ ] 15. 12 Pranav songs still LLM-only (no YouTube audio)
-
-### Dependencies
-- 1→2→3 sequential (backfill essentia, recompute, validate)
-- 4→5→6→7 sequential (reclassify, recompute, validate, commit)
-- 10→11→12→13 sequential (Komal pipeline)
-- Chains A (1-7), B (10-13), C (8-9) are independent — can run in parallel
-- Steps 4 and 12 cost money ($1.35 and $2-3)
-- Steps 14-15 independent of everything, low priority
+### System improvements
+- [x] Restorative sleep gate on accumulated fatigue classifier (committed, pushed)
+- [x] Global Spotify rate limit handler — all API calls auto-retry on 429 (committed, pushed)
+- [x] PRODUCT_DECISIONS.md — chronological log of all product decisions (committed, pushed)
+- [x] Doc cleanup — each doc has one job (committed, pushed)
+- [x] Today's playlist regenerated — "Fuel Up" (baseline, not fatigue)
+- [x] `fetch_batch_metadata` fix — fills ALL missing metadata in one pass (974 tests passing)
+- [ ] `onboard` CLI command — single command for new user setup (in progress)
+- [ ] `docs/ONBOARDING.md` — step-by-step onboarding guide (in progress)
 
 ---
 
-## Future: Personalization Features (deferred — design research done)
-_Research completed in docs/era_cohesion_research.md and docs/playlist_cohesion_research.md_
+## What's Left
 
-### Era Cohesion
-- [x] Genre-aware era similarity in cohesion layer (sigma varies by genre)
-- [x] release_year column + migration, upsert_song param, get_all_classified_songs
-- [x] Spotify client extracts release_year from album.release_date
-- [x] backfill-release-years CLI command
-- [x] Batch endpoint fix: sp.tracks() 50-at-a-time instead of sp.track() one-by-one
-- [x] 8 new era similarity tests, 774 total tests passing
-- [~] Backfill release_year data: 491/1360 classified songs done, rate-limited ~24h
-- [ ] Finish backfill after rate limit clears (~22 API calls remaining with batch fix)
-- [ ] Tune sigma values and weight based on real playlist output
+### Komal — immediate
+- [ ] Sync WHOOP + generate real playlist: `sync-whoop-history --profile komal` → `generate --profile komal`
+- [ ] Re-run `sync-spotify --profile komal` to fill missing release_years (after metadata fix)
+- [ ] Download audio: `download-audio --profile komal` (~2-4 hours, yt-dlp)
+- [ ] Essentia analysis: `analyze-audio --profile komal`
+- [ ] Recompute scores: `recompute-scores --profile komal` (NO reclassification needed — prompt is already correct)
 
-### Playlist Taste Import (later — needs new Spotify scope)
-- [ ] Add playlist-read-private scope, re-auth
-- [ ] Sync user-owned playlists into playlist_tracks table
-- [ ] Compute song co-occurrence from playlists
-- [ ] Add taste similarity dimension to cohesion layer
-- [ ] Dynamic weighting: disable when <3 playlists
+### Pranav — immediate
+- [ ] Re-run `sync-spotify` to fill 3,490 missing release_years (after metadata fix, ~2 min)
+- [ ] 12 songs still LLM-only (no YouTube audio) — low priority, marginal impact
 
-### Onboarding (later — after core pipeline complete)
-- [ ] user_preferences table (key-value)
-- [ ] `python main.py onboard` CLI command (2-3 questions)
-- [ ] Iso principle preference (match mood vs lift up)
-- [ ] Genre/artist exclusions
-- [ ] Cold-start flow for new users (liked songs + top tracks + classify)
+### Code changes — not yet built
+- [ ] HRV CV modifier in `state_mapper.py` — adjusts neuro profile when day-to-day HRV variability is high. Same pattern as recovery delta modifier. Research done, design in SYSTEM_LOGIC.md. ~1 hour.
+- [ ] Quality testing framework — automated before/after comparison for classifier changes. ~2 hours.
+- [ ] Era cohesion sigma tuning — tune Gaussian decay values based on real playlist output
+
+### Future features — designed but deferred
+- [ ] **Playlist taste import** — mine user playlists for co-occurrence, add as cohesion signal. Needs `playlist-read-private` scope, re-auth. Research done in docs/playlist_cohesion_research.md.
+- [ ] **WHOOP webhook** — auto-generate playlist when recovery is calculated each morning. Currently manual `generate` command.
+- [ ] **User preferences** — genre exclusions, iso principle preference, cold-start questions. user_preferences table (key-value).
+- [ ] **Conversational DJ** — natural language interface ("give me something for a walk"). Separate feature entirely.
