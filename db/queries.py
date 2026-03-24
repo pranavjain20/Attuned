@@ -168,6 +168,14 @@ def get_songs_missing_duration(conn: sqlite3.Connection) -> list[str]:
     return [r["spotify_uri"] for r in rows]
 
 
+def get_songs_missing_metadata(conn: sqlite3.Connection) -> list[dict]:
+    """Return songs missing duration_ms or release_year."""
+    rows = conn.execute(
+        "SELECT spotify_uri FROM songs WHERE duration_ms IS NULL OR release_year IS NULL"
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def update_song_durations_batch(
     conn: sqlite3.Connection,
     durations: dict[str, int],
@@ -176,6 +184,18 @@ def update_song_durations_batch(
     conn.executemany(
         "UPDATE songs SET duration_ms = ? WHERE spotify_uri = ?",
         [(ms, uri) for uri, ms in durations.items()],
+    )
+    conn.commit()
+
+
+def update_song_metadata_batch(
+    conn: sqlite3.Connection,
+    metadata: list[dict],
+) -> None:
+    """Batch update duration_ms and release_year for multiple songs."""
+    conn.executemany(
+        "UPDATE songs SET duration_ms = COALESCE(?, duration_ms), release_year = COALESCE(?, release_year) WHERE spotify_uri = ?",
+        [(m.get("duration_ms"), m.get("release_year"), m["uri"]) for m in metadata],
     )
     conn.commit()
 

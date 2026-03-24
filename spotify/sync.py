@@ -190,27 +190,22 @@ def sync_top_tracks(conn: sqlite3.Connection, sp: Any) -> int:
 
 
 def fetch_batch_metadata(conn: sqlite3.Connection, sp: Any) -> int:
-    """Fetch duration_ms for songs missing it, in batches of 50.
+    """Fetch duration_ms and release_year for all songs missing either field.
+
+    Fetches metadata for every song in the songs table that is missing
+    duration_ms or release_year, regardless of play count. Uses the Spotify
+    tracks batch endpoint (50 per call).
 
     Returns count of songs updated.
     """
     from spotify.client import get_tracks_metadata
-    from config import SPOTIFY_BATCH_SIZE, MIN_MEANINGFUL_LISTENS
+    from config import SPOTIFY_BATCH_SIZE
 
-    # Only fetch metadata for songs with enough plays to matter
-    all_missing = queries.get_songs_missing_duration(conn)
-    engaged = {
-        r["spotify_uri"]
-        for r in conn.execute(
-            "SELECT spotify_uri FROM songs WHERE play_count >= ?",
-            (MIN_MEANINGFUL_LISTENS,),
-        ).fetchall()
-    }
-    missing = [uri for uri in all_missing if uri in engaged]
-    logger.info("%d songs missing duration_ms (%d engaged, %d total)",
-                len(missing), len(engaged), len(all_missing))
+    missing_rows = queries.get_songs_missing_metadata(conn)
+    missing = [r["spotify_uri"] for r in missing_rows]
+    logger.info("%d songs missing duration_ms or release_year", len(missing))
     if not missing:
-        logger.info("All songs already have duration_ms")
+        logger.info("All songs already have metadata")
         return 0
 
     updated = 0
@@ -219,17 +214,8 @@ def fetch_batch_metadata(conn: sqlite3.Connection, sp: Any) -> int:
         # Spotify tracks endpoint expects track IDs, not full URIs
         track_ids = [uri.split(":")[-1] for uri in batch_uris]
         metadata = get_tracks_metadata(sp, track_ids)
-        durations = {m["uri"]: m["duration_ms"] for m in metadata if m.get("duration_ms")}
-        queries.update_song_durations_batch(conn, durations)
-        # Also store release_year from metadata
-        for m in metadata:
-            if m.get("release_year") is not None:
-                conn.execute(
-                    "UPDATE songs SET release_year = COALESCE(release_year, ?) WHERE spotify_uri = ?",
-                    (m["release_year"], m["uri"]),
-                )
-        conn.commit()
-        updated += len(durations)
+        queries.update_song_metadata_batch(conn, metadata)
+        updated += len(metadata)
 
-    logger.info("Fetched duration_ms for %d songs", updated)
+    logger.info("Fetched metadata for %d songs", updated)
     return updated
