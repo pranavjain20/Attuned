@@ -116,6 +116,7 @@ def _call_openai(prompt: str) -> dict[str, Any]:
         ],
         response_format={"type": "json_object"},
         temperature=0,
+        timeout=60,
     )
     raw = response.choices[0].message.content
     parsed = json.loads(raw)
@@ -135,6 +136,7 @@ def _call_anthropic(prompt: str) -> dict[str, Any]:
         system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
         temperature=0,
+        timeout=60,
     )
     raw = response.content[0].text
 
@@ -417,6 +419,14 @@ def _merge_with_essentia(
 
     # Classification source
     merged["classification_source"] = "essentia+llm" if has_essentia else "llm"
+
+    # Validate critical fields — don't block the pipeline, but make gaps visible
+    missing = [f for f in ("bpm", "energy", "valence") if merged.get(f) is None]
+    if missing:
+        logger.warning(
+            "Merge produced None for critical fields %s: %s",
+            missing, merged["spotify_uri"],
+        )
 
     return merged
 

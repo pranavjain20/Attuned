@@ -71,7 +71,21 @@ def _paginated_get(
         response.raise_for_status()
         data = response.json()
 
-        records = data.get("records", [])
+        if not isinstance(data, dict):
+            logger.error(
+                "WHOOP API returned non-dict response from %s: %s",
+                endpoint, type(data).__name__,
+            )
+            return results
+
+        if "records" not in data:
+            logger.warning(
+                "WHOOP API response from %s missing 'records' key (keys: %s)",
+                endpoint, list(data.keys()),
+            )
+            return results
+
+        records = data["records"]
         results.extend(records)
 
         next_token = data.get("next_token")

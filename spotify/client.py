@@ -70,7 +70,11 @@ def get_tracks_metadata(sp: Any, track_ids: list[str]) -> list[dict[str, Any]]:
         return parsed
     except Exception as e:
         if "403" in str(e):
-            logger.warning("Batch endpoint returned 403, falling back to single-track fetch")
+            logger.warning(
+                "Batch track endpoint unavailable (403). Falling back to individual "
+                "fetches with 3s delay — %d songs will take ~%d minutes.",
+                len(track_ids), len(track_ids) * 3 // 60,
+            )
         else:
             logger.warning("Batch fetch failed (%s), falling back to single-track fetch", e)
 

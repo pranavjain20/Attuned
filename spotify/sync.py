@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -202,7 +203,17 @@ def fetch_batch_metadata(conn: sqlite3.Connection, sp: Any) -> int:
     from config import SPOTIFY_BATCH_SIZE
 
     missing_rows = queries.get_songs_missing_metadata(conn)
-    missing = [r["spotify_uri"] for r in missing_rows]
+    raw_uris = [r["spotify_uri"] for r in missing_rows]
+
+    # Validate URI format before hitting the API — one malformed URI fails the batch
+    _SPOTIFY_URI_RE = re.compile(r"^spotify:track:[A-Za-z0-9]+$")
+    missing = []
+    for uri in raw_uris:
+        if _SPOTIFY_URI_RE.match(uri):
+            missing.append(uri)
+        else:
+            logger.warning("Skipping malformed URI: %s", uri)
+
     logger.info("%d songs missing duration_ms or release_year", len(missing))
     if not missing:
         logger.info("All songs already have metadata")

@@ -163,8 +163,8 @@ def analyze_audio(audio_path: Path) -> dict[str, Any] | None:
             "danceability": round(danceability, 4),
         }
 
-    except Exception:
-        logger.warning("Analysis failed for: %s", audio_path, exc_info=True)
+    except Exception as e:
+        logger.warning("Analysis failed for: %s — %s", audio_path, e)
         return None
 
 
@@ -304,6 +304,14 @@ def analyze_all_songs(
             "Analyzed: %s — %s (BPM=%s, key=%s %s)",
             song["name"], song["artist"],
             features["bpm"], features["key"], features["mode"],
+        )
+
+    total = len(unclassified)
+    if total > 0 and stats["analyzed"] == 0:
+        logger.warning(
+            "ALL %d songs failed Essentia analysis (skipped=%d, failed=%d) "
+            "— check audio directory exists and contains valid clips",
+            total, stats["skipped"], stats["failed"],
         )
 
     return stats

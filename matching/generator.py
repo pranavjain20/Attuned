@@ -20,38 +20,47 @@ from spotify.playlist import (
 logger = logging.getLogger(__name__)
 
 
+_SPOTIFY_TRACKS_BATCH_LIMIT = 50
+
+
 def _filter_unavailable_tracks(
     sp: spotipy.Spotify,
     songs: list[dict],
 ) -> list[dict]:
     """Remove songs that are no longer playable on Spotify.
 
-    Calls sp.tracks() once (batch up to 50) and drops any track where
-    is_playable is False or missing. Logs each dropped track.
+    Calls sp.tracks() in batches of 50 (Spotify's limit) and drops any
+    track where is_playable is False or missing. Logs each dropped track.
     """
     if not songs:
         return songs
 
     uris = [s["spotify_uri"] for s in songs]
-    try:
-        response = sp.tracks(uris)
-    except Exception:
-        logger.warning("Failed to check track availability — skipping filter")
-        return songs
-
     unavailable_uris: set[str] = set()
-    for track in response.get("tracks", []):
-        if track is None:
-            continue
-        if not track.get("is_playable", True):
-            uri = track.get("uri", "")
-            unavailable_uris.add(uri)
-            logger.info(
-                "Dropping unavailable track: '%s' — %s (uri=%s)",
-                track.get("name", "?"),
-                track.get("artists", [{}])[0].get("name", "?"),
-                uri,
+
+    for i in range(0, len(uris), _SPOTIFY_TRACKS_BATCH_LIMIT):
+        batch = uris[i : i + _SPOTIFY_TRACKS_BATCH_LIMIT]
+        try:
+            response = sp.tracks(batch)
+        except Exception:
+            logger.warning(
+                "Failed to check track availability for batch %d–%d — skipping filter",
+                i, i + len(batch),
             )
+            continue
+
+        for track in response.get("tracks", []):
+            if track is None:
+                continue
+            if not track.get("is_playable", True):
+                uri = track.get("uri", "")
+                unavailable_uris.add(uri)
+                logger.info(
+                    "Dropping unavailable track: '%s' — %s (uri=%s)",
+                    track.get("name", "?"),
+                    track.get("artists", [{}])[0].get("name", "?"),
+                    uri,
+                )
 
     if unavailable_uris:
         logger.info("Filtered %d unavailable track(s)", len(unavailable_uris))
