@@ -21,6 +21,8 @@ from config import (
     RECOVERY_TIER_2_MAX,
     RECOVERY_TIER_3_MAX,
     RECOVERY_TIER_4_MAX,
+    RESTORATIVE_SLEEP_EFFICIENCY_MIN,
+    RESTORATIVE_SLEEP_TOTAL_MIN_MS,
     RHR_PEAK_MAX_BPM,
     SLEEP_DEBT_PEAK_HOURS,
 )
@@ -90,25 +92,31 @@ def classify_state(conn: sqlite3.Connection, date: str) -> dict:
 
     today_struggling = recovery_score is not None and recovery_score < RECOVERY_TIER_3_MAX
     recent_bad = _count_recent_bad_days(conn, date)
+    fatigue_overridden = False
 
     # P1: Accumulated fatigue — multi-day stress pattern
+    # Gate: if last night was genuinely restorative, the person wakes up feeling better
+    # than the multi-day trend suggests. Skip fatigue → evaluate normally.
     if today_struggling and recent_bad >= FATIGUE_BAD_DAYS_MIN:
-        reasoning = [
-            f"Recovery {recovery_score:.0f}% (below {RECOVERY_TIER_3_MAX}%) "
-            f"with {recent_bad} of last {FATIGUE_RECENT_DAYS} days also below {RECOVERY_TIER_3_MAX}%",
-            "Multi-day stress pattern — body needs sustained recovery support",
-        ]
-        return _build_result(
-            state="accumulated_fatigue",
-            confidence="high" if recent_bad >= 4 else "medium",
-            reasoning=reasoning,
-            metrics=metrics,
-            hrv_baseline=hrv_baseline,
-            rhr_baseline=rhr_baseline,
-            hrv_trend=hrv_trend,
-            rhr_trend=rhr_trend,
-            sleep_analysis=sleep,
-        )
+        if _last_night_restorative(sleep):
+            fatigue_overridden = True
+        else:
+            reasoning = [
+                f"Recovery {recovery_score:.0f}% (below {RECOVERY_TIER_3_MAX}%) "
+                f"with {recent_bad} of last {FATIGUE_RECENT_DAYS} days also below {RECOVERY_TIER_3_MAX}%",
+                "Multi-day stress pattern — body needs sustained recovery support",
+            ]
+            return _build_result(
+                state="accumulated_fatigue",
+                confidence="high" if recent_bad >= 4 else "medium",
+                reasoning=reasoning,
+                metrics=metrics,
+                hrv_baseline=hrv_baseline,
+                rhr_baseline=rhr_baseline,
+                hrv_trend=hrv_trend,
+                rhr_trend=rhr_trend,
+                sleep_analysis=sleep,
+            )
 
     # P2: Poor sleep — any sleep deficit (deep, REM, or both)
     if any_sleep_deficit:
@@ -180,7 +188,13 @@ def classify_state(conn: sqlite3.Connection, date: str) -> dict:
         )
 
     # P6: Baseline (default)
-    if today_struggling:
+    if fatigue_overridden:
+        reasoning = [
+            f"Recovery {recovery_score:.0f}% with {recent_bad} of last {FATIGUE_RECENT_DAYS} "
+            f"days below {RECOVERY_TIER_3_MAX}% (fatigue pattern), "
+            f"but last night's sleep was restorative — not fatigued today",
+        ]
+    elif today_struggling:
         reasoning = [
             f"Recovery {recovery_score:.0f}% with {recent_bad} of last {FATIGUE_RECENT_DAYS} "
             f"days also below {RECOVERY_TIER_3_MAX}% — inconclusive pattern",
@@ -224,6 +238,42 @@ def _build_sleep_reasoning(deep_deficit: bool, rem_deficit: bool) -> list[str]:
         "REM sleep deficit detected",
         "Sleep quality was poor — body needs peaceful recovery",
     ]
+
+
+def _last_night_restorative(sleep: dict | None) -> bool:
+    """Check if last night's sleep was genuinely restorative.
+
+    All four conditions must be true:
+    1. No deep sleep deficit
+    2. No REM sleep deficit
+    3. Sleep efficiency >= 85%
+    4. Total sleep >= 6 hours
+
+    Research basis: last night's sleep architecture is the strongest predictor
+    of next-morning subjective state (PMC6456824, Nature Sci Rep 2024).
+    """
+    if sleep is None:
+        return False
+
+    if sleep.get("deep_sleep_deficit") or sleep.get("rem_sleep_deficit"):
+        return False
+
+    last_night = sleep.get("last_night")
+    if last_night is None:
+        return False
+
+    efficiency = last_night.get("sleep_efficiency")
+    if efficiency is None or efficiency < RESTORATIVE_SLEEP_EFFICIENCY_MIN:
+        return False
+
+    deep = last_night.get("deep_sleep_ms") or 0
+    rem = last_night.get("rem_sleep_ms") or 0
+    light = last_night.get("light_sleep_ms") or 0
+    total = deep + rem + light
+    if total < RESTORATIVE_SLEEP_TOTAL_MIN_MS:
+        return False
+
+    return True
 
 
 def _count_recent_bad_days(conn: sqlite3.Connection, date: str) -> int:

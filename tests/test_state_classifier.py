@@ -219,6 +219,150 @@ class TestAccumulatedFatigue:
         assert result["state"] != "accumulated_fatigue"
 
 
+# ─── Restorative Sleep Gate ──────────────────────────────────────────────────
+
+
+def _seed_fatigue_pattern_with_sleep(conn, today_sleep_kwargs):
+    """Set up accumulated fatigue conditions (recovery <60, 3 of 5 bad)
+    with configurable sleep for today."""
+    _seed_healthy_baseline(conn, skip_last_n=7)
+
+    trend_dates = _generate_dates_inclusive(TARGET, 7)
+    hrv_vals = [55.0] * 7
+    rhr_vals = [58.0] * 7
+    # 3 of last 5 days before today are bad → fatigue pattern
+    scores = [75.0, 75.0, 45.0, 50.0, 55.0, 45.0, 50.0]
+    _seed_trend_days(conn, trend_dates, hrv_vals, rhr_vals, scores)
+
+    # Seed sleep for trend days (non-today) — normal sleep
+    for i, date in enumerate(trend_dates[:-1]):
+        upsert_whoop_sleep(
+            conn, sleep_id=700 + i, date=date,
+            deep_sleep_ms=5_400_000, rem_sleep_ms=7_200_000,
+            light_sleep_ms=14_400_000,
+            sleep_needed_baseline_ms=27_000_000,
+        )
+
+    # Seed today's sleep with specified params
+    upsert_whoop_sleep(
+        conn, sleep_id=799, date=TARGET,
+        sleep_needed_baseline_ms=27_000_000,
+        **today_sleep_kwargs,
+    )
+
+
+class TestRestorativeSleepGate:
+    """Restorative sleep gate: if last night was genuinely restorative,
+    skip accumulated_fatigue classification even when multi-day pattern qualifies."""
+
+    def test_restorative_sleep_skips_fatigue(self, db_conn):
+        """Good deep, good REM, high efficiency, 7.5h → NOT fatigue."""
+        _seed_fatigue_pattern_with_sleep(db_conn, {
+            "deep_sleep_ms": 6_300_000,     # 1.75h
+            "rem_sleep_ms": 8_460_000,      # 2.35h
+            "light_sleep_ms": 12_240_000,   # 3.4h → 7.5h total
+            "sleep_efficiency": 92.0,
+        })
+        result = classify_state(db_conn, TARGET)
+        assert result["state"] != "accumulated_fatigue"
+        assert "restorative" in result["reasoning"][0].lower()
+
+    def test_poor_efficiency_stays_fatigue(self, db_conn):
+        """Good stages but low efficiency (75%) → still fatigue."""
+        _seed_fatigue_pattern_with_sleep(db_conn, {
+            "deep_sleep_ms": 6_300_000,
+            "rem_sleep_ms": 8_460_000,
+            "light_sleep_ms": 12_240_000,
+            "sleep_efficiency": 75.0,
+        })
+        result = classify_state(db_conn, TARGET)
+        assert result["state"] == "accumulated_fatigue"
+
+    def test_short_sleep_stays_fatigue(self, db_conn):
+        """High efficiency but only 5.5h total → still fatigue."""
+        _seed_fatigue_pattern_with_sleep(db_conn, {
+            "deep_sleep_ms": 5_400_000,     # 1.5h
+            "rem_sleep_ms": 5_400_000,      # 1.5h
+            "light_sleep_ms": 9_000_000,    # 2.5h → 5.5h total
+            "sleep_efficiency": 92.0,
+        })
+        result = classify_state(db_conn, TARGET)
+        assert result["state"] == "accumulated_fatigue"
+
+    def test_deep_deficit_stays_fatigue(self, db_conn):
+        """Low deep sleep (ratio < 10%) even with good REM/efficiency → still fatigue."""
+        _seed_fatigue_pattern_with_sleep(db_conn, {
+            "deep_sleep_ms": 1_800_000,     # 0.5h — will be deficit
+            "rem_sleep_ms": 8_460_000,
+            "light_sleep_ms": 16_740_000,
+            "sleep_efficiency": 92.0,
+        })
+        result = classify_state(db_conn, TARGET)
+        assert result["state"] == "accumulated_fatigue"
+
+    def test_rem_deficit_stays_fatigue(self, db_conn):
+        """Low REM (ratio < 15%) even with good deep/efficiency → still fatigue."""
+        _seed_fatigue_pattern_with_sleep(db_conn, {
+            "deep_sleep_ms": 6_300_000,
+            "rem_sleep_ms": 2_700_000,      # 0.75h — will be deficit
+            "light_sleep_ms": 18_000_000,
+            "sleep_efficiency": 92.0,
+        })
+        result = classify_state(db_conn, TARGET)
+        assert result["state"] == "accumulated_fatigue"
+
+    def test_no_sleep_data_stays_fatigue(self, db_conn):
+        """No sleep record for today → still fatigue."""
+        _seed_healthy_baseline(db_conn, skip_last_n=7)
+        trend_dates = _generate_dates_inclusive(TARGET, 7)
+        scores = [75.0, 75.0, 45.0, 50.0, 55.0, 45.0, 50.0]
+        _seed_trend_days(db_conn, trend_dates, [55.0]*7, [58.0]*7, scores)
+        # No sleep seeded for today
+        for i, date in enumerate(trend_dates[:-1]):
+            upsert_whoop_sleep(
+                db_conn, sleep_id=700 + i, date=date,
+                deep_sleep_ms=5_400_000, rem_sleep_ms=7_200_000,
+                light_sleep_ms=14_400_000,
+                sleep_needed_baseline_ms=27_000_000,
+            )
+        result = classify_state(db_conn, TARGET)
+        assert result["state"] == "accumulated_fatigue"
+
+    def test_borderline_efficiency_84_stays_fatigue(self, db_conn):
+        """Efficiency at 84% (just under 85% threshold) → still fatigue."""
+        _seed_fatigue_pattern_with_sleep(db_conn, {
+            "deep_sleep_ms": 6_300_000,
+            "rem_sleep_ms": 8_460_000,
+            "light_sleep_ms": 12_240_000,
+            "sleep_efficiency": 84.0,
+        })
+        result = classify_state(db_conn, TARGET)
+        assert result["state"] == "accumulated_fatigue"
+
+    def test_exactly_6h_and_85_efficiency_passes_gate(self, db_conn):
+        """Exactly at thresholds: 6h total, 85% efficiency → passes gate."""
+        _seed_fatigue_pattern_with_sleep(db_conn, {
+            "deep_sleep_ms": 5_400_000,     # 1.5h
+            "rem_sleep_ms": 7_200_000,      # 2.0h
+            "light_sleep_ms": 9_000_000,    # 2.5h → 6.0h total
+            "sleep_efficiency": 85.0,
+        })
+        result = classify_state(db_conn, TARGET)
+        assert result["state"] != "accumulated_fatigue"
+
+    def test_restorative_gate_lands_on_correct_downstream_state(self, db_conn):
+        """When gate fires with recovery 50% and no deficits, should land on
+        poor_recovery (one-off) or baseline, not accumulated_fatigue."""
+        _seed_fatigue_pattern_with_sleep(db_conn, {
+            "deep_sleep_ms": 6_300_000,
+            "rem_sleep_ms": 8_460_000,
+            "light_sleep_ms": 12_240_000,
+            "sleep_efficiency": 92.0,
+        })
+        result = classify_state(db_conn, TARGET)
+        assert result["state"] in ("baseline", "poor_recovery")
+
+
 # ─── Poor Sleep ──────────────────────────────────────────────────────────────
 
 
