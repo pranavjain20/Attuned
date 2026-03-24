@@ -67,7 +67,50 @@ def get_spotify_client(conn: sqlite3.Connection) -> spotipy.Spotify:
     if expires_at and time.time() >= (expires_at - TOKEN_EXPIRY_BUFFER_SECONDS):
         access_token = _refresh_spotify_token(conn, token_row["refresh_token"])
 
-    return spotipy.Spotify(auth=access_token)
+    return _wrap_with_rate_limit(spotipy.Spotify(auth=access_token))
+
+
+class _RateLimitedSpotify:
+    """Wrapper around spotipy.Spotify that handles 429 rate limits globally.
+
+    Every Spotify API call goes through this. On 429, reads Retry-After header,
+    waits, and retries automatically. No individual command needs its own rate
+    limit handling.
+    """
+
+    MAX_RETRIES = 3
+
+    def __init__(self, sp: spotipy.Spotify) -> None:
+        self._sp = sp
+
+    def __getattr__(self, name: str):
+        attr = getattr(self._sp, name)
+        if not callable(attr):
+            return attr
+
+        def rate_limited_call(*args, **kwargs):
+            for attempt in range(self.MAX_RETRIES):
+                try:
+                    return attr(*args, **kwargs)
+                except spotipy.SpotifyException as e:
+                    if e.http_status == 429:
+                        retry_after = int(e.headers.get("Retry-After", 30)) + 5
+                        logger.warning(
+                            "Spotify 429 on %s (attempt %d/%d). Waiting %ds.",
+                            name, attempt + 1, self.MAX_RETRIES, retry_after,
+                        )
+                        time.sleep(retry_after)
+                    else:
+                        raise
+            # Final attempt — let it raise
+            return attr(*args, **kwargs)
+
+        return rate_limited_call
+
+
+def _wrap_with_rate_limit(sp: spotipy.Spotify) -> spotipy.Spotify:
+    """Wrap a Spotipy client with global rate limit handling."""
+    return _RateLimitedSpotify(sp)
 
 
 def _refresh_spotify_token(conn: sqlite3.Connection, refresh_token: str) -> str:

@@ -350,8 +350,6 @@ def _cmd_classify_state(db_path: Path) -> None:
 def _cmd_backfill_release_years(db_path: Path) -> None:
     import time
 
-    import spotipy
-
     from spotify.auth import get_spotify_client
     from spotify.client import parse_track
 
@@ -399,6 +397,7 @@ def _cmd_backfill_release_years(db_path: Path) -> None:
         for i, uri in enumerate(missing):
             track_id = uri.split(":")[-1]
             try:
+                # 429 retry handled globally by _RateLimitedSpotify wrapper
                 track = sp.track(track_id)
                 if track:
                     parsed = parse_track(track)
@@ -408,35 +407,6 @@ def _cmd_backfill_release_years(db_path: Path) -> None:
                             (parsed["release_year"], uri),
                         )
                         updated += 1
-            except spotipy.SpotifyException as e:
-                if e.http_status == 429:
-                    retry_after = int(e.headers.get("Retry-After", 60))
-                    conn.commit()
-                    print(f"\n  Rate limited at {i + 1}/{len(missing)} ({updated} updated). "
-                          f"Waiting {retry_after}s ({retry_after // 60}m {retry_after % 60}s)...")
-                    time.sleep(retry_after + 5)
-                    # Retry this track once
-                    try:
-                        track = sp.track(track_id)
-                        if track:
-                            parsed = parse_track(track)
-                            if parsed and parsed.get("release_year") is not None:
-                                conn.execute(
-                                    "UPDATE songs SET release_year = ? WHERE spotify_uri = ?",
-                                    (parsed["release_year"], uri),
-                                )
-                                updated += 1
-                    except spotipy.SpotifyException as e2:
-                        if e2.http_status == 429:
-                            conn.commit()
-                            print(f"  Second 429 — stopping to avoid escalation. "
-                                  f"Progress saved: {updated} updated.")
-                            break
-                        failed += 1
-                    except Exception:
-                        failed += 1
-                else:
-                    failed += 1
             except Exception:
                 failed += 1
 
@@ -445,7 +415,7 @@ def _cmd_backfill_release_years(db_path: Path) -> None:
                 conn.commit()
                 print(f"  {i + 1}/{len(missing)} ({updated} updated, {failed} failed)")
 
-            # 3-second delay between calls to stay under rate limit
+            # 3-second delay between calls to avoid hitting rate limits
             if i < len(missing) - 1:
                 time.sleep(3)
 
