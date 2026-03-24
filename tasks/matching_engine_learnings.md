@@ -1,6 +1,6 @@
 # Matching Engine Rewrite — Full Session Log
 
-_Day 5b: Everything we tried, what worked, what didn't, and why._
+_Day 5b: Everything we tried, what worked, what didn't, and why. This is a detailed archive. For the distilled product decisions, see [docs/PRODUCT_DECISIONS.md](../docs/PRODUCT_DECISIONS.md)._
 
 ## What we were trying to do
 

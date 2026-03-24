@@ -1,6 +1,6 @@
-# Attuned — Lessons Learned
+# Attuned — Engineering Lessons
 
-_Patterns, mistakes, and rules discovered during development. Updated as we go._
+_Generalizable engineering patterns and mistakes discovered during development. For product-specific decisions (what we decided, why, how, effect), see [docs/PRODUCT_DECISIONS.md](../docs/PRODUCT_DECISIONS.md)._
 
 ## Day 1
 

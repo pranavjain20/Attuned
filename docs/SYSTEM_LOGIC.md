@@ -914,44 +914,4 @@ These features use available data but aren't needed for v1:
 
 ## Design Decision Log
 
-### Mar 22, 2026
-
-#### Essentia Acousticness Is Structurally Wrong
-
-Spectral flatness measures tonal vs noise-like spectrum, not acoustic vs electronic instrumentation. These are different things — a tightly-produced synthwave track has clear harmonics (low flatness → high "acousticness"), while a breathy acoustic recording with room noise can have higher flatness. The proxy was chosen because it was the best available Essentia algorithm (67% bucket accuracy, better than spectral centroid at 33%), but investigation showed the 33% failure cases are not random — they're structurally biased toward electronic pop with clean production getting scored as acoustic.
-
-Evidence: 25% of the library had acousticness >0.9. Specific cases: "Blinding Lights" (synthwave) = 0.96, "Single Ladies" (Beyoncé, heavily produced pop) = 1.00. These are not edge cases — they represent a systematic bias in the measurement.
-
-**Decision:** Essentia acousticness cannot be trusted as ground truth. When Essentia and LLM disagree on acousticness (gap >0.3), LLM wins — it has cultural knowledge about what "acoustic" means that spectral flatness cannot capture. When they agree (gap ≤0.3), average them.
-
-#### LLM Hints Create Echo Chambers, Not Cross-Validation
-
-The prompt included `[audio: energy=0.18, acousticness=0.96]` from Essentia to give the LLM more context. The assumption was the LLM would use these as one signal among many. In practice, the LLM parroted the hint 96% of the time — it treated the hint as authoritative rather than advisory.
-
-In the 54 cases where the LLM returned a value significantly different from the hint, the LLM was correct every time. The hint was actively suppressing the LLM's independent judgment.
-
-**Decision:** Remove all Essentia energy/acousticness hints from the LLM prompt. Independent LLM values are necessary for the merge logic to work — you can't cross-validate two sources when one is copying from the other. Duration hints are kept (no echo chamber risk, genuinely helpful for identifying long devotional tracks).
-
-#### Energy Merge: Essentia Onset Rate Is Mostly Reliable
-
-Unlike spectral flatness for acousticness, Essentia's onset rate energy measurement works reasonably well — it counts rhythmic attacks per second, which correlates with perceived intensity. The structural failure mode is different: it can over-count on tabla/percussion-heavy Indian tracks and under-count on sustained electronic builds.
-
-**Decision:** Energy merge trusts Essentia when sources agree (gap ≤0.3, onset rate is precise audio measurement). On disagreement (gap >0.3), blend 50/50 — neither source is clearly right, split the difference.
-
-#### Genre Outlier Validation Penalizes Musical Diversity
-
-The validator flagged songs >2 SD from their genre mean for BPM and energy. Of 300 flags, 182 were false positives — songs that are genuinely unusual within their genre but correctly classified. The #1 engagement song (Bernie's Chalisa, a devotional track with unusual rhythmic structure for its genre tags) was flagged.
-
-The fundamental problem: genre tags are not normally distributed populations with clear boundaries. A song tagged ["bollywood", "devotional", "hindi"] can legitimately have BPM and energy values that differ dramatically from the "bollywood" mean. Flagging it as suspicious punishes the library's diversity.
-
-**Decision:** Remove genre outlier validation entirely. The cross-property coherence checks (low BPM + high energy, etc.) and Essentia-LLM disagreement checks catch actual problems without penalizing legitimate variety.
-
-#### HRV CV: Computed but Unused — A Spec-to-Code Gap
-
-HRV CV (coefficient of variation) is computed in both `baselines.py` (30-day window) and `trends.py` (7-day window). Config defines thresholds (`CV_ELEVATED=0.15`, `CV_SIGNIFICANT=0.20`). SYSTEM_LOGIC.md (Section 4, #4 in metric hierarchy) designs CV as a neuro profile modifier with three scenarios and music strategies.
-
-None of this is implemented. CV is displayed in CLI output and discarded.
-
-Research support is strong: Plews et al. 2012 found CV of 7-day LnRMSSD detected non-functional overreaching as a leading indicator (changed before performance dropped). Buchheit 2014 found CV >15% = elevated variability, >20% = significant instability, with rising CV being an early warning of overtraining.
-
-**Decision:** Implement CV as a neuro profile modifier — same pattern as `apply_recovery_delta_modifier()` in `state_mapper.py`. Use 7-day CV (from `compute_hrv_trend()`), not 30-day. CV should not change state classification (it tells you about ANS regulation quality, not what state you're in). It modifies HOW the matching engine responds to the state. Exempt accumulated_fatigue and peak_readiness (already at extremes).
+See [PRODUCT_DECISIONS.md](PRODUCT_DECISIONS.md) for the full chronological log of product decisions, iterations, and test-and-learn findings across all days of development.

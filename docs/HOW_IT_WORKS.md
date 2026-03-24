@@ -14,10 +14,9 @@ _If I had to rebuild this from scratch, this is everything I'd need to know._
 6. [The Bridge: Matching Body State to Music](#6-the-bridge-matching-body-state-to-music)
 7. [Making It Sound Right: Cohesion](#7-making-it-sound-right-cohesion)
 8. [The Full Pipeline: From Wake-Up to Playlist](#8-the-full-pipeline)
-9. [Key Design Decisions and Why](#9-key-design-decisions-and-why)
-10. [What We Tried That Didn't Work](#10-what-we-tried-that-didnt-work)
-11. [Current Performance](#11-current-performance)
-12. [Remaining Limitations](#12-remaining-limitations)
+9. [Design Decisions & Iteration History](#9-design-decisions--iteration-history)
+10. [Current Performance](#10-current-performance)
+11. [Remaining Limitations](#11-remaining-limitations)
 
 ---
 
@@ -346,59 +345,13 @@ python main.py generate
 
 ---
 
-## 9. Key Design Decisions and Why
+## 9. Design Decisions & Iteration History
 
-### "No engagement in the matching formula"
-
-Every classified song already passed the quality bar — you listened to it at least twice out of millions of alternatives. That IS the quality signal. Adding engagement to the ranking just pushes your top 20 favorites to every playlist. The system's value is: which of YOUR songs has the right neurological properties for what your body needs right now?
-
-### "Unified ranking, not pool splitting"
-
-We tried splitting songs into "recent" and "discovery" pools and ranking each independently. This let mediocre recent songs beat excellent older songs. Pranav's insight: rank all songs together, and the 5 recent songs that make the cut are the ones that are ALREADY highly ranked. A recent song only gets in if it's genuinely a good match, not because it's recent.
-
-### "Freshness nudge (0.02 subtraction), not variety penalty (0.3x multiplier)"
-
-The old approach multiplied yesterday's songs by 0.3, turning a great song (score 0.9) into a mediocre one (0.27). This is wrong — if it's the best song for what your body needs, you should hear it. The nudge (0.02) only breaks ties among equally-good songs. A clearly better song wins regardless.
-
-### "Mood tags as a profiler input (15% weight)"
-
-Mood tags (reflective, spiritual, energetic, etc.) encode meaning that audio properties can't. Two songs with identical BPM, energy, and acousticness can be "reflective" (grounding) vs "melancholy" (parasympathetic). This was the key to decorrelating the grounding and parasympathetic dimensions. The data was sitting unused in the database from the LLM classification.
-
-### "Grounding = presence of emotional content, not absence of stimulation"
-
-The original profiler made grounding nearly identical to parasympathetic (r=0.921). The insight: grounding means emotional connection through lyrics, warmth, moderate engagement. Parasympathetic means letting go through instrumental, slow, quiet music. Flipping instrumentalness (vocals > instrumental for grounding) and shifting the BPM/energy/valence centers was what broke the correlation.
-
-### "Essentia for energy and acousticness, LLM for everything else"
-
-Essentia is terrible at danceability (42%), instrumentalness (46%), and BPM for Indian music (23%). But it's great at energy (71%) and acousticness (62%). The LLM is great at valence, mood tags, genre tags, and BPM. Use each for what it's good at.
+See [PRODUCT_DECISIONS.md](PRODUCT_DECISIONS.md) for the full log of what we tried, what worked, what didn't, and why — organized chronologically across all 9 days of development.
 
 ---
 
-## 10. What We Tried That Didn't Work
-
-### Range-box matching (v1)
-
-Defined BPM/energy/acousticness/valence ranges per state (e.g., fatigue: BPM 50-70). Problem: 94% of the library was permanently filtered out. Only 80 songs were reachable across all 7 states.
-
-### Staleness as a scoring signal
-
-Added `days_since_last_played / 90` as 15% of the score. Problem: 77% of songs maxed out at 1.0 (played >90 days ago), adding a flat constant that compressed the score range. Staleness was dropped entirely — replaced by the structural 5-recent-song constraint.
-
-### Pool-based selection
-
-Split songs into "recent" (played <90 days) and "discovery" pools, ranked each independently. Problem: mediocre recent songs beat excellent discovery songs.
-
-### Aggressive variety penalty (0.3x multiplier)
-
-Multiplied yesterday's playlist songs by 0.3. Problem: destroyed good songs. A 0.9 became 0.27, losing to a 0.35 mediocre song.
-
-### Essentia --force without fixing the merge bug
-
-Essentia's upsert replaced the entire classification row, wiping LLM data (valence, mood_tags). Made this mistake twice. Cost $1.40 in reclassification. The fix was 10 lines — should have been done first.
-
----
-
-## 11. Current Performance
+## 10. Current Performance
 
 **Data quality:**
 - 1,360 classified songs
@@ -427,7 +380,7 @@ Essentia's upsert replaced the entire classification row, wiping LLM data (valen
 
 ---
 
-## 12. Remaining Limitations
+## 11. Remaining Limitations
 
 **Things only fixable with your feedback:**
 - State neuro profiles (is 0.95 para right for fatigue?) — needs listening and adjusting
