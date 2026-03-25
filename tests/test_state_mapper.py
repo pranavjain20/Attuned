@@ -2,9 +2,10 @@
 
 import pytest
 
-from config import STATE_NEURO_PROFILES
+from config import BASELINE_CALM_ANCHOR, BASELINE_ENERGY_ANCHOR, STATE_NEURO_PROFILES
 from matching.state_mapper import (
     MATCHABLE_STATES,
+    _blend_baseline_profile,
     apply_recovery_delta_modifier,
     get_state_neuro_profile,
 )
@@ -105,8 +106,7 @@ class TestApplyRecoveryDeltaModifier:
         adjusted, reason = apply_recovery_delta_modifier(profile, delta=56.0, delta_sd=25.4, state="baseline")
         assert adjusted["symp"] > profile["symp"]
         assert reason is not None
-        assert "boosting energy" in reason
-        assert "++" not in reason  # no double plus sign
+        assert "leaning up" in reason
 
     def test_significant_positive_sums_to_one(self):
         profile = self._baseline_profile()
@@ -119,7 +119,7 @@ class TestApplyRecoveryDeltaModifier:
         adjusted, reason = apply_recovery_delta_modifier(profile, delta=-50.0, delta_sd=25.4, state="baseline")
         assert adjusted["para"] > profile["para"]
         assert reason is not None
-        assert "boosting calming" in reason
+        assert "leaning down" in reason
 
     def test_significant_negative_sums_to_one(self):
         profile = self._baseline_profile()
@@ -127,17 +127,18 @@ class TestApplyRecoveryDeltaModifier:
         total = adjusted["para"] + adjusted["symp"] + adjusted["grnd"]
         assert total == pytest.approx(1.0, abs=0.001)
 
-    def test_normal_delta_no_change(self):
+    def test_normal_delta_no_change_non_baseline(self):
+        """Non-baseline state with z < 1.5 threshold gets no nudge."""
         profile = self._baseline_profile()
-        adjusted, reason = apply_recovery_delta_modifier(profile, delta=10.0, delta_sd=25.4, state="baseline")
+        adjusted, reason = apply_recovery_delta_modifier(profile, delta=10.0, delta_sd=25.4, state="poor_recovery")
         assert reason is None
         assert adjusted == profile
 
-    def test_exactly_at_threshold_no_change(self):
-        """Must exceed threshold, not equal."""
+    def test_exactly_at_threshold_no_change_non_baseline(self):
+        """Must exceed threshold, not equal (non-baseline states)."""
         profile = self._baseline_profile()
-        # z = 30.0 / 20.0 = 1.5 exactly → should NOT trigger
-        adjusted, reason = apply_recovery_delta_modifier(profile, delta=30.0, delta_sd=20.0, state="baseline")
+        # z = 30.0 / 20.0 = 1.5 exactly → should NOT trigger for non-baseline
+        adjusted, reason = apply_recovery_delta_modifier(profile, delta=30.0, delta_sd=20.0, state="poor_recovery")
         assert reason is None
         assert adjusted == profile
 
@@ -183,8 +184,115 @@ class TestApplyRecoveryDeltaModifier:
             _, reason = apply_recovery_delta_modifier(profile, delta=56.0, delta_sd=25.4, state=state)
             assert reason is not None, f"{state} should allow modifier"
 
+    def test_baseline_large_positive_uses_continuous_blend(self):
+        """Baseline with large positive z uses blending, not threshold nudge."""
+        profile = self._baseline_profile()
+        adjusted, reason = apply_recovery_delta_modifier(profile, delta=56.0, delta_sd=25.4, state="baseline")
+        assert "leaning up" in reason
+        # Should be close to energy anchor at z=2.2 (clamped to 2.0)
+        assert adjusted["symp"] > 0.70
+
+    def test_baseline_moderate_positive_uses_continuous_blend(self):
+        """Baseline with moderate z (below old threshold) still triggers."""
+        profile = self._baseline_profile()
+        # z = 20.0 / 25.4 = 0.79 — below old 1.5 threshold, above 0.1 deadzone
+        adjusted, reason = apply_recovery_delta_modifier(profile, delta=20.0, delta_sd=25.4, state="baseline")
+        assert reason is not None
+        assert "leaning up" in reason
+        assert adjusted["symp"] > profile["symp"]
+
     def test_all_weights_in_valid_range(self):
         profile = self._baseline_profile()
         adjusted, _ = apply_recovery_delta_modifier(profile, delta=56.0, delta_sd=25.4, state="baseline")
         for key, val in adjusted.items():
             assert 0.0 <= val <= 1.0, f"{key} = {val} out of [0, 1]"
+
+
+class TestBlendBaselineProfile:
+    """Tests for _blend_baseline_profile() — continuous baseline scaling."""
+
+    def test_blend_baseline_z_zero_returns_current_baseline(self):
+        result = _blend_baseline_profile(0.0)
+        expected = STATE_NEURO_PROFILES["baseline"]
+        for k in expected:
+            assert result[k] == pytest.approx(expected[k], abs=1e-9), (
+                f"{k}: expected {expected[k]}, got {result[k]}"
+            )
+
+    def test_blend_baseline_positive_z_boosts_symp(self):
+        result = _blend_baseline_profile(1.0)
+        baseline = STATE_NEURO_PROFILES["baseline"]
+        assert result["symp"] > baseline["symp"]
+
+    def test_blend_baseline_negative_z_boosts_para(self):
+        result = _blend_baseline_profile(-1.0)
+        baseline = STATE_NEURO_PROFILES["baseline"]
+        assert result["para"] > baseline["para"]
+
+    def test_blend_baseline_z_plus_two_matches_energy_anchor(self):
+        result = _blend_baseline_profile(2.0)
+        for k in BASELINE_ENERGY_ANCHOR:
+            assert result[k] == pytest.approx(BASELINE_ENERGY_ANCHOR[k], abs=1e-9), (
+                f"{k}: expected {BASELINE_ENERGY_ANCHOR[k]}, got {result[k]}"
+            )
+
+    def test_blend_baseline_z_minus_two_matches_calm_anchor(self):
+        result = _blend_baseline_profile(-2.0)
+        for k in BASELINE_CALM_ANCHOR:
+            assert result[k] == pytest.approx(BASELINE_CALM_ANCHOR[k], abs=1e-9), (
+                f"{k}: expected {BASELINE_CALM_ANCHOR[k]}, got {result[k]}"
+            )
+
+    def test_blend_baseline_z_clamped(self):
+        """z=+5 should produce same result as z=+2 (clamped)."""
+        at_clamp = _blend_baseline_profile(2.0)
+        beyond_clamp = _blend_baseline_profile(5.0)
+        for k in at_clamp:
+            assert beyond_clamp[k] == pytest.approx(at_clamp[k], abs=1e-9)
+
+    @pytest.mark.parametrize("z", [-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0])
+    def test_blend_baseline_weights_sum_to_one(self, z):
+        result = _blend_baseline_profile(z)
+        total = sum(result.values())
+        assert total == pytest.approx(1.0, abs=1e-9), (
+            f"z={z}: weights sum to {total}, expected 1.0"
+        )
+
+
+class TestContinuousBaselineModifier:
+    """Integration tests: apply_recovery_delta_modifier with baseline + continuous blending."""
+
+    def _baseline_profile(self):
+        return {"para": 0.15, "symp": 0.50, "grnd": 0.35}
+
+    def test_baseline_modifier_near_zero_no_reason(self):
+        """z=0.05 is in the deadzone (|z| < 0.1) — no modification."""
+        profile = self._baseline_profile()
+        # z = 1.0 / 20.0 = 0.05
+        adjusted, reason = apply_recovery_delta_modifier(profile, delta=1.0, delta_sd=20.0, state="baseline")
+        assert reason is None
+        assert adjusted == profile
+
+    def test_baseline_modifier_moderate_z_returns_reason(self):
+        """z=1.0 should return a reason containing 'leaning'."""
+        profile = self._baseline_profile()
+        # z = 25.4 / 25.4 = 1.0
+        adjusted, reason = apply_recovery_delta_modifier(profile, delta=25.4, delta_sd=25.4, state="baseline")
+        assert reason is not None
+        assert "leaning" in reason
+
+    def test_non_baseline_still_uses_threshold(self):
+        """poor_recovery at z=1.0 (below 1.5 threshold) should NOT trigger."""
+        profile = self._baseline_profile()
+        # z = 25.4 / 25.4 = 1.0 — below 1.5 threshold
+        adjusted, reason = apply_recovery_delta_modifier(profile, delta=25.4, delta_sd=25.4, state="poor_recovery")
+        assert reason is None
+        assert adjusted == profile
+
+    def test_exempt_states_still_exempt(self):
+        """accumulated_fatigue is unchanged regardless of z."""
+        profile = {"para": 0.95, "symp": 0.00, "grnd": 0.05}
+        adjusted, reason = apply_recovery_delta_modifier(profile, delta=56.0, delta_sd=25.4,
+                                                         state="accumulated_fatigue")
+        assert reason is None
+        assert adjusted == profile

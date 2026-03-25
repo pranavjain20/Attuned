@@ -6,6 +6,9 @@ to score songs via dot product against their neuro scores.
 """
 
 from config import (
+    BASELINE_CALM_ANCHOR,
+    BASELINE_ENERGY_ANCHOR,
+    BASELINE_Z_CLAMP,
     RECOVERY_DELTA_EXEMPT_STATES,
     RECOVERY_DELTA_NUDGE,
     RECOVERY_DELTA_THRESHOLD_SD,
@@ -41,6 +44,36 @@ def get_state_neuro_profile(state: str) -> dict[str, float]:
     return STATE_NEURO_PROFILES[state]
 
 
+def _blend_baseline_profile(z: float) -> dict[str, float]:
+    """Interpolate baseline neuro profile along calm-to-energy spectrum.
+
+    Piecewise linear: z in [-CLAMP, 0] blends calm_anchor → baseline,
+    z in [0, +CLAMP] blends baseline → energy_anchor. Clamped to ±CLAMP.
+
+    Args:
+        z: Recovery delta z-score (delta / delta_sd).
+
+    Returns:
+        Neuro profile dict (para, symp, grnd) summing to 1.0.
+    """
+    z_clamped = max(-BASELINE_Z_CLAMP, min(BASELINE_Z_CLAMP, z))
+    baseline = STATE_NEURO_PROFILES["baseline"]
+
+    if z_clamped <= 0:
+        t = (z_clamped + BASELINE_Z_CLAMP) / BASELINE_Z_CLAMP  # [-2, 0] → [0, 1]
+        anchor = BASELINE_CALM_ANCHOR
+        profile = {k: anchor[k] + t * (baseline[k] - anchor[k]) for k in baseline}
+    else:
+        t = z_clamped / BASELINE_Z_CLAMP  # [0, 2] → [0, 1]
+        anchor = BASELINE_ENERGY_ANCHOR
+        profile = {k: baseline[k] + t * (anchor[k] - baseline[k]) for k in baseline}
+
+    total = sum(profile.values())
+    if total > 0:
+        profile = {k: v / total for k, v in profile.items()}
+    return profile
+
+
 def apply_recovery_delta_modifier(
     profile: dict[str, float],
     delta: float,
@@ -49,8 +82,12 @@ def apply_recovery_delta_modifier(
 ) -> tuple[dict[str, float], str | None]:
     """Adjust neuro profile weights based on day-over-day recovery change.
 
-    If the recovery delta exceeds the personal threshold (>1.5 SD), nudges
-    the profile toward energy (positive jump) or calming (negative drop).
+    For baseline state: continuous blending along calm-to-energy spectrum using
+    recovery delta z-score (see _blend_baseline_profile). Near-zero z (|z| < 0.1)
+    returns no change.
+
+    For other non-exempt states: if the recovery delta exceeds the personal
+    threshold (>1.5 SD), nudges the profile toward energy or calming.
 
     Args:
         profile: Neuro profile dict with keys para, symp, grnd.
@@ -68,6 +105,21 @@ def apply_recovery_delta_modifier(
         return dict(profile), None
 
     z = delta / delta_sd
+
+    # --- Baseline: continuous blending ---
+    if state == "baseline":
+        if abs(z) < 0.1:
+            return dict(profile), None
+
+        blended = _blend_baseline_profile(z)
+        direction = "leaning up" if z > 0 else "leaning down"
+        reason = (
+            f"Baseline + recovery delta {delta:+.0f}pp (z={z:.1f}) "
+            f"— {direction}"
+        )
+        return blended, reason
+
+    # --- Non-baseline, non-exempt: threshold-based nudge ---
     threshold = RECOVERY_DELTA_THRESHOLD_SD
     nudge = RECOVERY_DELTA_NUDGE
 
