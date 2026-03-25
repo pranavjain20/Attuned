@@ -1,8 +1,8 @@
 # Attuned — Current Status
 
-**Last updated:** Mar 23, 2026
-**Current phase:** Day 8. All code committed and pushed (4 atomic commits). 957 tests passing. Backfill partially started: 131/1,348 songs have `essentia_*` columns populated. Need to finish `analyze-audio --force` in terminal (too long for Claude's 10-min command timeout), then steps 2-7.
-**Next action:** See tasks/todo.md "Current Pipeline — What's Left" for the full 15-step plan with dependencies.
+**Last updated:** Mar 25, 2026
+**Current phase:** Day 9 complete. 1,016 tests passing. 18 commits pushed. Backfill pipeline done (zero validation flags). Restorative sleep gate, continuous baseline, recent anchors, weighted mood affinity, era hard cap all implemented. Codebase hardened, docs scrubbed for public release. README rewritten. Repo ready to go public.
+**Next action:** See tasks/todo.md — Spotify API rate limit clears this afternoon, then fill missing metadata for both profiles + run second user's audio pipeline.
 
 ---
 
