@@ -2,7 +2,7 @@
 
 Every WHOOP user sees their recovery score and thinks "I should do something about this." Nobody does. You can't will your nervous system into recovery. But you can press play on a playlist -- and music directly modulates the autonomic nervous system, the same system WHOOP measures.
 
-Attuned reads your morning WHOOP data, figures out what your nervous system needs, and builds a playlist of songs from your own library -- not a generic calming app, your actual music -- whose acoustic properties are scientifically matched to your recovery state. Zero behavior change. You were already going to listen to music.
+Attuned reads your morning WHOOP data, figures out what your nervous system needs, and builds a playlist from your own library whose acoustic properties are scientifically matched to your recovery state. Not a calming sounds app. Your songs, chosen by neuroscience.
 
 ```
 python main.py generate
