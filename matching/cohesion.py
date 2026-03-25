@@ -169,16 +169,23 @@ def expand_cluster(
     sim_matrix: list[list[float]],
     target_size: int,
     min_similarity: float,
+    pre_selected: list[int] | None = None,
 ) -> list[int]:
     """Greedily expand from seed, adding the most similar candidate each step.
 
     At each step, picks the candidate with highest average similarity to all
     songs already in the cluster. Stops at target_size or when no candidate
     exceeds min_similarity.
+
+    If pre_selected is provided, those indices are guaranteed in the cluster
+    from the start (after the seed).
     """
     n = len(sim_matrix)
-    selected = [seed_idx]
-    remaining = set(range(n)) - {seed_idx}
+    if pre_selected:
+        selected = [seed_idx] + [i for i in pre_selected if i != seed_idx]
+    else:
+        selected = [seed_idx]
+    remaining = set(range(n)) - set(selected)
 
     while len(selected) < target_size and remaining:
         best_idx = -1
@@ -204,6 +211,7 @@ def select_cohesive_songs(
     pool_size: int = COHESION_POOL_SIZE,
     target_size: int = MAX_PLAYLIST_SIZE,
     min_size: int = MIN_PLAYLIST_SIZE,
+    anchor_indices: list[int] | None = None,
 ) -> tuple[list[int], dict[str, Any]]:
     """Select a cohesive subset from scored candidates.
 
@@ -212,6 +220,8 @@ def select_cohesive_songs(
         pool_size: How many top candidates to consider for cohesion.
         target_size: Desired playlist size.
         min_size: Minimum acceptable playlist size (triggers relaxation).
+        anchor_indices: Indices into scored_candidates that must appear in the result.
+            Anchors outside the pool are appended to it.
 
     Returns:
         (selected_indices, stats) where indices refer to positions in scored_candidates.
@@ -221,16 +231,41 @@ def select_cohesive_songs(
     pool = scored_candidates[:pool_size]
     n = len(pool)
 
+    # pool_to_scored maps pool index → scored_candidates index.
+    # For the first pool_size entries, pool index == scored index.
+    pool_to_scored: dict[int, int] = {}
+
+    # Bring anchor songs into the pool if they fall outside it
+    anchor_pool_indices: list[int] | None = None
+    if anchor_indices:
+        anchor_pool_indices = []
+        for ai in anchor_indices:
+            if ai < n:
+                anchor_pool_indices.append(ai)
+            elif ai < len(scored_candidates):
+                # Append to pool so cohesion can see it
+                pool.append(scored_candidates[ai])
+                pool_idx = len(pool) - 1
+                pool_to_scored[pool_idx] = ai
+                anchor_pool_indices.append(pool_idx)
+        n = len(pool)
+
+    def _remap(pool_indices: list[int]) -> list[int]:
+        """Convert pool indices back to scored_candidates indices."""
+        return [pool_to_scored.get(i, i) for i in pool_indices]
+
     if n == 0:
         return [], {"pool_size": 0, "seed_idx": -1, "relaxations": 0,
-                    "mean_similarity": 0.0, "min_similarity_used": COHESION_MIN_SIMILARITY}
+                    "mean_similarity": 0.0, "min_similarity_used": COHESION_MIN_SIMILARITY,
+                    "anchor_count": 0}
 
     if n <= target_size:
         # Fewer candidates than target — take all, no cohesion filtering needed
-        indices = list(range(n))
+        indices = _remap(list(range(n)))
         return indices, {
             "pool_size": n, "seed_idx": 0, "relaxations": 0,
             "mean_similarity": 0.0, "min_similarity_used": 0.0,
+            "anchor_count": len(anchor_pool_indices) if anchor_pool_indices else 0,
         }
 
     # Build pairwise similarity matrix
@@ -252,13 +287,19 @@ def select_cohesive_songs(
     min_sim = COHESION_MIN_SIMILARITY
     relaxations = 0
 
-    selected = expand_cluster(seed_idx, sim_matrix, target_size, min_sim)
+    selected = expand_cluster(
+        seed_idx, sim_matrix, target_size, min_sim,
+        pre_selected=anchor_pool_indices,
+    )
 
     while len(selected) < min_size and relaxations < COHESION_RELAXATION_MAX:
         relaxations += 1
         min_sim -= COHESION_RELAXATION_STEP
         min_sim = max(min_sim, 0.0)
-        selected = expand_cluster(seed_idx, sim_matrix, target_size, min_sim)
+        selected = expand_cluster(
+            seed_idx, sim_matrix, target_size, min_sim,
+            pre_selected=anchor_pool_indices,
+        )
         logger.info(
             "Cohesion relaxation %d: min_similarity=%.3f, got %d songs",
             relaxations, min_sim, len(selected),
@@ -291,6 +332,7 @@ def select_cohesive_songs(
         "min_similarity_used": round(min_sim, 3),
         "mean_similarity": round(mean_sim, 4),
         "dominant_genre": dominant_genre,
+        "anchor_count": len(anchor_pool_indices) if anchor_pool_indices else 0,
     }
 
-    return selected, stats
+    return _remap(selected), stats

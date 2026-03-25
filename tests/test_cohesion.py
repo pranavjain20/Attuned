@@ -442,3 +442,145 @@ class TestSelectCohesiveSongs:
         ]
         _, stats = select_cohesive_songs(candidates, pool_size=25, target_size=15)
         assert stats["dominant_genre"] in ("bollywood", "hindi")
+
+    def test_anchor_count_in_stats(self):
+        """anchor_count should appear in stats even without anchors."""
+        candidates = [
+            _make_candidate(
+                i, genre_tags=["rock"], mood_tags=["energetic"], bpm=120.0,
+            )
+            for i in range(30)
+        ]
+        _, stats = select_cohesive_songs(candidates, pool_size=30, target_size=15)
+        assert "anchor_count" in stats
+        assert stats["anchor_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Anchor-aware cohesion tests
+# ---------------------------------------------------------------------------
+
+class TestExpandClusterPreSelected:
+
+    def test_pre_selected_guaranteed_in_result(self):
+        """Pre-selected indices must appear in the expanded cluster."""
+        matrix = [
+            [1.0, 0.9, 0.3, 0.1, 0.1],
+            [0.9, 1.0, 0.3, 0.1, 0.1],
+            [0.3, 0.3, 1.0, 0.8, 0.7],
+            [0.1, 0.1, 0.8, 1.0, 0.9],
+            [0.1, 0.1, 0.7, 0.9, 1.0],
+        ]
+        # Seed=0, pre_selected=[3] — song 3 is dissimilar to seed but forced in
+        selected = expand_cluster(
+            seed_idx=0, sim_matrix=matrix, target_size=4,
+            min_similarity=0.0, pre_selected=[3],
+        )
+        assert 0 in selected
+        assert 3 in selected
+
+    def test_pre_selected_no_duplicate_with_seed(self):
+        """If seed is in pre_selected, it shouldn't appear twice."""
+        matrix = [[1.0, 0.9, 0.3], [0.9, 1.0, 0.3], [0.3, 0.3, 1.0]]
+        selected = expand_cluster(
+            seed_idx=0, sim_matrix=matrix, target_size=3,
+            min_similarity=0.0, pre_selected=[0, 1],
+        )
+        # No duplicates
+        assert len(selected) == len(set(selected))
+        assert 0 in selected
+        assert 1 in selected
+
+    def test_none_pre_selected_unchanged_behavior(self):
+        """Without pre_selected, behavior is identical to before."""
+        matrix = [
+            [1.0, 0.9, 0.3, 0.1],
+            [0.9, 1.0, 0.3, 0.1],
+            [0.3, 0.3, 1.0, 0.2],
+            [0.1, 0.1, 0.2, 1.0],
+        ]
+        without = expand_cluster(seed_idx=0, sim_matrix=matrix, target_size=3, min_similarity=0.0)
+        with_none = expand_cluster(seed_idx=0, sim_matrix=matrix, target_size=3,
+                                   min_similarity=0.0, pre_selected=None)
+        assert without == with_none
+
+    def test_empty_pre_selected_unchanged_behavior(self):
+        """Empty pre_selected list = same as None."""
+        matrix = [[1.0, 0.9], [0.9, 1.0]]
+        without = expand_cluster(seed_idx=0, sim_matrix=matrix, target_size=2, min_similarity=0.0)
+        with_empty = expand_cluster(seed_idx=0, sim_matrix=matrix, target_size=2,
+                                    min_similarity=0.0, pre_selected=[])
+        assert without == with_empty
+
+
+class TestCohesionWithAnchors:
+
+    def test_anchors_guaranteed_in_result(self):
+        """Anchor songs within pool must appear in the selected indices."""
+        # 40 similar rock songs
+        candidates = [
+            _make_candidate(
+                i, neuro_score=0.8 - i * 0.005,
+                genre_tags=["rock", "indie"],
+                mood_tags=["energetic", "uplifting"],
+                bpm=120.0 + i * 0.5,
+            )
+            for i in range(40)
+        ]
+        # Anchor indices 10, 15 — within pool but not necessarily at top
+        selected, stats = select_cohesive_songs(
+            candidates, pool_size=40, target_size=20,
+            anchor_indices=[10, 15],
+        )
+        assert 10 in selected
+        assert 15 in selected
+        assert stats["anchor_count"] == 2
+
+    def test_no_anchors_existing_behavior_unchanged(self):
+        """Without anchor_indices, result should match previous behavior."""
+        candidates = [
+            _make_candidate(
+                i, neuro_score=0.8 - i * 0.005,
+                genre_tags=["bollywood", "hindi"],
+                mood_tags=["energetic", "uplifting"],
+                bpm=120.0 + i * 0.5,
+            )
+            for i in range(40)
+        ]
+        selected_none, stats_none = select_cohesive_songs(
+            candidates, pool_size=40, target_size=20, anchor_indices=None,
+        )
+        selected_default, stats_default = select_cohesive_songs(
+            candidates, pool_size=40, target_size=20,
+        )
+        assert selected_none == selected_default
+        assert stats_none["anchor_count"] == 0
+        assert stats_default["anchor_count"] == 0
+
+    def test_anchor_outside_pool_still_included(self):
+        """Anchor at index beyond pool_size should be brought into the pool."""
+        # 30 rock songs in pool, anchor at index 25 (within pool)
+        # and anchor at index 35 (outside pool_size=30)
+        candidates = [
+            _make_candidate(
+                i, neuro_score=0.8 - i * 0.005,
+                genre_tags=["rock", "indie"],
+                mood_tags=["energetic", "uplifting"],
+                bpm=120.0 + i * 0.5,
+            )
+            for i in range(40)
+        ]
+        selected, stats = select_cohesive_songs(
+            candidates, pool_size=30, target_size=20,
+            anchor_indices=[5, 35],
+        )
+        # Index 5 is within pool — should be in result
+        assert 5 in selected
+        # Index 35 is outside pool — should have been brought in and appear in result
+        assert 35 in selected
+        assert stats["anchor_count"] == 2
+
+    def test_anchor_count_zero_without_anchors(self):
+        candidates = [_make_candidate(i) for i in range(25)]
+        _, stats = select_cohesive_songs(candidates, pool_size=25, target_size=15)
+        assert stats["anchor_count"] == 0

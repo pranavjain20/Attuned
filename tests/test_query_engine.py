@@ -21,6 +21,7 @@ from matching.query_engine import (
     compute_min_repeat_gap,
     compute_neuro_match,
     compute_selection_scores,
+    identify_anchors,
     is_current_banger,
     score_song,
     select_songs,
@@ -908,3 +909,83 @@ class TestPlaylistQueries:
         insert_generated_playlist(db_conn, date="2026-03-15", detected_state="baseline",
                                   track_uris=["spotify:track:old"])
         assert get_recent_playlist_track_uris(db_conn, "2026-03-19", days=2) == {}
+
+
+# ---------------------------------------------------------------------------
+# identify_anchors tests
+# ---------------------------------------------------------------------------
+
+def _make_scored_entry(idx, last_played=None, score=0.8):
+    """Helper to build a (song, score, breakdown) tuple for anchor tests."""
+    song = {
+        "spotify_uri": f"spotify:track:test{idx:03d}",
+        "name": f"Song {idx}",
+        "last_played": last_played,
+    }
+    return (song, score, {"neuro_match": score})
+
+
+class TestIdentifyAnchors:
+
+    def test_picks_recent_high_scored_songs(self):
+        scored = [
+            _make_scored_entry(0, last_played="2026-03-10", score=0.9),
+            _make_scored_entry(1, last_played="2026-03-05", score=0.85),
+            _make_scored_entry(2, last_played="2025-11-01", score=0.80),
+        ]
+        result = identify_anchors(scored, "2026-03-19", recency_days=90, max_count=5)
+        assert result == [0, 1]
+
+    def test_ignores_songs_older_than_recency_days(self):
+        scored = [
+            _make_scored_entry(0, last_played="2025-12-01", score=0.9),
+            _make_scored_entry(1, last_played="2025-06-01", score=0.85),
+        ]
+        result = identify_anchors(scored, "2026-03-19", recency_days=90, max_count=5)
+        # 2025-12-01 is ~108 days before 2026-03-19, outside 90 day window
+        assert result == []
+
+    def test_handles_none_last_played(self):
+        scored = [
+            _make_scored_entry(0, last_played=None, score=0.9),
+            _make_scored_entry(1, last_played="2026-03-10", score=0.85),
+            _make_scored_entry(2, last_played=None, score=0.80),
+        ]
+        result = identify_anchors(scored, "2026-03-19", recency_days=90, max_count=5)
+        assert result == [1]
+
+    def test_returns_max_count(self):
+        scored = [
+            _make_scored_entry(i, last_played="2026-03-10", score=0.9 - i * 0.01)
+            for i in range(10)
+        ]
+        result = identify_anchors(scored, "2026-03-19", recency_days=90, max_count=5)
+        assert len(result) == 5
+        assert result == [0, 1, 2, 3, 4]
+
+    def test_returns_empty_when_no_recent_songs(self):
+        scored = [
+            _make_scored_entry(0, last_played="2024-01-01", score=0.9),
+            _make_scored_entry(1, last_played=None, score=0.85),
+        ]
+        result = identify_anchors(scored, "2026-03-19", recency_days=90, max_count=5)
+        assert result == []
+
+    def test_empty_scored_list(self):
+        assert identify_anchors([], "2026-03-19", recency_days=90, max_count=5) == []
+
+    def test_invalid_date_returns_empty(self):
+        scored = [_make_scored_entry(0, last_played="2026-03-10")]
+        assert identify_anchors(scored, "not-a-date", recency_days=90, max_count=5) == []
+
+    def test_exact_cutoff_included(self):
+        """Song played exactly recency_days ago should be included."""
+        scored = [_make_scored_entry(0, last_played="2025-12-19", score=0.9)]
+        result = identify_anchors(scored, "2026-03-19", recency_days=90, max_count=5)
+        assert result == [0]
+
+    def test_one_day_past_cutoff_excluded(self):
+        """Song played one day before the cutoff should be excluded."""
+        scored = [_make_scored_entry(0, last_played="2025-12-18", score=0.9)]
+        result = identify_anchors(scored, "2026-03-19", recency_days=90, max_count=5)
+        assert result == []

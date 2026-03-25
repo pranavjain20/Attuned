@@ -99,9 +99,15 @@ RESTORATIVE_SLEEP_EFFICIENCY_MIN = 85.0    # Sleep efficiency % floor
 RESTORATIVE_SLEEP_TOTAL_MIN_MS = 6 * 3_600_000  # 6h minimum total sleep
 
 # Recovery delta modifier — adjusts neuro profile when day-over-day recovery change is extreme
-RECOVERY_DELTA_THRESHOLD_SD = 1.5   # z-score must exceed this (not equal) to trigger
-RECOVERY_DELTA_NUDGE = 0.10         # Fixed weight added to target dimension
+RECOVERY_DELTA_THRESHOLD_SD = 1.5   # z-score must exceed this (not equal) to trigger (non-baseline states)
+RECOVERY_DELTA_NUDGE = 0.10         # Fixed weight added to target dimension (non-baseline states)
 RECOVERY_DELTA_EXEMPT_STATES = frozenset({"accumulated_fatigue", "peak_readiness"})
+
+# Continuous baseline scaling — baseline uses recovery delta direction to pick a point on the spectrum
+# z = -2 → calm/devotional, z = 0 → current baseline, z = +2 → high energy
+BASELINE_CALM_ANCHOR = {"para": 0.45, "symp": 0.15, "grnd": 0.40}
+BASELINE_ENERGY_ANCHOR = {"para": 0.05, "symp": 0.75, "grnd": 0.20}
+BASELINE_Z_CLAMP = 2.0
 TOKEN_EXPIRY_BUFFER_SECONDS = 300  # 5-minute buffer before refresh
 
 # ---------------------------------------------------------------------------
@@ -124,6 +130,10 @@ MIN_MATCH_FLOOR = 0.25  # Below this, log warning about insufficient coverage
 COHESION_POOL_SIZE = 60
 COHESION_MIN_SIMILARITY = 0.15
 COHESION_RELAXATION_STEP = 0.03
+
+# Recent anchors — guarantee recently-played songs in every playlist
+ANCHOR_RECENCY_DAYS = 90       # "recently played" = last_played within this many days
+ANCHOR_MAX_COUNT = 5           # max guaranteed anchor slots
 COHESION_RELAXATION_MAX = 3
 COHESION_WEIGHTS = {
     "genre_tags": 0.20, "mood_tags": 0.15, "bpm": 0.20,

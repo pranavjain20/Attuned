@@ -14,6 +14,8 @@ import sqlite3
 from typing import Any
 
 from config import (
+    ANCHOR_MAX_COUNT,
+    ANCHOR_RECENCY_DAYS,
     MAX_PLAYLIST_SIZE,
     MIN_MATCH_FLOOR,
 )
@@ -260,6 +262,46 @@ def compute_selection_scores(
 
 
 # ---------------------------------------------------------------------------
+# Recent anchors
+# ---------------------------------------------------------------------------
+
+def identify_anchors(
+    scored: list[tuple[dict, float, dict]],
+    date: str,
+    recency_days: int,
+    max_count: int,
+) -> list[int]:
+    """Identify anchor candidates: top-scored songs played within recency_days.
+
+    Returns list of indices into the scored list (already sorted by score descending).
+    """
+    from datetime import datetime as dt, timedelta
+
+    try:
+        ref_date = dt.strptime(date, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return []
+
+    cutoff = ref_date - timedelta(days=recency_days)
+    anchors: list[int] = []
+
+    for idx, (song, _score, _breakdown) in enumerate(scored):
+        if len(anchors) >= max_count:
+            break
+        last_played = song.get("last_played")
+        if not last_played:
+            continue
+        try:
+            lp_date = dt.strptime(last_played[:10], "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            continue
+        if lp_date >= cutoff:
+            anchors.append(idx)
+
+    return anchors
+
+
+# ---------------------------------------------------------------------------
 # Result building
 # ---------------------------------------------------------------------------
 
@@ -410,8 +452,20 @@ def select_songs(
     # Score and rank all songs (unified ranking, with freshness nudge)
     scored = compute_selection_scores(all_songs, neuro_profile, recent_playlist_uris)
 
+    # Identify recent anchors — songs played within ANCHOR_RECENCY_DAYS
+    anchor_indices = identify_anchors(
+        scored, date, ANCHOR_RECENCY_DAYS, ANCHOR_MAX_COUNT,
+    )
+    if anchor_indices:
+        anchor_names = [
+            f"'{scored[i][0].get('name', '?')}'" for i in anchor_indices
+        ]
+        logger.info("Anchors (%d): %s", len(anchor_indices), ", ".join(anchor_names))
+
     # Cohesion: seed-and-expand from top candidates
-    cohesion_indices, cohesion_stats = select_cohesive_songs(scored)
+    cohesion_indices, cohesion_stats = select_cohesive_songs(
+        scored, anchor_indices=anchor_indices if anchor_indices else None,
+    )
 
     # Check match floor on the best candidate
     if scored and scored[0][1] < MIN_MATCH_FLOOR:
