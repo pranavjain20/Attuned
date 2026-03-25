@@ -4,14 +4,14 @@ _Day 4b: Everything we tried, what worked, what didn't, and why. This is a detai
 
 ## What we were trying to do
 
-Attuned classifies every song in Pranav's Spotify library into one of three neurological buckets:
+Attuned classifies every song in the user's Spotify library into one of three neurological buckets:
 - **PARA** (parasympathetic) — calming music for when your body needs rest
 - **SYMP** (sympathetic) — energizing music for when you're in peak readiness
 - **GRND** (grounding) — moderate music for emotional regulation
 
 The classification uses a weighted formula that takes 7 properties of each song (BPM, energy, acousticness, instrumentalness, valence, mode, danceability) and produces three scores. The highest score wins.
 
-The goal: given a song, the system should assign the same neurological bucket that a human would. We built a 25-song test set — hand-labeled by Pranav across English pop (8 songs), popular Bollywood (8), and obscure Indian devotional/regional (9). Each song was labeled as low/low-mid/mid/mid-high/high energy, which maps to PARA/PARA/GRND/SYMP/SYMP.
+The goal: given a song, the system should assign the same neurological bucket that a human would. We built a 25-song test set — hand-labeled across English pop (8 songs), popular Bollywood (8), and obscure Indian devotional/regional (9). Each song was labeled as low/low-mid/mid/mid-high/high energy, which maps to PARA/PARA/GRND/SYMP/SYMP.
 
 ## Where we started: 48% accuracy (12/25)
 
@@ -139,7 +139,7 @@ Added a new `felt_tempo` column to the `song_classifications` database table.
 
 6. **Essentia's Western training bias is real and unfixable.** 4/5 English BPMs correct, 3/13 Indian BPMs correct. Tabla patterns, vocal ornaments, and non-Western rhythmic structures confuse the beat tracker. Even the neural TempoCNN model (trained on the same Western data) matched classical Essentia exactly.
 
-7. **No free BPM database covers Indian music.** Soundchats ($250/mo), GetSongBPM (Cloudflare-blocked), SongBPM.com (0% Bollywood accuracy), HuggingFace datasets (source: Spotify's deprecated Essentia-based API). Dead end.
+7. **No free BPM database covers Indian music.** Soundcharts (premium-only), GetSongBPM (Cloudflare-blocked), SongBPM.com (0% Bollywood accuracy), HuggingFace datasets (source: Spotify's deprecated Essentia-based API). Dead end.
 
 8. **Simple normalization beats complex algorithms when signal is weak.** RMS/0.35 (71% accuracy) beat every composite (weighted combinations of Loudness, P90, sigmoid) we tried. When individual components are ~70% accurate, combining noisy signals amplifies noise rather than canceling it.
 
@@ -159,7 +159,7 @@ Added a new `felt_tempo` column to the `song_classifications` database table.
 
 14. **Root cause analysis > parameter tuning.** After hitting 60%, we didn't keep tweaking sigmoid parameters. We examined each failing song individually and found 3 distinct, fixable root causes. This is how you go from "it mostly works" to "it works."
 
-15. **Test on a small set first, then scale.** We ran all 1360 songs through reclassification before validating on the 25-song test set. Should have done the 25 first, confirmed improvement, then scaled. The cost was small ($1.36) but the principle matters.
+15. **Test on a small set first, then scale.** We ran all 1360 songs through reclassification before validating on the 25-song test set. Should have done the 25 first, confirmed improvement, then scaled. The cost was small but the principle matters.
 
 ## What's running now
 
@@ -288,7 +288,7 @@ This is fundamentally different from the old approach. Instead of always averagi
 
 ### Also implemented: `recompute-scores` CLI command
 
-After discovering that every formula/blend parameter change required a full 1360-song LLM reclassification (~$1.36, ~55 minutes), we built a `recompute-scores` command that recomputes formula + ensemble scores from existing DB data with zero API calls. Takes 2 seconds. This enabled rapid iteration on the ensemble design.
+After discovering that every formula/blend parameter change required a full 1360-song LLM reclassification (~55 minutes), we built a `recompute-scores` command that recomputes formula + ensemble scores from existing DB data with zero API calls. Takes 2 seconds. This enabled rapid iteration on the ensemble design.
 
 ### Also implemented: `--reclassify` and `--force` flags
 
@@ -340,11 +340,11 @@ The LLM and formula together have the right answer for 21/25 songs. Only 4 songs
 
 22. **LLMs are nondeterministic even at temperature=0 when batch composition changes.** Shankara got para=0.8 in one run and para=0.6 in another, just from being in a different batch of 5 songs. This affects reproducibility. Accept ~0.1 variance in LLM scores as inherent noise.
 
-23. **Test on a small subset before running the full library.** We reclassified all 1360 songs ($1.36, 55 minutes) before validating on the 25-song test set. Should have reclassified just the 25 test songs first (~$0.05, 1 minute). The full run was needed eventually, but not for the initial validation.
+23. **Test on a small subset before running the full library.** We reclassified all 1360 songs (~55 minutes) before validating on the 25-song test set. Should have reclassified just the 25 test songs first (~1 minute). The full run was needed eventually, but not for the initial validation.
 
 ## Validation on fresh 34-song test set
 
-We tested on 34 songs Pranav hadn't labeled before (different from the 25 we tuned on). All 34 were songs without Essentia audio data — representing 98% of the real library.
+We tested on 34 songs not previously labeled (different from the 25 we tuned on). All 34 were songs without Essentia audio data — representing 98% of the real library.
 
 - Before LLM energy/acousticness: 56% (19/34)
 - After LLM energy/acousticness: 62-65% (varies by run, LLM nondeterminism)
@@ -369,9 +369,9 @@ If we give benefit of the doubt to boundary labels: **50/59 = 85%.**
 
 All 4 share one root cause: the song FEELS different than its measurable properties suggest.
 
-- **Just the Way You Are** (Bruno Mars): BPM=109, energy=0.8, valence=0.9. Every signal says energizing. But Pranav hears it as gentle. Personal perception.
+- **Just the Way You Are** (Bruno Mars): BPM=109, energy=0.8, valence=0.9. Every signal says energizing. But the listener hears it as gentle. Personal perception.
 - **Chori Kiya Re Jiya** (Sonu Nigam): BPM=100, valence=0.7. Moderate tempo but perceived as gentle. Melody softness doesn't show up in measured properties.
-- **Naina Da Kya Kasoor** (Amit Trivedi): BPM=70, energy=0.4. Every signal says calming. But Pranav hears emotional intensity and drive. That energy comes from vocal delivery, not tempo.
+- **Naina Da Kya Kasoor** (Amit Trivedi): BPM=70, energy=0.4. Every signal says calming. But the listener hears emotional intensity and drive. That energy comes from vocal delivery, not tempo.
 - **Tu Hi Meri Shab Hai** (Pritam): BPM=70, energy=0.3. Same pattern — slow and quiet by measurement, but emotionally intense.
 
 These are perception gaps, not algorithm gaps. Fixing them would require either a neural model trained on millions of labeled examples (learns features we can't name), or a personalization layer that learns individual perception over time.

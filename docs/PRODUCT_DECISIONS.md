@@ -33,10 +33,10 @@ Every non-obvious product decision made during development. The what, why, how, 
 ### Minimum meaningful listens: 3 → 5
 **What we noticed:** Paan Ki Dukaan had 3 perfect plays and ranked #20. But 3 data points isn't confidence — it's luck.
 **Decision:** Bump `MIN_MEANINGFUL_LISTENS` from 3 to 5.
-**Effect:** Pool shrank 963 → 669 songs, but every scored song has real signal. Top 10 approved by Pranav.
+**Effect:** Pool shrank 963 → 669 songs, but every scored song has real signal. Top 10 approved by the user.
 
 ### Engagement formula weights
-**Decision after iterating with Pranav:**
+**Decision after iterating:**
 ```
 log_play: 0.30, completion: 0.25, recent_ratio: 0.20, active_play: 0.15, skip_penalty: 0.10
 ```
@@ -192,7 +192,7 @@ A song with para=0.65, grnd=0.70 gets labeled "GRND" (counted wrong). But it STI
 - Added mood tags as 15% weight (semantic dimension orthogonal to audio)
 **Effect:** r=0.921 → 0.638. Krishna Das mantras correctly in fatigue playlists, Bollywood ballads in emotional processing playlists.
 
-### Unified ranking over pool splitting (Pranav's algorithm)
+### Unified ranking over pool splitting
 **What we tried:** Split "recent" (played <90 days) and "discovery" pools, rank each, merge.
 **Problem:** Mediocre recent song (rank #200 overall) beat excellent discovery song (rank #21).
 **Decision:** One ranked list. Walk it. First 5 recently-played songs become anchors. Fill remaining 15 from rest in order.
@@ -270,7 +270,7 @@ A song with para=0.65, grnd=0.70 gets labeled "GRND" (counted wrong). But it STI
 ## Day 9: Restorative Sleep Gate
 
 ### Restorative sleep overrides accumulated fatigue
-**What we noticed:** Today classified as accumulated fatigue (recovery 58%, 3 of last 5 days <60%). But last night's sleep was excellent: 4.1h deep+REM, 7.5h total, 92% efficiency. Pranav felt well-rested. The "Slow Down" playlist (95% parasympathetic, devotional, Hanuman Chalisa) didn't match how he felt.
+**What we noticed:** Today classified as accumulated fatigue (recovery below 60%, multi-day pattern). But last night's sleep was genuinely restorative — good deep+REM, high efficiency. The user felt well-rested. The "Slow Down" playlist (95% parasympathetic, devotional) didn't match how they felt.
 **Research we did:**
 - Sleep quality is the single strongest predictor of next-morning subjective state — coefficient 2.6x larger than reverse direction (PMC6456824)
 - Sleep efficiency is the strongest objective correlate of subjective sleep quality (Nature Scientific Reports 2024)
@@ -351,7 +351,7 @@ Replaces the 1.5 SD dead zone threshold. Non-baseline states keep their threshol
 - Classification merge warns on missing critical fields (BPM, energy)
 - Global Spotify rate limit handler with exponential backoff
 - `fetch_batch_metadata` fills ALL missing metadata, not just engaged songs
-- Spotify API lockout from unthrottled fallback fixed with 3-second delay between retries
+- Spotify API rate limit from unthrottled fallback fixed with 3-second delay between retries
 
 ### Onboarding pipeline
 **What we built:** `onboard` CLI command — single command for new users. Handles Spotify auth, library sync, extended history import, metadata fetch, LLM classification, Essentia analysis, score computation, and WHOOP sync in sequence.
@@ -375,7 +375,7 @@ Restoring correct Essentia energy made the grounding bias stronger (gaussian pea
 `recompute-scores` (2 seconds, no API calls) enabled testing 40+ parameter combos in the time one reclassification took. Always build the feedback loop first.
 
 ### Fix bugs before re-running pipelines
-The `--force` flag wiped Essentia data. Ran it twice knowing the bug existed instead of fixing first. Cost $1.40 and 2 hours. Always fix first, run second.
+The `--force` flag wiped Essentia data. Ran it twice knowing the bug existed instead of fixing first. Cost real money and hours. Always fix first, run second.
 
 ### Test on unseen data before declaring victory
 Tuned on 25 songs (72%). Fresh 34-song set: 56%. The tuning set was blind to a fundamental gap (missing Essentia for 98% of library).

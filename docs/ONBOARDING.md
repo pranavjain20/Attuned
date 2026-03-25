@@ -51,7 +51,7 @@ OPENAI_API_KEY=your_openai_key
 
 ## 2. Run OAuth Flows
 
-Each user needs to authorize their own WHOOP and Spotify accounts. Replace `<name>` with a short profile name (e.g., `komal`, `pranav`).
+Each user needs to authorize their own WHOOP and Spotify accounts. Replace `<name>` with a short profile name (e.g., `alex`, `jordan`).
 
 ```bash
 # Authorize WHOOP — opens browser, log in with the user's WHOOP account
@@ -99,16 +99,16 @@ python main.py --profile <name> onboard --history-dir /path/to/spotify-export
 
 ```bash
 # Full onboarding with extended history
-python main.py --profile komal onboard --history-dir ~/Desktop/spotify-export
+python main.py --profile <name> onboard --history-dir ~/Desktop/spotify-export
 
 # Without extended history
-python main.py --profile komal onboard
+python main.py --profile <name> onboard
 
 # Skip audio analysis (faster, use LLM-only classification)
-python main.py --profile komal onboard --skip-audio
+python main.py --profile <name> onboard --skip-audio
 
 # Resume after a failure
-python main.py --profile komal onboard --resume-from classify-songs
+python main.py --profile <name> onboard --resume-from classify-songs
 ```
 
 ---
@@ -194,7 +194,7 @@ The error message includes the resume command. Example:
 
 ```
   To resume:
-    python main.py --profile komal onboard --resume-from classify-songs
+    python main.py --profile <name> onboard --resume-from classify-songs
 ```
 
 ### WHOOP token expired

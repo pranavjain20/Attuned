@@ -2,7 +2,7 @@
 
 **Version:** 2.3
 **Date:** March 20, 2026
-**Author:** Pranav Jain
+**Author:** —
 **Status:** Day 5 complete. Intelligence layer operational. See docs/HOW_IT_WORKS.md for complete technical guide.
 
 ---
@@ -278,7 +278,7 @@ Three computed scores per song:
 - **WHOOP integration:** Custom thin client with httpx. Registered app, OAuth 2.0, direct API calls. ~100-150 lines. Full control, no dependency on unofficial library.
 - **Database:** SQLite. Single-user system on a laptop — zero setup, one file, Python has it built in. More than fast enough for the data volume here (tens of thousands of rows max). Migrate to Postgres later if this ever needs to support multiple users.
 - **Intelligence computations:** Plain Python + pandas + numpy. Rolling averages, trend slopes, ratio calculations — this is tabular math, and pandas is built for it. No pipeline frameworks, no workflow tools, just functions that take DataFrames and return results.
-- **Song classification:** OpenAI GPT-4o-mini first (have $5 in existing credits). Batch size of 5 songs per call, 0.0-1.0 scale for all properties, confidence field per song. Structured Outputs with `strict: true` for guaranteed valid JSON, Pydantic validation for range clamping. Switch to Anthropic API (Claude Sonnet) when credits run out — provider-agnostic wrapper makes switching a config change, not a rewrite.
+- **Song classification:** OpenAI GPT-4o-mini first. Batch size of 5 songs per call, 0.0-1.0 scale for all properties, confidence field per song. Structured Outputs with `strict: true` for guaranteed valid JSON, Pydantic validation for range clamping. Switch to Anthropic API (Claude Sonnet) as fallback — provider-agnostic wrapper makes switching a config change, not a rewrite.
 - **Playlist trigger:** Manual trigger first (run a command, get a playlist). WHOOP webhooks later for automatic morning generation.
 - **Audio analysis:** LLM classification only while library is under 500 songs. Essentia for precision after extended streaming history arrives and library grows.
 
@@ -360,7 +360,7 @@ Compute personal baselines: 30-day rolling LnRMSSD average, RHR average, typical
 
 ### Day 4: LLM Song Classification (679 songs)
 
-Build the LLM classification pipeline. Design the prompt for batches of 5 songs, returning structured JSON with BPM (exact integer), key, mode, energy, valence, acousticness, danceability, instrumentalness (all 0.0-1.0), plus mood_tags, genre_tags, and confidence ("high"/"medium"/"low"). Use Structured Outputs with `strict: true` for guaranteed valid JSON, Pydantic validation for 0.0-1.0 range clamping. Classify tier 1: 366 songs with 10+ meaningful listens (~74 calls). Classify tier 2: 313 songs with 5-9 meaningful listens (~63 calls). Total: ~136 calls, ~$0.68, well within budget. Build the neurological impact profiler — scores each song's parasympathetic activation potential, sympathetic activation potential, and emotional grounding potential based on its classified properties using the research-backed weight table.
+Build the LLM classification pipeline. Design the prompt for batches of 5 songs, returning structured JSON with BPM (exact integer), key, mode, energy, valence, acousticness, danceability, instrumentalness (all 0.0-1.0), plus mood_tags, genre_tags, and confidence ("high"/"medium"/"low"). Use Structured Outputs with `strict: true` for guaranteed valid JSON, Pydantic validation for 0.0-1.0 range clamping. Classify tier 1: 366 songs with 10+ meaningful listens (~74 calls). Classify tier 2: 313 songs with 5-9 meaningful listens (~63 calls). Total: ~136 calls, less than $1. Build the neurological impact profiler — scores each song's parasympathetic activation potential, sympathetic activation potential, and emotional grounding potential based on its classified properties using the research-backed weight table.
 
 **Testable:** 679 songs classified, top parasympathetic songs are slow/acoustic/calm, cost <$1.
 
@@ -541,4 +541,4 @@ attuned/
 - WHOOP access tokens expire after 1 hour — must request the `offline` scope to get a refresh token
 - Spotify playlist descriptions have a 300 character limit
 - Spotify audio features and recommendations endpoints are deprecated for new apps — do not attempt to use them
-- **LLM classification:** Batch 5 songs per call for optimal accuracy. 679 songs = ~136 calls, ~$0.68. Use Structured Outputs with `response_format: { type: "json_schema" }` and `strict: true` for guaranteed valid JSON. Pydantic validation for 0.0-1.0 range enforcement. Have $5 in OpenAI credits. Provider-agnostic wrapper so switching to Anthropic is a config change.
+- **LLM classification:** Batch 5 songs per call for optimal accuracy (~$0.01 per batch). Use Structured Outputs with `response_format: { type: "json_schema" }` and `strict: true` for guaranteed valid JSON. Pydantic validation for 0.0-1.0 range enforcement. Provider-agnostic wrapper so switching to Anthropic is a config change.

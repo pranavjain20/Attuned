@@ -8,7 +8,7 @@
 - [x] Write docs/RESEARCH.md with findings, formulas, and citations
 - [x] Update PRD to v2.0 (6 states, 0.0-1.0 scales, concrete thresholds, research-backed decisions)
 - [x] Rephase sprint for extended streaming history (PRD v2.1, CLAUDE.md, STATUS.md updated)
-- [ ] Pranav reads PRD v2.1 + RESEARCH.md
+- [ ] Review PRD v2.1 + RESEARCH.md
 - [x] Register WHOOP developer app
 - [x] Register Spotify developer app
 - [x] Set up .env with credentials
@@ -50,7 +50,7 @@
 - [x] spotify/engagement.py — 5-signal scoring with tuned weights (62 tests)
 - [x] db/schema.py — recent_play_ratio column + migration
 - [x] main.py — compute-engagement, dedup-songs CLI commands
-- [x] Iterative formula tuning with Pranav:
+- [x] Iterative formula tuning:
   - recent_play_ratio replaced last-played-date recency
   - clickrow + playbtn + remote as intentional (Alexa fix)
   - MIN_MEANINGFUL_LISTENS 3 → 5
@@ -59,7 +59,7 @@
 - [x] Staff auditor round 1: 6 findings, all fixed
 - [x] Staff tester round 2: 52 dedup + 6 engagement tests added
 - [x] Staff auditor round 2: 8 findings, all fixed
-- [x] Real data verified: 669 songs scored, top 10 approved by Pranav
+- [x] Real data verified: 669 songs scored, top 10 manually approved
 
 ## Day 3: WHOOP Personal Intelligence
 ### Implementation (DONE)
@@ -74,7 +74,7 @@
 - [x] Redesigned classifier: recovery-first 5-tier system (replaced weighted scoring)
 - [x] Renamed single_bad_night → poor_recovery across 8 files
 - [x] Fixed _is_debt_low threshold (mean - SD → mean), peak_readiness 25 → 47 days
-- [x] Validated on all 823 real recovery days, last 30 days spot-checked with Pranav
+- [x] Validated on all 823 real recovery days, last 30 days spot-checked manually
 - [x] Staff tester audit: 6 HIGH + 9 MEDIUM gaps found, all fixed
 - [x] Staff auditor review: 1 MUST FIX + 5 SHOULD FIX found, all fixed
 
@@ -115,7 +115,7 @@
 - [x] Staff engineer audit + staff tester audit — all findings fixed
 - [x] Confidence experiment: 25 songs × 3 approaches → rich context wins for obscure songs
 - [x] BPM strategy switch: LLM primary (was Essentia primary) — fixes octave errors
-- [x] Full library classified: 1360 songs, 0 failures, ~$1.36 cost
+- [x] Full library classified: 1360 songs, 0 failures
 - [x] 579 tests passing
 
 ### Known Accuracy Gaps (for Day 5 tuning)
@@ -159,7 +159,7 @@
 - [x] Decorrelated grounding formula: BPM 85→90, energy 0.35→0.40, instrumentalness flipped, acousticness gaussian, valence 0.45→0.55
 - [x] Integrated mood tags into profiler as 15% weight (semantic dimension orthogonal to audio)
 - [x] Widened state profile gaps: fatigue (0.95/0/0.05), physical (0.60/0/0.40) — gap 0.35 vs old 0.15
-- [x] Pool-based selection → unified ranking with recent anchors (Pranav's algorithm)
+- [x] Pool-based selection → unified ranking with recent anchors
 - [x] Variety penalty (0.3x multiplier) → freshness nudge (0.02 subtraction tiebreaker)
 - [x] Product evaluation: 0/140 weak matches, ~74% optimal, ~45% daily turnover
 - [x] Para↔Grnd correlation: 0.921 → 0.776
@@ -195,7 +195,7 @@
 - [x] Dry-run tested: baseline, fatigue, peak — all produce correct playlists
 - [x] 794 tests passing
 
-### Blocked on Spotify rate limit (~7 PM Mar 20)
+### Blocked on Spotify rate limit
 - [ ] Finish release_year backfill: `python main.py backfill-release-years`
 - [ ] Push first real playlist to Spotify: `python main.py generate`
 
@@ -228,19 +228,19 @@
 
 ## What's Done (Day 9)
 
-### Pranav backfill (steps 1-6)
+### Primary user backfill (steps 1-6)
 - [x] 1. `analyze-audio --force` — 1,350 songs analyzed, 0 failures
 - [x] 2. `recompute-scores` — 1,346 re-merged from essentia_* columns
 - [x] 3. `validate-classifications` — 983 flagged (72%, mostly acousticness gaps)
-- [x] 4. `classify-songs --reclassify` — 1,360 reclassified, 0 failures, ~$1.35
+- [x] 4. `classify-songs --reclassify` — 1,360 reclassified, 0 failures
 - [x] 5. `recompute-scores` — 1,360 recomputed
 - [x] 6. `validate-classifications` — **zero flags** (reclassification fixed everything)
 - [x] 7. No code to commit (DB is gitignored)
 
-### Komal onboarding (steps 10-12)
-- [x] 10. `sync-spotify --profile komal` — 752 liked + 3,816 top tracks, 2,504 engagement-scored
-- [x] 12. `classify-songs --profile komal` — 3,953 classified, 0 failures, ~$3.50
-- [x] 13. `generate --profile komal --dry-run` — "Fuel Up", 20 tracks (baseline, no WHOOP sync)
+### Second user onboarding (steps 10-12)
+- [x] 10. `sync-spotify --profile <name>` — liked + top tracks synced, engagement-scored
+- [x] 12. `classify-songs --profile <name>` — classified, 0 failures
+- [x] 13. `generate --profile <name> --dry-run` — "Fuel Up", 20 tracks (baseline, no WHOOP sync)
 
 ### System improvements
 - [x] Restorative sleep gate on accumulated fatigue classifier (committed, pushed)
@@ -260,31 +260,31 @@
   - Classification merge warns on missing critical fields
 - [x] 974 tests passing, 7 commits pushed
 
-### Komal onboarding — additional
-- [x] `sync-whoop-history --profile komal` — 485 recovery days (up from 482), up to 2026-03-24
+### Second user onboarding — additional
+- [x] `sync-whoop-history --profile <name>` — full recovery history synced
 
 ---
 
-## Blocked (Spotify API lockout until ~Mar 25, 5:30 PM)
+## Blocked (Spotify API rate limit)
 
-Both profiles hit 19-hour Spotify rate limit lockout. Batch `/v1/tracks` endpoint returns 403 (dev mode app restriction), fallback to individual calls was unthrottled and triggered escalating lockout. Now fixed with 3-second delay in fallback path.
+Both profiles hit Spotify rate limit. Batch `/v1/tracks` endpoint returns 403 (dev mode app restriction), fallback to individual calls was unthrottled and triggered escalating rate limit. Now fixed with 3-second delay in fallback path.
 
-### When lockout clears — run these:
-- [ ] `python main.py sync-spotify` — fill Pranav's 3,068 missing release_years/duration_ms
-- [ ] `python main.py --profile komal sync-spotify` — fill Komal's 5,248 missing metadata
+### When rate limit clears — run these:
+- [ ] `python main.py sync-spotify` — fill missing release_years/duration_ms
+- [ ] `python main.py --profile <name> sync-spotify` — fill second user's missing metadata
 
 ---
 
 ## What's Left
 
-### Komal — full pipeline (sequential, after lockout clears)
-- [ ] Re-run `sync-spotify --profile komal` to fill missing metadata
-- [ ] `download-audio --profile komal` (~2-4 hours, yt-dlp)
-- [ ] `analyze-audio --profile komal`
-- [ ] `recompute-scores --profile komal` (NO reclassification needed — prompt is already correct)
-- [ ] `generate --profile komal` — first real playlist (only after full pipeline complete)
+### Second user — full pipeline (sequential, after rate limit clears)
+- [ ] Re-run `sync-spotify --profile <name>` to fill missing metadata
+- [ ] `download-audio --profile <name>` (~2-4 hours, yt-dlp)
+- [ ] `analyze-audio --profile <name>`
+- [ ] `recompute-scores --profile <name>` (NO reclassification needed — prompt is already correct)
+- [ ] `generate --profile <name>` — first real playlist (only after full pipeline complete)
 
-### Pranav — after lockout
+### Primary user — after rate limit
 - [ ] Re-run `sync-spotify` to fill missing metadata
 - [ ] 12 songs still LLM-only (no YouTube audio) — low priority, marginal impact
 

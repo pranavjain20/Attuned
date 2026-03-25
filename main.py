@@ -49,7 +49,7 @@ def _extract_profile() -> str | None:
         return None
     idx = sys.argv.index("--profile")
     if idx + 1 >= len(sys.argv):
-        print("Error: --profile requires a name (e.g. --profile sister)")
+        print("Error: --profile requires a name (e.g. --profile myprofile)")
         sys.exit(1)
     profile = sys.argv[idx + 1]
     # Remove --profile and its value from argv

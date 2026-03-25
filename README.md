@@ -19,11 +19,11 @@ Calming your nervous system · Bollywood · Melancholy, Reflective
 
 ## Why This Exists
 
-Wearables have an insight-to-action gap. WHOOP is excellent at diagnosis — it tells you your HRV is down, your deep sleep was short, your resting heart rate crept up. But then what? You can't will your nervous system into recovery. You can't undo accumulated fatigue by reading a dashboard.
+Talk to anyone who wears a WHOOP, Oura, or Garmin. They see the data, they understand it broadly, but they don't take a specific action because of it on any given day. Recovery is 42% — now what? Sleep better tonight? You were already trying. Reduce stress? Sure, but how, specifically, right now? The insight is real. The actionable step is missing. This is the universal wearable problem.
 
-Music directly modulates the autonomic nervous system — the same system WHOOP measures. Slow tempo increases parasympathetic activity and raises HRV (Bretherton et al., 2019). Fast tempo activates the sympathetic response (Bernardi et al., 2006). Acoustic instruments reduce cortisol (Thoma et al., 2013). Familiar music amplifies the effect — 74.8% of people respond more strongly to their own music (European Heart Journal, 2024).
+Music is the only intervention that doesn't have this friction. You were already going to listen — on your commute, at your desk, before a workout. It requires zero behavior change, zero willpower, zero extra time. And it's not a metaphor: the autonomic nervous system that WHOOP reads is the same system that music modulates. Slow tempo measurably increases parasympathetic activity. Fast tempo activates the sympathetic response. These are the same neurons, the same pathways, measured by the same metrics.
 
-And critically: people already listen to music every day. No behavior change required. Attuned doesn't ask you to do anything new. It makes something you already do work harder for you.
+A generic calming app feels like medicine — you use it when you "should" and abandon it when you forget. Attuned uses YOUR songs, the ones you've played dozens of times, because the research is clear: familiar music triggers significantly stronger physiological responses than unfamiliar music (European Heart Journal, 2024). You're not doing a health protocol. You're listening to a playlist you genuinely want to hear. The intervention is invisible — and that's why it sticks.
 
 ---
 

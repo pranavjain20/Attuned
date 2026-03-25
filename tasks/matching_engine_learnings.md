@@ -4,7 +4,7 @@ _Day 5b: Everything we tried, what worked, what didn't, and why. This is a detai
 
 ## What we were trying to do
 
-Build the matching engine: given a physiological state (from WHOOP), select 20 songs from Pranav's 1,360 classified songs that have the right neurological properties for what his body needs. The engine sits between the state classifier (Day 3) and playlist creation (Day 6).
+Build the matching engine: given a physiological state (from WHOOP), select 20 songs from the user's 1,360 classified songs that have the right neurological properties for what their body needs. The engine sits between the state classifier (Day 3) and playlist creation (Day 6).
 
 The starting plan was to replace the v1 range-box engine (Day 5a) with neuro-score dot product matching, since we already computed para/symp/grnd scores for every song in Day 4.
 
@@ -75,11 +75,11 @@ Result: 1,021/1,360 songs (75%) had |para − grnd| ≤ 0.15. The dot product li
 
 For a typical top-20 candidate: `total = neuro_match × 0.6375 + 0.250`. The 0.250 constant floor (staleness + variety, both maxed) meant only 8% of the total score actually varied. Rankings decided by tiny differences in a compressed band.
 
-## v3: pool-based selection (Pranav's insight)
+## v3: pool-based selection
 
 ### The product insight
 
-Pranav: "Maybe, if there are 20 songs, you can give 5 songs that are recent so that it doesn't seem extremely random, but not more than 5."
+The insight: "Maybe, if there are 20 songs, you can give 5 songs that are recent so that it doesn't seem extremely random, but not more than 5."
 
 This reframed staleness from a scoring signal to a structural constraint. Instead of weighting staleness in the formula, split selection into pools:
 - Score all songs by `neuro_match × confidence × variety` (no staleness)
@@ -169,9 +169,9 @@ peak_readiness:               para=0.00  symp=0.90  grnd=0.10  (was 0.00/0.85/0.
 
 Gap between fatigue and physical recovery: 0.35 (was 0.15).
 
-## Reframing: the right evaluation questions (Pranav's insight)
+## Reframing: the right evaluation questions
 
-After implementing all three fixes, we were evaluating with the wrong metrics (overlap %, unique song count). Pranav reframed to the three questions that actually matter:
+After implementing all three fixes, we were evaluating with the wrong metrics (overlap %, unique song count). The right reframing was to the three questions that actually matter:
 
 1. **Accuracy:** Given a state, do the selected songs have the right neurological properties?
 2. **Optimality:** Are these the BEST songs from the entire 1,360 for that state?
@@ -179,7 +179,7 @@ After implementing all three fixes, we were evaluating with the wrong metrics (o
 
 This shifted focus from inter-state overlap (an internal metric) to per-state quality (the user experience).
 
-## v4: unified ranking (Pranav's algorithm)
+## v4: unified ranking
 
 ### The problem with pool-based selection
 
@@ -187,7 +187,7 @@ The pool approach split songs into "recent" and "discovery" pools, ranked each i
 
 Optimality: only 40-65% of theoretically ideal songs captured.
 
-### Pranav's algorithm
+### The algorithm
 
 "You pick the top n songs that are objectively the best. In that list, you pick the ones that are the five most recent but also the highest up. Rank number nine might be a recent song."
 
@@ -208,11 +208,11 @@ Key difference: recent songs only make the cut if they're already highly ranked.
 
 ### Why the old variety penalty was wrong
 
-The old penalty (0.3x for yesterday's songs) was a sledgehammer. A great song scoring 0.9 became 0.27, losing to mediocre songs at 0.35. Pranav questioned the premise: if these are the best songs for baseline, why give worse songs just because you heard them yesterday?
+The old penalty (0.3x for yesterday's songs) was a sledgehammer. A great song scoring 0.9 became 0.27, losing to mediocre songs at 0.35. The question was: if these are the best songs for baseline, why give worse songs just because you heard them yesterday?
 
 ### The right framing
 
-Pranav: "For two songs that are almost the same and you've already played one yesterday, I'd rather want the other one. But it shouldn't hit into wrong songs."
+The insight: "For two songs that are almost the same and you've already played one yesterday, I'd rather want the other one. But it shouldn't hit into wrong songs."
 
 Variation should be a **tiebreaker**, not a penalty. Among equally-good songs, prefer the one not in yesterday's playlist.
 
@@ -265,7 +265,7 @@ Selection = unified ranking, up to 5 recent anchors, freshness nudge for tiebrea
 
 ### Key learnings
 
-29. **The right evaluation metric matters more than the algorithm.** We spent hours optimizing overlap % and unique song count. Pranav reframed to accuracy/optimality/variation — metrics that map to user experience — and the picture changed completely.
+29. **The right evaluation metric matters more than the algorithm.** We spent hours optimizing overlap % and unique song count. Reframing to accuracy/optimality/variation — metrics that map to user experience — changed the picture completely.
 
 30. **Staleness is a structural constraint, not a scoring signal.** Weighting staleness in the formula (additive) compressed dynamic range. Separating it into a pool constraint (up to 5 recent) preserved score discrimination.
 
@@ -301,9 +301,9 @@ Improve input accuracy for all 1,360 songs. Before: only 33 had Essentia-measure
 | Title-match fallback (no duration check) | +33 | For songs where YouTube only has music videos (different length) |
 | **Final** | **1,348** | **99.1% of library** |
 
-### The --force bug (cost $1.40 and 2 hours)
+### The --force bug (cost real money and 2 hours)
 
-`analyze-audio --force` used `upsert_song_classification()` which does a full row replacement. This wiped LLM data (valence, mood_tags, genre_tags, raw_response) for every song Essentia touched. Required a full LLM reclassification ($0.70, ~1 hour) to restore.
+`analyze-audio --force` used `upsert_song_classification()` which does a full row replacement. This wiped LLM data (valence, mood_tags, genre_tags, raw_response) for every song Essentia touched. Required a full LLM reclassification (~1 hour) to restore.
 
 **Made this mistake TWICE** — ran --force knowing the bug existed the second time instead of fixing it first. The fix was 10 lines (targeted UPDATE instead of full upsert). Should have fixed the code first, then re-run.
 
@@ -337,7 +337,7 @@ Improve input accuracy for all 1,360 songs. Before: only 33 had Essentia-measure
 
 ### Key learnings
 
-36. **Fix the bug BEFORE re-running the broken code.** Ran --force with a known data-wiping bug, twice. Cost $1.40 and 2 hours. The fix was 10 lines that should have come first.
+36. **Fix the bug BEFORE re-running the broken code.** Ran --force with a known data-wiping bug, twice. Cost real money and 2 hours. The fix was 10 lines that should have come first.
 
 37. **--ignore-errors is essential for yt-dlp search.** One blocked video kills the entire search without it. This was the biggest unlock for the 74 "unfindable" songs — they were findable all along, just behind a blocked video in the search results.
 

@@ -339,7 +339,7 @@ Spotify's audio features API is deprecated for new apps — we can't get BPM, en
 
 **How it works:** We send batches of 5 songs to the LLM with a structured prompt. For each song, it returns: BPM (exact integer), key, mode, energy (0.0-1.0), valence (0.0-1.0), acousticness (0.0-1.0), danceability (0.0-1.0), instrumentalness (0.0-1.0), mood tags, genre tags, and a confidence rating ("high"/"medium"/"low").
 
-**Why batches of 5:** Quality drops significantly above 10 songs per batch. At 5, the model gives each song adequate attention. 679 songs = ~136 calls, ~$0.68 total.
+**Why batches of 5:** Quality drops significantly above 10 songs per batch. At 5, the model gives each song adequate attention. Cost scales linearly at ~$0.01 per batch.
 
 **Accuracy varies by property and song popularity:**
 
@@ -765,7 +765,7 @@ Every relaxation is logged — the playlist reasoning notes what was relaxed and
 - Compute the personal standard deviation of consecutive-day recovery deltas from the 30-day baseline window
 - If the delta's z-score exceeds 1.5 SD: nudge. If not: no change.
 
-The threshold is personal. Pranav's recovery delta SD is ~25.4, so a significant change for him is ~38+ points. Komal's will be different based on her data.
+The threshold is personal. Each user's recovery delta SD will differ — for example, one user's SD might be ~25 (significant change = ~38+ points) while another's could be very different based on their data.
 
 **What the nudge does:**
 - Positive jump (z > 1.5 SD) → add 0.10 to sympathetic weight (more energy)

@@ -29,7 +29,7 @@
 - Both `get_songs_needing_llm` queries updated to include release_year
 
 ### Playlist Generation (dry-run tested)
-- State: Baseline (Recovery 59%, HRV 43ms)
+- State: Baseline
 - 20 tracks selected, mean cohesion 0.612, dominant genre: Bollywood
 - Era range with full-data pool: 2009–2018 (tight 2010s cluster)
 
@@ -81,4 +81,4 @@ Extended history ingestion, WHOOP/Spotify APIs, schema, 33K records.
 
 - WHOOP: registered, OAuth working, full history synced
 - Spotify: registered, OAuth working, library synced
-- OpenAI: ~$0.60 credits remaining
+- OpenAI: credits available

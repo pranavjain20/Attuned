@@ -19,7 +19,7 @@ Single-user, runs locally. Not a company — a personal tool.
 
 ## Session Protocol
 
-- On session start: read STATUS.md, tell Pranav what needs review and what's next
+- On session start: read STATUS.md, report what needs review and what's next
 - On session end: update STATUS.md with completed work, blockers, next steps
 - Track tasks in tasks/todo.md
 - Log lessons learned in tasks/lessons.md
@@ -31,7 +31,7 @@ Single-user, runs locally. Not a company — a personal tool.
 - **WHOOP:** Custom thin client (registered app, OAuth 2.0, direct API calls with httpx)
 - **Spotify:** Spotipy (OAuth, library access, playlist creation)
 - **Computations:** pandas + numpy (rolling averages, trend slopes, ratios)
-- **Song Classification:** OpenAI GPT-4o-mini first ($5 credits), then Anthropic Claude Sonnet. Provider-agnostic wrapper.
+- **Song Classification:** OpenAI GPT-4o-mini first, then Anthropic Claude Sonnet. Provider-agnostic wrapper.
 - **Audio Analysis:** Essentia (later, when library exceeds 500 songs)
 - **Trigger:** Manual CLI first, WHOOP webhook later
 
@@ -107,7 +107,7 @@ If fewer than 14 days of HRV data exist, returns `insufficient_data` — cannot 
 - **WHOOP tokens:** Expire after 1 hour — must use offline scope for refresh tokens
 - **WHOOP pagination:** 25 records per page using nextToken
 - **WHOOP timestamps:** ISO 8601 with timezone offsets — careful date derivation
-- **LLM classification:** Batch 5 songs per call, 679 songs = ~136 calls, ~$0.68. Provider-agnostic wrapper so switching OpenAI → Anthropic is a config change.
+- **LLM classification:** Batch 5 songs per call. Cost scales linearly — roughly ~$0.01 per batch of 5 songs. Provider-agnostic wrapper so switching OpenAI → Anthropic is a config change.
 - **Each playlist is a new dated playlist** — not overwriting a standing one. Name includes date + detected state. Description includes reasoning.
 
 ## Key Concepts
@@ -136,7 +136,7 @@ If fewer than 14 days of HRV data exist, returns `insufficient_data` — cannot 
 
 - **WHOOP:** developer.whoop.com — registered app (client_id + client_secret)
 - **Spotify:** developer.spotify.com — registered app
-- **OpenAI:** platform.openai.com — $5 existing credits (song classification)
+- **OpenAI:** platform.openai.com — credits for song classification
 - **Anthropic:** console.anthropic.com — fallback when OpenAI credits run out
 
 ## Code Quality Philosophy
@@ -158,7 +158,7 @@ The goal is code that a great engineer would enjoy reading. Not clever code, not
 
 IMPORTANT: The data pipeline is the foundation. If WHOOP data is parsed wrong, baselines are off, or song classifications are inaccurate, the playlists will be meaningless. No hacks. No shortcuts. No "good enough for now." Every layer must be correct before building on top of it.
 
-YOU MUST do the end-of-day audit automatically. Pranav should never have to ask "did you check everything?" — that check is your job, every time.
+YOU MUST do the end-of-day audit automatically. The user should never have to ask "did you check everything?" — that check is your job, every time.
 
 ### Write a Little, Test a Little
 
@@ -202,7 +202,7 @@ After writing code, switch to reviewer mindset. Ask: "If a staff engineer review
 - If something doesn't work, find the root cause. Don't add workarounds.
 - If a test fails, understand WHY before fixing it. Don't just tweak until it passes.
 - If you're stuck, stop and re-plan rather than forcing a brittle solution.
-- Ask Pranav if genuinely unsure — a 30-second question beats an hour of wrong-direction work.
+- Ask if genuinely unsure — a 30-second question beats an hour of wrong-direction work.
 
 ### Verification
 
