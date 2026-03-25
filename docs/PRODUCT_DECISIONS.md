@@ -439,29 +439,72 @@ This is the most significant insight from building Attuned: **WHOOP's recovery s
 
 ---
 
-## Anchor Vibe Outlier Detection — Multi-Dimensional Coherence Check
+## Anchor Vibe Outlier Detection — When a Song Doesn't Belong Despite Matching on Paper
 
-### The problem
-G.O.A.T. (Punjabi party, energy 0.83, dance 0.90, acoustic 0.10) was landing in a warm Bollywood cluster (avg energy 0.40, dance 0.58, acoustic 0.47). Anchors were unconditionally pre-loaded into cohesion — no check on whether they actually fit the cluster's sonic character.
+### The observation
+
+Today's playlist ("Stay Sharp", baseline leaning slightly calm) had 19 warm melodic songs — Mast Magan, Bulleya, Raataan Lambiyan, Humsafar — and then G.O.A.T. by Diljit Dosanjh. Punjabi party banger. It sounded wrong.
+
+The data confirmed the intuition. G.O.A.T.'s properties vs the cluster:
+
+| | G.O.A.T. | Cluster average | Gap |
+|---|---|---|---|
+| Energy | 0.83 | 0.40 | +2.9 SD |
+| Danceability | 0.90 | 0.58 | +2.7 SD |
+| Acousticness | 0.10 | 0.47 | -2.0 SD |
+
+G.O.A.T. was the ONLY song in the playlist that was an outlier on 3 dimensions simultaneously. No other song exceeded 2. This is the quantifiable difference: being off on one dimension is variety. Being off on two is unusual. Being off on all three vibe dimensions means the song sounds fundamentally different — it's a different genre of feel, not just variation.
+
+### Why it got through in the first place
+
+G.O.A.T. got in as a recently-played anchor (guaranteed slot). But even through normal cohesion, it survived because:
+
+1. **BPM match was perfect.** G.O.A.T. is BPM=89. Mast Magan is also BPM=89. That perfect match contributed 0.20 to similarity on its own.
+2. **Era matched.** Both 2010s-2020s. Another 0.12.
+3. **Genre partially overlapped.** Punjabi/hip-hop vs Bollywood/pop share some tags.
+
+Combined: 0.37 total similarity despite zero overlap on how the music FEELS. The cohesion threshold was 0.15. BPM + era alone got it past the gate.
+
+The root cause: cohesion weights gave 75% to category dimensions (genre, mood, BPM, era) and only 25% to vibe dimensions (energy, acousticness, danceability, valence). Energy at 10%, acousticness at 5%, danceability at 5% — even scoring 0.0 on all three, the maximum penalty was only 0.20. Not enough to override BPM.
+
+### The vibe gap is quantifiable
+
+Computed average vibe similarity (energy + acousticness + danceability) for G.O.A.T. vs cluster songs, and cluster songs vs each other:
+
+- **G.O.A.T. → cluster:** avg vibe similarity 0.055 - 0.149 (mean ~0.08)
+- **Cluster → cluster:** avg vibe similarity 0.622 - 0.934 (mean ~0.77)
+
+A 10x gap. The songs that belong together have 0.62+ vibe similarity. G.O.A.T. has 0.08.
 
 ### What was tried and failed
-1. **Weight rebalancing** (shift BPM/era weight to energy/dance/acoustic) — didn't work because identical BPM (89 vs 89) created an unbreakable similarity lifeline.
-2. **Ratio-based anchor threshold** (75% of cluster mean) — too aggressive, dropped 4 of 5 anchors including songs the user liked.
-3. **2-dimension outlier threshold** — dropped devotional songs in fatigue playlists (correct songs, wrong to drop).
+
+**Attempt 1: Rebalance cohesion weights.** Shifted weight from BPM/era to energy/dance/acoustic. Didn't work. G.O.A.T. and Mast Magan both BPM=89 — that perfect match contributed 0.15+ on its own. Even with reduced BPM weight, the similarity stayed above 0.28 (well above the 0.15 threshold). The problem wasn't weight balance — a single dimension match was a lifeline that no rebalancing could cut.
+
+**Attempt 2: Ratio-based anchor threshold (75% of cluster mean).** The idea: if an anchor's average similarity to the cluster is below 75% of the cluster's internal mean, drop it. The cluster mean was 0.667, so the threshold was 0.500. Too aggressive — dropped 4 of 5 anchors in baseline, including Uff Teri Adaa (0.370, ratio 0.55) and Waiting For Love (0.365, ratio 0.55) which the user was happy with. Tried 0.55 — still dropped Move, I Ain't Worried, and Bernie's Chalisa (a devotional song that should absolutely be in a fatigue playlist). The ratio approach can't distinguish "slightly different but fine" from "fundamentally doesn't belong."
+
+**Attempt 3: 2-dimension vibe outlier.** Drop anchors that are >1.5 SD from cluster mean on 2+ vibe dimensions. Better concept, but dropped 3 devotional anchors in the fatigue playlist (Bernie's Chalisa, Shiv Kailash, Hanuman Chalisa — outliers on 2 dimensions because they're extremely calm in a cluster that includes some moderate-energy Bollywood). These are exactly the songs that SHOULD be in a fatigue playlist. The 2-dim threshold can't distinguish "extreme in the right direction" from "extreme in the wrong direction."
 
 ### What worked
+
 Two complementary mechanisms:
-- **Vibe hard cap:** Pairwise similarity capped at 0.30 when avg energy+acoustic+dance similarity < 0.15. Prevents vibe-incompatible songs from building false cohesion through other dimensions.
-- **3-dimension outlier detection:** Anchors only dropped when outlier on ALL THREE vibe dimensions (energy, acousticness, danceability — each >1.5 SD from cluster mean). G.O.A.T. was the only song at 3 dims. Devotional songs in fatigue were at 2 dims — kept.
 
-### Why it works
-Single-dimension outliers are normal (variety). Two-dimension outliers are uncommon but acceptable. Three-dimension outliers mean the song sounds fundamentally different — different genre of feel, not just variation within a cluster.
+**1. Vibe hard cap (pairwise level).** When the average energy + acousticness + danceability similarity between two songs drops below 0.15, cap total pairwise similarity at 0.30 — regardless of how well BPM, genre, or era match. Same pattern as the era hard cap. This prevents vibe-incompatible songs from building false cohesion through category dimensions.
 
-### Testing
-- **Baseline:** G.O.A.T. dropped (correct).
-- **Fatigue:** Devotional songs retained — dropped as anchor but score 1.000 on neuro, still make playlist through normal scoring.
-- **Peak:** No drops.
-- **Yesterday's baseline:** No drops.
+**2. 3-dimension anchor outlier (cluster level).** An anchor is only dropped when it's an outlier on ALL THREE vibe dimensions (energy AND acousticness AND danceability, each >1.5 SD from cluster mean). G.O.A.T. was the only song at 3 dimensions across all tested states. Devotional songs in fatigue playlists were at 2 dimensions — kept as anchors. And even if an anchor loses guaranteed status, it can still make the playlist through normal neuro scoring if it genuinely fits (Bernie's Chalisa scored 1.000 on fatigue neuro match — it made the playlist without anchor help).
+
+### Testing across states
+
+| State | Anchors | Dropped | Correct? |
+|---|---|---|---|
+| Baseline (today) | 5 | G.O.A.T. (3-dim outlier) | Yes — party banger in calm cluster |
+| Baseline (yesterday) | 5 | None | Yes — all fit the energetic cluster |
+| Fatigue (Mar 21) | 5 | Bernie's Chalisa (3-dim, but still makes playlist via score) | Yes — lost anchor status but earned its spot |
+| Peak (Mar 22) | 5 | None | Yes — all high-energy, fits peak cluster |
 
 ### The deeper insight
-Cohesion weights were fine for category matching (genre, era, BPM) but underweighted for vibe matching (energy, acousticness, danceability). The vibe hard cap addresses pairwise similarity. The outlier detection addresses cluster-level fit. Both were needed — one without the other left gaps.
+
+The cohesion system has two layers that serve different purposes:
+- **Category dimensions** (genre, mood, BPM, era) define what the music IS — Bollywood vs Western, fast vs slow, old vs new
+- **Vibe dimensions** (energy, acousticness, danceability) define how the music FEELS — quiet acoustic vs loud electronic, danceable vs still, intimate vs produced
+
+Both matter for coherence, but either can be a dealbreaker. A 1999 Bollywood song in a 2015 cluster is jarring (era gap — handled by era hard cap). A party banger in an acoustic ballad cluster is jarring (vibe gap — now handled by vibe hard cap + outlier detection). The system needs hard floors on both, not just weights that can be overridden by strong matches on other dimensions.
