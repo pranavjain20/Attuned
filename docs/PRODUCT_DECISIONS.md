@@ -388,3 +388,51 @@ Tuned on 25 songs (72%). Fresh 34-song set: 56%. The tuning set was blind to a f
 ## WHOOP Insights
 
 See [WHOOP_INSIGHTS.md](WHOOP_INSIGHTS.md) for the full research and analysis on where WHOOP's recovery score diverges from subjective experience, and how Attuned addresses the gap.
+
+---
+
+## Sleep Quality Dampener — Recovery Delta Is Not Enough
+
+### The observation
+
+Mar 25: Recovery 83% (HRV 55ms, +25pp delta from yesterday). System's continuous baseline scaling leaned hard toward energy (z=0.9). But sleep was 6.9h with only 2.8h deep+REM — both below personal baseline means (deep 1.3h vs mean 1.5h, REM 1.4h vs mean 1.7h). The user didn't feel as energetic as 83% suggests.
+
+Mar 24 (day before): Recovery 58% but sleep was 8.1h with 4.1h deep+REM — well above personal means. User felt fresher on the 58% day than the 83% day.
+
+### The hypothesis
+
+Recovery delta is HRV-driven. HRV is a biomarker of autonomic balance, not a direct cause of how you feel (Laborde 2017, Thayer 2012). HRV can rebound overnight while sleep architecture stays poor (Grimaldi 2019 — HRV rebounded during recovery sleep but SWS did not). When recovery delta says "energy up" but sleep says "you didn't actually rest well," the system was trusting the wrong signal.
+
+### The research
+
+Four parallel research agents investigated:
+
+1. **Sleep-recovery mismatch:** HRV and sleep architecture recover through independent mechanisms. Sleep architecture is a better predictor of subjective state (Vitale 2015: deep sleep % predicted wellness more strongly than HRV; Hynynen 2011: HRV-subjective recovery correlation only r=0.2-0.3).
+
+2. **WHOOP algorithm:** Recovery is ~85% HRV-driven (Marco Altini, Rob ter Horst independent analyses). Sleep stage composition does NOT directly feed into the score — only total duration vs need. Architecture deficits are invisible.
+
+3. **HRV and feeling:** HRV is downstream (good sleep → high HRV, not high HRV → feel good). High HRV + feel terrible: documented in overtraining (Plews 2013), alcohol, illness onset. Low HRV + feel great: post-exercise, excitement, good sleep despite autonomic stress.
+
+4. **What determines how you feel (hierarchy):** Sleep architecture > sleep continuity > circadian alignment > cortisol awakening response > HRV. This hierarchy is consistent across multiple studies.
+
+### What we changed
+
+Added continuous sleep quality z-score as a second input to baseline profile scaling. Sleep quality is computed from actual deep/REM durations relative to personal baselines — not binary deficit/adequate flags.
+
+**The blend:** `z_effective = 0.5 * z_recovery + 0.5 * z_sleep`
+
+When recovery delta and sleep quality agree, the signal is reinforced. When they conflict, they partially cancel — the playlist stays closer to neutral instead of committing to a direction the user doesn't feel.
+
+### The before/after
+
+**Today (recovery 83%, mediocre sleep):**
+- Before dampener: z=0.9 → para=0.11, symp=0.59, grnd=0.30 (strong energy lean)
+- After dampener: z_eff=0.1 → para=0.14, symp=0.52, grnd=0.34 (near-neutral, honest)
+
+**Yesterday (recovery 58%, great sleep):**
+- Before dampener: z=0.7 → para=0.11, symp=0.59, grnd=0.30
+- After dampener: z_eff=0.8 → para=0.11, symp=0.60, grnd=0.29 (reinforced energy — correct)
+
+### Why this matters
+
+This is the most significant insight from building Attuned: **WHOOP's recovery score optimizes for autonomic readiness, but playlists should optimize for subjective state. These overlap most of the time, but when they diverge, sleep architecture is the better predictor of how someone actually feels.** The sleep quality dampener ensures the system respects both signals rather than blindly following HRV.
