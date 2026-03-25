@@ -17,8 +17,10 @@ from config import (
     COHESION_RELAXATION_MAX,
     COHESION_RELAXATION_STEP,
     COHESION_WEIGHTS,
+    ERA_HARD_CAP_SIMILARITY,
     ERA_SIGMA_BY_GENRE,
     ERA_SIGMA_DEFAULT,
+    ERA_SIM_FLOOR,
     MAX_PLAYLIST_SIZE,
     MIN_PLAYLIST_SIZE,
 )
@@ -106,6 +108,9 @@ def compute_pairwise_similarity(song_a: dict[str, Any], song_b: dict[str, Any]) 
     """Weighted similarity between two songs across all cohesion dimensions.
 
     Returns 0.0-1.0. Uses COHESION_WEIGHTS for dimension weighting.
+    When era similarity is below ERA_SIM_FLOOR, caps total similarity at
+    ERA_HARD_CAP_SIMILARITY — production era gaps are more jarring than
+    any other dimension can compensate for.
     """
     w = COHESION_WEIGHTS
     score = 0.0
@@ -116,9 +121,12 @@ def compute_pairwise_similarity(song_a: dict[str, Any], song_b: dict[str, Any]) 
         song_a.get("mood_tags"), song_b.get("mood_tags"))
     score += w["bpm"] * compute_bpm_similarity(
         song_a.get("bpm"), song_b.get("bpm"))
-    score += w["release_year"] * compute_era_similarity(
+
+    era_sim = compute_era_similarity(
         song_a.get("release_year"), song_b.get("release_year"),
         song_a.get("genre_tags"), song_b.get("genre_tags"))
+    score += w["release_year"] * era_sim
+
     score += w["energy"] * compute_property_similarity(
         song_a.get("energy"), song_b.get("energy"))
     score += w["acousticness"] * compute_property_similarity(
@@ -127,6 +135,10 @@ def compute_pairwise_similarity(song_a: dict[str, Any], song_b: dict[str, Any]) 
         song_a.get("danceability"), song_b.get("danceability"))
     score += w["valence"] * compute_property_similarity(
         song_a.get("valence"), song_b.get("valence"))
+
+    # Hard cap: production era gaps override all other similarity
+    if era_sim < ERA_SIM_FLOOR:
+        score = min(score, ERA_HARD_CAP_SIMILARITY)
 
     return score
 

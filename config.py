@@ -166,6 +166,12 @@ ERA_SIGMA_BY_GENRE = {
 }
 ERA_SIGMA_DEFAULT = 5
 
+# When era similarity drops below this floor, cap total pairwise similarity.
+# A 1999 song matching perfectly on mood/BPM/genre shouldn't survive in a 2010s cluster.
+# Research: production era changes are "more jarring than cultural differences."
+ERA_SIM_FLOOR = 0.05          # Below this = effectively different eras
+ERA_HARD_CAP_SIMILARITY = 0.30  # Max total similarity when era_sim < floor
+
 # State → neuro profile weights for dot-product scoring.
 # Each state defines the ideal blend of parasympathetic, sympathetic, and grounding.
 # Fatigue and physical recovery pushed further apart (gap 0.35 vs old 0.15).

@@ -265,6 +265,9 @@ def compute_selection_scores(
 # Recent anchors
 # ---------------------------------------------------------------------------
 
+CONTEXT_EXCLUDE_TAGS = frozenset({"motivational"})
+
+
 def identify_anchors(
     scored: list[tuple[dict, float, dict]],
     date: str,
@@ -272,6 +275,9 @@ def identify_anchors(
     max_count: int,
 ) -> list[int]:
     """Identify anchor candidates: top-scored songs played within recency_days.
+
+    Skips songs tagged with context-specific moods (e.g., "motivational") that
+    are tied to a specific listening context (gym) rather than general listening.
 
     Returns list of indices into the scored list (already sorted by score descending).
     """
@@ -295,8 +301,13 @@ def identify_anchors(
             lp_date = dt.strptime(last_played[:10], "%Y-%m-%d").date()
         except (ValueError, TypeError):
             continue
-        if lp_date >= cutoff:
-            anchors.append(idx)
+        if lp_date < cutoff:
+            continue
+        # Skip context-specific songs (gym/workout) from anchor slots
+        mood_tags = song.get("mood_tags") or []
+        if any(t.lower() in CONTEXT_EXCLUDE_TAGS for t in mood_tags):
+            continue
+        anchors.append(idx)
 
     return anchors
 
