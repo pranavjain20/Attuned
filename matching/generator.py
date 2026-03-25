@@ -281,6 +281,7 @@ def generate_playlist(
         base_profile = get_state_neuro_profile(state)
         adjusted, delta_reason = apply_recovery_delta_modifier(
             base_profile, recovery_delta, delta_baseline["sd"], state,
+            sleep_analysis=classification.get("sleep_analysis"),
         )
         if delta_reason is not None:
             neuro_profile_override = adjusted

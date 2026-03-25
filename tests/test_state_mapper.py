@@ -6,6 +6,7 @@ from config import BASELINE_CALM_ANCHOR, BASELINE_ENERGY_ANCHOR, STATE_NEURO_PRO
 from matching.state_mapper import (
     MATCHABLE_STATES,
     _blend_baseline_profile,
+    _compute_sleep_quality_z,
     apply_recovery_delta_modifier,
     get_state_neuro_profile,
 )
@@ -189,8 +190,8 @@ class TestApplyRecoveryDeltaModifier:
         profile = self._baseline_profile()
         adjusted, reason = apply_recovery_delta_modifier(profile, delta=56.0, delta_sd=25.4, state="baseline")
         assert "leaning up" in reason
-        # Should be close to energy anchor at z=2.2 (clamped to 2.0)
-        assert adjusted["symp"] > 0.70
+        # z_rec=2.2, z_sleep=0.0 (no sleep data) → z_eff=1.1 — above baseline but dampened
+        assert adjusted["symp"] > 0.55
 
     def test_baseline_moderate_positive_uses_continuous_blend(self):
         """Baseline with moderate z (below old threshold) still triggers."""
@@ -296,3 +297,171 @@ class TestContinuousBaselineModifier:
                                                          state="accumulated_fatigue")
         assert reason is None
         assert adjusted == profile
+
+
+class TestComputeSleepQualityZ:
+    """Tests for _compute_sleep_quality_z() — continuous scoring."""
+
+    def _make_sleep_analysis(self, deep_ms, rem_ms, deep_mean=5_400_000, deep_sd=900_000,
+                              rem_mean=6_480_000, rem_sd=1_944_000):
+        """Helper: build sleep_analysis with baselines for continuous scoring."""
+        return {
+            "deep_sleep_deficit": False, "rem_sleep_deficit": False,
+            "deep_adequate": True, "rem_adequate": True,
+            "last_night": {"deep_sleep_ms": deep_ms, "rem_sleep_ms": rem_ms, "sleep_efficiency": 90.0},
+            "baselines": {
+                "deep_ms": {"mean": deep_mean, "sd": deep_sd},
+                "rem_ms": {"mean": rem_mean, "sd": rem_sd},
+            },
+        }
+
+    def test_at_baseline_mean_returns_zero(self):
+        """Deep and REM exactly at personal mean → 0.0."""
+        sa = self._make_sleep_analysis(deep_ms=5_400_000, rem_ms=6_480_000)
+        assert _compute_sleep_quality_z(sa) == 0.0
+
+    def test_above_mean_returns_positive(self):
+        """Deep and REM above mean → positive (capped at 1.0 each)."""
+        sa = self._make_sleep_analysis(deep_ms=6_300_000, rem_ms=8_424_000)  # +1 SD each
+        result = _compute_sleep_quality_z(sa)
+        assert result > 0.0
+        assert result <= 1.0
+
+    def test_below_mean_returns_negative(self):
+        """Deep at mean - 0.8 SD, REM at mean - 0.5 SD → negative."""
+        deep_ms = 5_400_000 - int(0.8 * 900_000)  # mean - 0.8 SD
+        rem_ms = 6_480_000 - int(0.5 * 1_944_000)  # mean - 0.5 SD
+        sa = self._make_sleep_analysis(deep_ms=deep_ms, rem_ms=rem_ms)
+        result = _compute_sleep_quality_z(sa)
+        assert result < 0.0  # Below mean = negative
+
+    def test_severe_deficit_clamped_at_minus_two(self):
+        """Deep and REM at 3 SD below mean → clamped to -2.0 each, avg = -2.0."""
+        sa = self._make_sleep_analysis(deep_ms=1_000_000, rem_ms=1_000_000)  # far below
+        result = _compute_sleep_quality_z(sa)
+        assert result == -2.0
+
+    def test_well_above_mean_clamped_at_one(self):
+        """Deep and REM at 3 SD above mean → clamped to +1.0 each, avg = 1.0."""
+        sa = self._make_sleep_analysis(deep_ms=10_000_000, rem_ms=15_000_000)  # far above
+        result = _compute_sleep_quality_z(sa)
+        assert result == 1.0
+
+    def test_no_data_returns_zero(self):
+        assert _compute_sleep_quality_z(None) == 0.0
+
+    def test_fallback_binary_when_no_baselines(self):
+        """Without baselines, falls back to binary flags."""
+        sa = {
+            "deep_sleep_deficit": True, "rem_sleep_deficit": True,
+            "deep_adequate": False, "rem_adequate": False,
+            "last_night": {"deep_sleep_ms": 2_000_000, "rem_sleep_ms": 2_000_000},
+        }
+        assert _compute_sleep_quality_z(sa) == -1.0
+
+    def test_fallback_binary_one_deficit(self):
+        sa = {
+            "deep_sleep_deficit": True, "rem_sleep_deficit": False,
+            "deep_adequate": False, "rem_adequate": True,
+        }
+        assert _compute_sleep_quality_z(sa) == -0.5
+
+    def test_fallback_binary_both_adequate(self):
+        sa = {
+            "deep_sleep_deficit": False, "rem_sleep_deficit": False,
+            "deep_adequate": True, "rem_adequate": True,
+        }
+        assert _compute_sleep_quality_z(sa) == 0.5
+
+    def test_todays_real_case(self):
+        """Mar 25: deep=1.3h (mean=1.5h, sd=0.25h), REM=1.4h (mean=1.7h, sd=0.54h).
+        Both below mean → z_sleep should be negative, dampening energy lean."""
+        sa = self._make_sleep_analysis(
+            deep_ms=4_680_000,  # 1.3h
+            rem_ms=5_040_000,   # 1.4h
+            deep_mean=5_400_000, deep_sd=900_000,   # 1.5h ± 0.25h
+            rem_mean=6_120_000, rem_sd=1_944_000,    # 1.7h ± 0.54h
+        )
+        result = _compute_sleep_quality_z(sa)
+        assert result < 0.0  # Below mean = dampens energy
+
+
+class TestSleepDampener:
+    """Tests for sleep quality dampening in the baseline modifier."""
+
+    def _baseline_profile(self):
+        return {"para": 0.15, "symp": 0.50, "grnd": 0.35}
+
+    def test_recovery_up_sleep_good(self):
+        """z_rec=1.0, good sleep (above mean) → z_eff strongly positive."""
+        profile = self._baseline_profile()
+        sa = {
+            "deep_adequate": True, "rem_adequate": True,
+            "deep_sleep_deficit": False, "rem_sleep_deficit": False,
+            "last_night": {
+                "deep_sleep_ms": 6_300_000, "rem_sleep_ms": 8_424_000,  # +1 SD each
+                "sleep_efficiency": 92.0,
+            },
+            "baselines": {
+                "deep_ms": {"mean": 5_400_000, "sd": 900_000},
+                "rem_ms": {"mean": 6_480_000, "sd": 1_944_000},
+            },
+        }
+        adjusted, reason = apply_recovery_delta_modifier(
+            profile, delta=25.4, delta_sd=25.4, state="baseline", sleep_analysis=sa,
+        )
+        assert reason is not None
+        assert "leaning up" in reason
+        assert adjusted["symp"] > profile["symp"]
+
+    def test_recovery_up_sleep_bad(self):
+        """z_rec=1.0, z_sleep=-1.0 → z_eff=0.0 (neutralized)."""
+        profile = self._baseline_profile()
+        sa = {
+            "deep_sleep_deficit": True, "rem_sleep_deficit": True,
+            "deep_adequate": False, "rem_adequate": False,
+        }
+        # z_rec = 25.4 / 25.4 = 1.0, z_sleep = -1.0
+        # z_eff = 0.5 * 1.0 + 0.5 * (-1.0) = 0.0
+        adjusted, reason = apply_recovery_delta_modifier(
+            profile, delta=25.4, delta_sd=25.4, state="baseline", sleep_analysis=sa,
+        )
+        # z_eff=0.0 → abs < 0.1 → no change
+        assert reason is None
+        assert adjusted == profile
+
+    def test_recovery_up_sleep_neutral(self):
+        """z_rec=0.7, z_sleep=0.0 → z_eff=0.35 (dampened)."""
+        profile = self._baseline_profile()
+        sa = {
+            "deep_adequate": True, "rem_adequate": False,
+            "deep_sleep_deficit": False, "rem_sleep_deficit": False,
+        }
+        # z_rec = 17.78 / 25.4 ≈ 0.7, z_sleep = 0.0 (mixed neutral)
+        # z_eff = 0.5 * 0.7 + 0.5 * 0.0 = 0.35
+        adjusted, reason = apply_recovery_delta_modifier(
+            profile, delta=17.78, delta_sd=25.4, state="baseline", sleep_analysis=sa,
+        )
+        assert reason is not None
+        assert "z_eff=0.4" in reason or "z_eff=0.3" in reason
+        assert "leaning up" in reason
+        # Dampened but still leaning up — symp should be above baseline but less than without dampening
+        assert adjusted["symp"] > profile["symp"]
+
+    def test_non_baseline_ignores_sleep(self):
+        """Non-baseline state ignores sleep_analysis entirely."""
+        profile = self._baseline_profile()
+        sa = {
+            "deep_sleep_deficit": True, "rem_sleep_deficit": True,
+            "deep_adequate": False, "rem_adequate": False,
+        }
+        # z = 50.0 / 25.4 ≈ 1.97 — above 1.5 threshold for non-baseline
+        adjusted_with, reason_with = apply_recovery_delta_modifier(
+            profile, delta=50.0, delta_sd=25.4, state="poor_recovery", sleep_analysis=sa,
+        )
+        adjusted_without, reason_without = apply_recovery_delta_modifier(
+            profile, delta=50.0, delta_sd=25.4, state="poor_recovery",
+        )
+        # Both should produce the same result — sleep_analysis is ignored for non-baseline
+        assert reason_with == reason_without
+        assert adjusted_with == adjusted_without

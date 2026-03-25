@@ -8,6 +8,7 @@ to score songs via dot product against their neuro scores.
 from config import (
     BASELINE_CALM_ANCHOR,
     BASELINE_ENERGY_ANCHOR,
+    BASELINE_SLEEP_WEIGHT,
     BASELINE_Z_CLAMP,
     RECOVERY_DELTA_EXEMPT_STATES,
     RECOVERY_DELTA_NUDGE,
@@ -74,11 +75,67 @@ def _blend_baseline_profile(z: float) -> dict[str, float]:
     return profile
 
 
+def _compute_sleep_quality_z(sleep_analysis: dict | None) -> float:
+    """Score last night's sleep quality as a continuous z-like value.
+
+    Uses actual deep/REM durations relative to personal baselines for
+    continuous scoring, not just binary deficit/adequate flags.
+
+    Scoring:
+      deep_z = (deep - mean) / sd, clamped to [-2, +1]
+      rem_z  = (rem - mean)  / sd, clamped to [-2, +1]
+      sleep_z = average of deep_z and rem_z
+
+    At baseline mean: 0.0 (neutral).
+    Above mean: positive (good sleep, capped at +1.0).
+    Below mean: negative proportional to how far below.
+    At 2 SD below: -2.0 (clamped floor).
+
+    Falls back to binary flags if baselines unavailable.
+    """
+    if sleep_analysis is None:
+        return 0.0
+
+    last_night = sleep_analysis.get("last_night")
+    baselines = sleep_analysis.get("baselines")
+
+    # Continuous scoring when baselines are available
+    if last_night and baselines:
+        deep_ms = last_night.get("deep_sleep_ms")
+        rem_ms = last_night.get("rem_sleep_ms")
+        deep_bl = baselines.get("deep_ms", {})
+        rem_bl = baselines.get("rem_ms", {})
+
+        if (deep_ms is not None and rem_ms is not None
+                and deep_bl.get("sd", 0) > 0 and rem_bl.get("sd", 0) > 0):
+            deep_z = (deep_ms - deep_bl["mean"]) / deep_bl["sd"]
+            rem_z = (rem_ms - rem_bl["mean"]) / rem_bl["sd"]
+            # Clamp: don't reward above +1 SD, don't punish below -2 SD
+            deep_z = max(-2.0, min(1.0, deep_z))
+            rem_z = max(-2.0, min(1.0, rem_z))
+            return (deep_z + rem_z) / 2.0
+
+    # Fallback: binary flags when baselines unavailable
+    deep_deficit = sleep_analysis.get("deep_sleep_deficit", False)
+    rem_deficit = sleep_analysis.get("rem_sleep_deficit", False)
+    deep_adequate = sleep_analysis.get("deep_adequate", False)
+    rem_adequate = sleep_analysis.get("rem_adequate", False)
+
+    if deep_deficit and rem_deficit:
+        return -1.0
+    if deep_deficit or rem_deficit:
+        return -0.5
+    if deep_adequate and rem_adequate:
+        return 0.5
+    return 0.0
+
+
 def apply_recovery_delta_modifier(
     profile: dict[str, float],
     delta: float,
     delta_sd: float,
     state: str,
+    sleep_analysis: dict | None = None,
 ) -> tuple[dict[str, float], str | None]:
     """Adjust neuro profile weights based on day-over-day recovery change.
 
@@ -108,14 +165,19 @@ def apply_recovery_delta_modifier(
 
     # --- Baseline: continuous blending ---
     if state == "baseline":
-        if abs(z) < 0.1:
+        z_recovery = z
+        z_sleep = _compute_sleep_quality_z(sleep_analysis)
+        z_effective = (1 - BASELINE_SLEEP_WEIGHT) * z_recovery + BASELINE_SLEEP_WEIGHT * z_sleep
+
+        if abs(z_effective) < 0.1:
             return dict(profile), None
 
-        blended = _blend_baseline_profile(z)
-        direction = "leaning up" if z > 0 else "leaning down"
+        blended = _blend_baseline_profile(z_effective)
+        direction = "leaning up" if z_effective > 0 else "leaning down"
         reason = (
-            f"Baseline + recovery delta {delta:+.0f}pp (z={z:.1f}) "
-            f"— {direction}"
+            f"Baseline + recovery delta {delta:+.0f}pp "
+            f"(z_rec={z_recovery:.1f}, z_sleep={z_sleep:.1f}) "
+            f"→ z_eff={z_effective:.1f}, {direction}"
         )
         return blended, reason
 

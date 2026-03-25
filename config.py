@@ -108,6 +108,7 @@ RECOVERY_DELTA_EXEMPT_STATES = frozenset({"accumulated_fatigue", "peak_readiness
 BASELINE_CALM_ANCHOR = {"para": 0.45, "symp": 0.15, "grnd": 0.40}
 BASELINE_ENERGY_ANCHOR = {"para": 0.05, "symp": 0.75, "grnd": 0.20}
 BASELINE_Z_CLAMP = 2.0
+BASELINE_SLEEP_WEIGHT = 0.5  # How much sleep quality dampens/boosts baseline vs recovery delta
 TOKEN_EXPIRY_BUFFER_SECONDS = 300  # 5-minute buffer before refresh
 
 # ---------------------------------------------------------------------------
