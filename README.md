@@ -127,48 +127,16 @@ Full research analysis with methodology notes and evidence quality caveats: [doc
 
 ---
 
-## Quick Start
+## Running Attuned
 
-### Prerequisites
-
-- Python 3.11+
-- WHOOP account with developer API access ([developer.whoop.com](https://developer.whoop.com))
-- Spotify account with developer API access ([developer.spotify.com](https://developer.spotify.com))
-- OpenAI API key (song classification, ~$0.70 for a full library)
-
-### Setup
+Attuned runs locally and requires your own WHOOP and Spotify accounts. Each user authenticates with their own credentials through OAuth — no data is shared.
 
 ```bash
-pip install -r requirements.txt
-cp .env.example .env
-# Fill in API credentials in .env
-```
-
-### First Run (New User)
-
-```bash
-python main.py onboard
-```
-
-Onboarding syncs your WHOOP history, imports your Spotify library, classifies your songs, and computes your personal baselines. Takes about 30 minutes depending on library size.
-
-### Daily Use
-
-```bash
-python main.py generate
-```
-
-Reads today's WHOOP data, classifies your state, builds and pushes a playlist to Spotify.
-
-### Other Commands
-
-```bash
-python main.py sync-whoop          # Incremental WHOOP data sync
-python main.py sync-spotify        # Refresh Spotify library
-python main.py classify-songs      # Classify unclassified songs
-python main.py analyze-audio       # Run Essentia on unanalyzed songs
+python main.py generate            # Generate today's playlist
 python main.py generate --dry-run  # Preview without pushing to Spotify
 ```
+
+New user setup is documented in [ONBOARDING.md](docs/ONBOARDING.md).
 
 ---
 
