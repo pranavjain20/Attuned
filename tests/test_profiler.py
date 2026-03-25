@@ -554,33 +554,55 @@ class TestComputeNeurologicalProfile:
 
 class TestComputeMoodScore:
 
-    def test_all_matching_tags(self):
-        from config import PARA_MOOD_TAGS
-        score = compute_mood_score(["calm", "serene", "peaceful"], PARA_MOOD_TAGS)
-        assert score == pytest.approx(1.0)
+    def test_mood_score_energetic_tag(self):
+        """energetic → symp should be 0.95."""
+        score = compute_mood_score(["energetic"], "symp")
+        assert score == pytest.approx(0.95)
 
-    def test_no_matching_tags(self):
-        from config import PARA_MOOD_TAGS
-        score = compute_mood_score(["energetic", "uplifting"], PARA_MOOD_TAGS)
-        assert score == pytest.approx(0.0)
+    def test_mood_score_cross_dimensional(self):
+        """sad → para=0.60, grnd=0.55 (not just para=1.0)."""
+        para = compute_mood_score(["sad"], "para")
+        grnd = compute_mood_score(["sad"], "grnd")
+        assert para == pytest.approx(0.60)
+        assert grnd == pytest.approx(0.55)
 
-    def test_partial_matching(self):
-        from config import GRND_MOOD_TAGS
-        # 2 of 4 tags match grounding
-        score = compute_mood_score(["reflective", "energetic", "nostalgic", "upbeat"], GRND_MOOD_TAGS)
+    def test_mood_score_mixed_tags(self):
+        """energetic + romantic → symp avg(0.95, 0.25)=0.60, grnd avg(0.05, 0.80)=0.425."""
+        symp = compute_mood_score(["energetic", "romantic"], "symp")
+        grnd = compute_mood_score(["energetic", "romantic"], "grnd")
+        assert symp == pytest.approx(0.60)
+        assert grnd == pytest.approx(0.425)
+
+    def test_mood_score_unknown_tags_skipped(self):
+        """Unknown tags are skipped — only unknowns → returns NEUTRAL_MOOD (0.5)."""
+        score = compute_mood_score(["unknowntag123"], "para")
         assert score == pytest.approx(0.5)
 
-    def test_none_tags_returns_neutral(self):
-        from config import PARA_MOOD_TAGS
-        score = compute_mood_score(None, PARA_MOOD_TAGS)
+    def test_mood_score_no_tags(self):
+        """None → 0.5."""
+        score = compute_mood_score(None, "para")
         assert score == pytest.approx(0.5)
 
-    def test_empty_tags_returns_neutral(self):
-        from config import PARA_MOOD_TAGS
-        score = compute_mood_score([], PARA_MOOD_TAGS)
+    def test_mood_score_empty_tags_returns_neutral(self):
+        """Empty list → 0.5."""
+        score = compute_mood_score([], "symp")
         assert score == pytest.approx(0.5)
+
+    def test_mood_score_motivational_lower_than_energetic(self):
+        """motivational symp (0.65) < energetic symp (0.95)."""
+        motivational = compute_mood_score(["motivational"], "symp")
+        energetic = compute_mood_score(["energetic"], "symp")
+        assert motivational < energetic
+        assert motivational == pytest.approx(0.65)
+        assert energetic == pytest.approx(0.95)
+
+    def test_mood_score_spiritual_parasympathetic(self):
+        """spiritual → para=0.65 (was getting 0.5/neutral with old frozenset)."""
+        score = compute_mood_score(["spiritual"], "para")
+        assert score == pytest.approx(0.65)
 
     def test_case_insensitive(self):
-        from config import SYMP_MOOD_TAGS
-        score = compute_mood_score(["Energetic", "UPLIFTING"], SYMP_MOOD_TAGS)
-        assert score == pytest.approx(1.0)
+        """Tags should be lowercased before lookup."""
+        score = compute_mood_score(["Energetic", "UPLIFTING"], "symp")
+        # avg(0.95, 0.75) = 0.85
+        assert score == pytest.approx(0.85)

@@ -178,33 +178,92 @@ STATE_NEURO_PROFILES: dict[str, dict[str, float]] = {
 }
 
 # ---------------------------------------------------------------------------
-# Mood tag → neuro dimension mappings (used in profiler)
+# Mood tag affinity (used in profiler)
 # ---------------------------------------------------------------------------
 # Weight given to mood tags in the profiler (existing audio weights scale to 1 - this)
 MOOD_TAG_WEIGHT = 0.15
 
-# Parasympathetic: absence of stimulation, rest, surrender
-PARA_MOOD_TAGS = frozenset({
-    "melancholy", "melancholic", "calm", "dreamy",
-    "soothing", "serene", "relaxed", "chill", "laid-back", "peaceful",
-    "sad",
-})
-
-# Sympathetic: energy, activation, arousal
-SYMP_MOOD_TAGS = frozenset({
-    "energetic", "uplifting", "upbeat", "celebratory", "joyful", "party",
-    "fun", "confident", "festive", "motivational", "intense", "empowering",
-    "danceable", "dynamic", "aggressive", "rebellious", "powerful",
-    "triumphant", "vibrant", "lively", "adventurous",
-})
-
-# Grounding: emotional processing, connection, warmth, reflection
-GRND_MOOD_TAGS = frozenset({
-    "reflective", "introspective", "nostalgic", "romantic", "emotional",
-    "bittersweet", "hopeful", "heartfelt", "sentimental", "thoughtful",
-    "contemplative", "warm", "passionate", "moody",
-    "spiritual", "meditative", "devotional",
-})
+# Mood tag affinity table — research-backed weights for each dimension.
+# Each tag has (para, symp, grnd) weights from 0.0-1.0.
+# Based on Russell's circumplex, Bernardi 2006, Chanda & Levitin 2013,
+# Saarikallio 2007, Taruffi et al. 2017, Bretherton 2019.
+MOOD_AFFINITY: dict[str, tuple[float, float, float]] = {
+    # (para, symp, grnd)
+    # --- High sympathetic ---
+    "energetic":      (0.00, 0.95, 0.05),
+    "intense":        (0.00, 0.90, 0.15),
+    "aggressive":     (0.00, 0.95, 0.10),
+    "powerful":       (0.05, 0.85, 0.20),
+    "upbeat":         (0.00, 0.85, 0.10),
+    "party":          (0.00, 0.85, 0.15),
+    "danceable":      (0.00, 0.80, 0.10),
+    "dynamic":        (0.00, 0.80, 0.10),
+    "confident":      (0.00, 0.80, 0.25),
+    "rebellious":     (0.00, 0.80, 0.25),
+    "vibrant":        (0.00, 0.80, 0.15),
+    "lively":         (0.00, 0.80, 0.15),
+    "triumphant":     (0.05, 0.80, 0.30),
+    "uplifting":      (0.05, 0.75, 0.30),
+    "fun":            (0.00, 0.75, 0.20),
+    "empowering":     (0.00, 0.75, 0.30),
+    "celebratory":    (0.00, 0.70, 0.35),
+    "joyful":         (0.05, 0.70, 0.30),
+    "festive":        (0.00, 0.70, 0.30),
+    "adventurous":    (0.00, 0.70, 0.30),
+    "edgy":           (0.00, 0.70, 0.20),
+    "cheerful":       (0.05, 0.70, 0.20),
+    "groovy":         (0.05, 0.65, 0.25),
+    "playful":        (0.05, 0.65, 0.25),
+    "motivational":   (0.00, 0.65, 0.25),
+    "inspirational":  (0.05, 0.60, 0.40),
+    "inspiring":      (0.05, 0.60, 0.40),
+    "dramatic":       (0.10, 0.65, 0.45),
+    "passionate":     (0.05, 0.55, 0.60),
+    # --- High parasympathetic ---
+    "calm":           (0.90, 0.00, 0.15),
+    "soothing":       (0.90, 0.00, 0.10),
+    "peaceful":       (0.90, 0.00, 0.20),
+    "serene":         (0.85, 0.00, 0.15),
+    "relaxed":        (0.85, 0.00, 0.10),
+    "meditative":     (0.80, 0.00, 0.40),
+    "dreamy":         (0.75, 0.00, 0.30),
+    "chill":          (0.75, 0.00, 0.15),
+    "gentle":         (0.70, 0.00, 0.30),
+    "ethereal":       (0.70, 0.00, 0.35),
+    "melancholy":     (0.70, 0.00, 0.50),
+    "melancholic":    (0.70, 0.00, 0.50),
+    "laid-back":      (0.70, 0.05, 0.20),
+    "spiritual":      (0.65, 0.00, 0.55),
+    "devotional":     (0.70, 0.00, 0.55),
+    "sad":            (0.60, 0.00, 0.55),
+    "smooth":         (0.45, 0.15, 0.40),
+    # --- High grounding ---
+    "introspective":  (0.30, 0.05, 0.90),
+    "reflective":     (0.30, 0.05, 0.85),
+    "contemplative":  (0.35, 0.05, 0.85),
+    "bittersweet":    (0.35, 0.05, 0.85),
+    "nostalgic":      (0.25, 0.10, 0.85),
+    "heartfelt":      (0.20, 0.15, 0.85),
+    "romantic":       (0.15, 0.25, 0.80),
+    "emotional":      (0.20, 0.20, 0.80),
+    "sentimental":    (0.30, 0.05, 0.80),
+    "thoughtful":     (0.25, 0.10, 0.80),
+    "wistful":        (0.35, 0.05, 0.75),
+    "tender":         (0.35, 0.05, 0.75),
+    "warm":           (0.25, 0.15, 0.75),
+    "hopeful":        (0.15, 0.35, 0.65),
+    "moody":          (0.35, 0.15, 0.70),
+    "haunting":       (0.45, 0.15, 0.60),
+    "raw":            (0.05, 0.50, 0.65),
+    "sultry":         (0.20, 0.40, 0.55),
+    # --- Mixed ---
+    "dark":           (0.30, 0.45, 0.40),
+    "anthemic":       (0.00, 0.70, 0.35),
+    "happy":          (0.05, 0.65, 0.25),
+    # --- Structural ---
+    "melodic":        (0.20, 0.10, 0.30),
+    "catchy":         (0.05, 0.40, 0.15),
+}
 
 # Genre tags that indicate Indian music (BPM from LLM, not Essentia)
 INDIAN_GENRE_TAGS = frozenset({

@@ -11,12 +11,7 @@ or energy, but they differentiate grounding from parasympathetic.
 
 import math
 
-from config import (
-    GRND_MOOD_TAGS,
-    MOOD_TAG_WEIGHT,
-    PARA_MOOD_TAGS,
-    SYMP_MOOD_TAGS,
-)
+from config import MOOD_AFFINITY, MOOD_TAG_WEIGHT
 
 # ---------------------------------------------------------------------------
 # Neutral defaults — used when a property is None (unknown)
@@ -27,17 +22,28 @@ NEUTRAL_FLOAT = 0.5
 NEUTRAL_MOOD = 0.5  # No mood tags → neutral contribution
 
 
-def compute_mood_score(mood_tags: list[str] | None, target_tags: frozenset[str]) -> float:
-    """Compute mood alignment score (0.0-1.0) for a set of target tags.
+def compute_mood_score(mood_tags: list[str] | None, dimension: str) -> float:
+    """Compute mood alignment score (0.0-1.0) for a dimension using weighted affinity.
 
-    Returns fraction of the song's mood tags that match the target dimension.
-    No tags → NEUTRAL_MOOD (0.5) to avoid penalizing untagged songs.
+    dimension: "para", "symp", or "grnd"
+    Returns weighted average of tag affinities for the dimension.
+    Unknown tags are skipped. No tags → NEUTRAL_MOOD (0.5).
     """
     if not mood_tags:
         return NEUTRAL_MOOD
 
-    matching = sum(1 for tag in mood_tags if tag.lower() in target_tags)
-    return matching / len(mood_tags)
+    dim_idx = {"para": 0, "symp": 1, "grnd": 2}[dimension]
+
+    weights = []
+    for tag in mood_tags:
+        affinity = MOOD_AFFINITY.get(tag.lower())
+        if affinity is not None:
+            weights.append(affinity[dim_idx])
+
+    if not weights:
+        return NEUTRAL_MOOD
+
+    return sum(weights) / len(weights)
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +111,7 @@ def compute_parasympathetic(
     mode_score = (1.0 if mode == "major" else 0.5) * 0.05 * aw
     dance_score = gaussian(danceability, center=0.3, sigma=0.2) * 0.05 * aw
 
-    mood_score = compute_mood_score(mood_tags, PARA_MOOD_TAGS) * MOOD_TAG_WEIGHT
+    mood_score = compute_mood_score(mood_tags, "para") * MOOD_TAG_WEIGHT
 
     return (
         tempo_score + energy_score + acoustic_score
@@ -139,7 +145,7 @@ def compute_sympathetic(
     mode_score = (0.8 if mode == "major" else 1.0) * 0.05 * aw
     dance_score = danceability * 0.05 * aw
 
-    mood_score = compute_mood_score(mood_tags, SYMP_MOOD_TAGS) * MOOD_TAG_WEIGHT
+    mood_score = compute_mood_score(mood_tags, "symp") * MOOD_TAG_WEIGHT
 
     return (
         tempo_score + energy_score + acoustic_score
@@ -179,7 +185,7 @@ def compute_grounding(
     mode_score = (1.0 if mode == "major" else 0.6) * 0.05 * aw
     dance_score = gaussian(danceability, center=0.4, sigma=0.2) * 0.05 * aw
 
-    mood_score = compute_mood_score(mood_tags, GRND_MOOD_TAGS) * MOOD_TAG_WEIGHT
+    mood_score = compute_mood_score(mood_tags, "grnd") * MOOD_TAG_WEIGHT
 
     return (
         tempo_score + energy_score + acoustic_score
