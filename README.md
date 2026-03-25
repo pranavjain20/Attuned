@@ -1,8 +1,8 @@
 # Attuned
 
-WHOOP tells you your nervous system is struggling. Spotify has the remedy in your library. Neither knows about the other.
+You wake up. WHOOP says 42% recovery. You know what your nervous system needs -- but you don't do anything about it. You can't will yourself into better HRV. You can't undo accumulated fatigue by reading a dashboard.
 
-Attuned closes the loop. It reads your morning WHOOP data -- HRV, resting heart rate, sleep architecture, multi-day trends -- classifies your physiological state, and generates a Spotify playlist of 15-20 songs from your own library whose acoustic properties are neurologically matched to what your body needs. One command, every morning.
+But you're about to press play on Spotify anyway. You do it every morning. And music directly modulates the autonomic nervous system -- the same system WHOOP measures. Attuned connects the two: it reads your WHOOP data, figures out what your nervous system needs today, and builds a playlist from your own library whose acoustic properties are scientifically matched to that need. One command, every morning.
 
 ```
 python main.py generate
