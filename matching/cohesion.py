@@ -14,6 +14,8 @@ from config import (
     COHESION_MIN_SIMILARITY,
     COHESION_POOL_SIZE,
     COHESION_PROPERTY_SIGMA,
+    VIBE_HARD_CAP_SIMILARITY,
+    VIBE_SIM_FLOOR,
     COHESION_RELAXATION_MAX,
     COHESION_RELAXATION_STEP,
     COHESION_WEIGHTS,
@@ -139,6 +141,15 @@ def compute_pairwise_similarity(song_a: dict[str, Any], song_b: dict[str, Any]) 
     # Hard cap: production era gaps override all other similarity
     if era_sim < ERA_SIM_FLOOR:
         score = min(score, ERA_HARD_CAP_SIMILARITY)
+
+    # Hard cap: vibe gaps (energy + acousticness + danceability) override similarity.
+    # A party banger next to an acoustic ballad is jarring regardless of BPM/genre match.
+    energy_sim = compute_property_similarity(song_a.get("energy"), song_b.get("energy"))
+    acoustic_sim = compute_property_similarity(song_a.get("acousticness"), song_b.get("acousticness"))
+    dance_sim = compute_property_similarity(song_a.get("danceability"), song_b.get("danceability"))
+    avg_vibe_sim = (energy_sim + acoustic_sim + dance_sim) / 3.0
+    if avg_vibe_sim < VIBE_SIM_FLOOR:
+        score = min(score, VIBE_HARD_CAP_SIMILARITY)
 
     return score
 
@@ -316,6 +327,58 @@ def select_cohesive_songs(
             "Cohesion relaxation %d: min_similarity=%.3f, got %d songs",
             relaxations, min_sim, len(selected),
         )
+
+    # Drop anchors that are multi-dimensional vibe outliers.
+    # An anchor whose energy, acousticness, or danceability is >1.5 SD from the
+    # cluster mean on 2+ dimensions sounds wrong even if genre/BPM/era match.
+    from config import ANCHOR_VIBE_OUTLIER_MIN_DIMS, ANCHOR_VIBE_OUTLIER_SD
+
+    if anchor_pool_indices and len(selected) > min_size:
+        # Compute cluster vibe stats (mean + SD for energy, acousticness, danceability)
+        non_anchor = [s for s in selected if s not in set(anchor_pool_indices)]
+        if len(non_anchor) < 3:
+            non_anchor = selected  # fallback if too few non-anchors
+
+        import statistics
+        vibe_dims = ["energy", "acousticness", "danceability"]
+        cluster_stats: dict[str, dict[str, float]] = {}
+        for dim in vibe_dims:
+            vals = [songs[i].get(dim) for i in non_anchor if songs[i].get(dim) is not None]
+            if len(vals) >= 2:
+                cluster_stats[dim] = {"mean": statistics.mean(vals), "sd": statistics.stdev(vals)}
+
+        dropped = []
+        for ai in anchor_pool_indices:
+            if ai not in selected:
+                continue
+            outlier_dims = 0
+            for dim in vibe_dims:
+                if dim not in cluster_stats or cluster_stats[dim]["sd"] == 0:
+                    continue
+                val = songs[ai].get(dim)
+                if val is None:
+                    continue
+                z = abs(val - cluster_stats[dim]["mean"]) / cluster_stats[dim]["sd"]
+                if z > ANCHOR_VIBE_OUTLIER_SD:
+                    outlier_dims += 1
+
+            if outlier_dims >= ANCHOR_VIBE_OUTLIER_MIN_DIMS:
+                selected.remove(ai)
+                dropped.append(ai)
+                logger.info(
+                    "Dropped anchor '%s' — vibe outlier on %d dimensions (threshold: %d)",
+                    songs[ai].get("name", "?"), outlier_dims, ANCHOR_VIBE_OUTLIER_MIN_DIMS,
+                )
+
+        # Backfill dropped slots from the expansion pool
+        if dropped:
+            remaining = [i for i in range(n) if i not in set(selected)]
+            for r in remaining:
+                if len(selected) >= target_size:
+                    break
+                avg_sim = sum(sim_matrix[r][s] for s in selected) / len(selected)
+                if avg_sim >= min_sim:
+                    selected.append(r)
 
     # Compute cohesion stats
     if len(selected) >= 2:

@@ -175,6 +175,20 @@ ERA_SIGMA_DEFAULT = 5
 ERA_SIM_FLOOR = 0.05          # Below this = effectively different eras
 ERA_HARD_CAP_SIMILARITY = 0.30  # Max total similarity when era_sim < floor
 
+# Vibe hard cap — energy + acousticness + danceability define how music FEELS.
+# A high-energy party banger next to a quiet acoustic ballad is jarring regardless
+# of matching BPM/genre. When average vibe similarity drops below floor, cap total.
+# Threshold 0.15: G.O.A.T. (0.08 avg vibe) caught, cluster pairs (0.62+ min) untouched.
+VIBE_SIM_FLOOR = 0.15
+VIBE_HARD_CAP_SIMILARITY = 0.30
+
+# Anchor vibe outlier threshold — drop anchors that are outliers on multiple
+# vibe dimensions (energy, acousticness, danceability) relative to the cluster.
+# An anchor whose vibe properties are >1.5 SD from cluster mean on 2+ dimensions
+# is a vibe outlier — it sounds wrong even if genre/BPM/era match.
+ANCHOR_VIBE_OUTLIER_SD = 1.5
+ANCHOR_VIBE_OUTLIER_MIN_DIMS = 3  # Must be outlier on ALL three vibe dims to be dropped
+
 # State → neuro profile weights for dot-product scoring.
 # Each state defines the ideal blend of parasympathetic, sympathetic, and grounding.
 # Fatigue and physical recovery pushed further apart (gap 0.35 vs old 0.15).
