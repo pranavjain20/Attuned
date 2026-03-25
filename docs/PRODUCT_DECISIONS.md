@@ -387,7 +387,7 @@ Tuned on 25 songs (72%). Fresh 34-song set: 56%. The tuning set was blind to a f
 
 ## WHOOP Insights
 
-See [WHOOP_INSIGHTS.md](WHOOP_INSIGHTS.md) for the full research and analysis on where WHOOP's recovery score diverges from subjective experience, and how Attuned addresses the gap.
+WHOOP research and analysis moved to a dedicated repository: [whoop-2.0](https://github.com/pranavjain20/whoop-2.0) (private).
 
 ---
 
