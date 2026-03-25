@@ -436,3 +436,32 @@ Sleep gets 65% weight, recovery delta gets 35%. This ratio comes from the resear
 ### Why this matters
 
 This is the most significant insight from building Attuned: **WHOOP's recovery score optimizes for autonomic readiness, but playlists should optimize for subjective state. These overlap most of the time, but when they diverge, sleep architecture is the better predictor of how someone actually feels.** The sleep quality dampener ensures the system respects both signals rather than blindly following HRV.
+
+---
+
+## Anchor Vibe Outlier Detection — Multi-Dimensional Coherence Check
+
+### The problem
+G.O.A.T. (Punjabi party, energy 0.83, dance 0.90, acoustic 0.10) was landing in a warm Bollywood cluster (avg energy 0.40, dance 0.58, acoustic 0.47). Anchors were unconditionally pre-loaded into cohesion — no check on whether they actually fit the cluster's sonic character.
+
+### What was tried and failed
+1. **Weight rebalancing** (shift BPM/era weight to energy/dance/acoustic) — didn't work because identical BPM (89 vs 89) created an unbreakable similarity lifeline.
+2. **Ratio-based anchor threshold** (75% of cluster mean) — too aggressive, dropped 4 of 5 anchors including songs the user liked.
+3. **2-dimension outlier threshold** — dropped devotional songs in fatigue playlists (correct songs, wrong to drop).
+
+### What worked
+Two complementary mechanisms:
+- **Vibe hard cap:** Pairwise similarity capped at 0.30 when avg energy+acoustic+dance similarity < 0.15. Prevents vibe-incompatible songs from building false cohesion through other dimensions.
+- **3-dimension outlier detection:** Anchors only dropped when outlier on ALL THREE vibe dimensions (energy, acousticness, danceability — each >1.5 SD from cluster mean). G.O.A.T. was the only song at 3 dims. Devotional songs in fatigue were at 2 dims — kept.
+
+### Why it works
+Single-dimension outliers are normal (variety). Two-dimension outliers are uncommon but acceptable. Three-dimension outliers mean the song sounds fundamentally different — different genre of feel, not just variation within a cluster.
+
+### Testing
+- **Baseline:** G.O.A.T. dropped (correct).
+- **Fatigue:** Devotional songs retained — dropped as anchor but score 1.000 on neuro, still make playlist through normal scoring.
+- **Peak:** No drops.
+- **Yesterday's baseline:** No drops.
+
+### The deeper insight
+Cohesion weights were fine for category matching (genre, era, BPM) but underweighted for vibe matching (energy, acousticness, danceability). The vibe hard cap addresses pairwise similarity. The outlier detection addresses cluster-level fit. Both were needed — one without the other left gaps.
