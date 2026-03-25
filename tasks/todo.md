@@ -263,9 +263,24 @@
 ### Second user onboarding — additional
 - [x] `sync-whoop-history --profile <name>` — full recovery history synced
 
+### Day 10 improvements
+- [x] Continuous baseline scaling — recovery delta picks calm-to-energy position (replaces static profile)
+- [x] Sleep quality dampener — sleep architecture (65% weight) blended with recovery delta (35%) for baseline
+- [x] Weighted mood affinity table — 64 tags with research-backed weights replacing binary sets (12 studies)
+- [x] Recent anchors — 5 recently-played songs guaranteed in every playlist
+- [x] Motivational songs excluded from anchors — gym context songs don't get guaranteed morning slots
+- [x] Era hard cap — production era gaps (era_sim < 0.05) cap total similarity at 0.30
+- [x] Vibe hard cap — energy+acoustic+dance similarity < 0.15 caps total similarity at 0.30
+- [x] Anchor vibe outlier — anchors outlier on all 3 vibe dimensions (>1.5 SD) dropped from guaranteed status
+- [x] WHOOP Insights doc — 10,313 words, 18 research citations, athlete-vs-human thesis
+- [x] All old Spotify playlists cleaned — only latest exists
+- [x] Docs scrubbed for public release — personal names, dollar amounts, biometric data removed
+- [x] README rewritten for public GitHub
+- [x] 1,030 tests passing
+
 ---
 
-## Blocked (Spotify API rate limit)
+## Blocked (Spotify API — tracks endpoint 403)
 
 Both profiles hit Spotify rate limit. Batch `/v1/tracks` endpoint returns 403 (dev mode app restriction), fallback to individual calls was unthrottled and triggered escalating rate limit. Now fixed with 3-second delay in fallback path.
 

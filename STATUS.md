@@ -1,8 +1,8 @@
 # Attuned — Current Status
 
 **Last updated:** Mar 25, 2026
-**Current phase:** Day 9 complete. 1,016 tests passing. 18 commits pushed. Backfill pipeline done (zero validation flags). Restorative sleep gate, continuous baseline, recent anchors, weighted mood affinity, era hard cap all implemented. Codebase hardened, docs scrubbed for public release. README rewritten. Repo ready to go public.
-**Next action:** See tasks/todo.md — Spotify API rate limit clears this afternoon, then fill missing metadata for both profiles + run second user's audio pipeline.
+**Current phase:** Day 9-10. 1,030 tests passing. 25+ commits pushed across two days. Full playlist generation pipeline refined: sleep quality dampener, continuous baseline scaling, recent anchors, weighted mood affinity (64 tags), vibe hard cap, anchor vibe outlier detection. WHOOP Insights doc (10,313 words). Repo scrubbed and public-ready.
+**Next action:** See tasks/todo.md — Spotify tracks endpoint still 403 (metadata backfill for both profiles), then second user's audio pipeline.
 
 ---
 
