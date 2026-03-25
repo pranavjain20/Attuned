@@ -419,19 +419,19 @@ Four parallel research agents investigated:
 
 Added continuous sleep quality z-score as a second input to baseline profile scaling. Sleep quality is computed from actual deep/REM durations relative to personal baselines — not binary deficit/adequate flags.
 
-**The blend:** `z_effective = 0.5 * z_recovery + 0.5 * z_sleep`
+**The blend:** `z_effective = 0.35 * z_recovery + 0.65 * z_sleep`
 
-When recovery delta and sleep quality agree, the signal is reinforced. When they conflict, they partially cancel — the playlist stays closer to neutral instead of committing to a direction the user doesn't feel.
+Sleep gets 65% weight, recovery delta gets 35%. This ratio comes from the research: sleep architecture correlates with next-morning subjective state at r=0.4-0.6 (Vitale 2015, PMC6456824), while HRV correlates at r=0.2-0.3 (Hynynen 2011). That's roughly a 2:1 ratio in favor of sleep. When both signals agree, the effect is reinforced. When they conflict, sleep dominates — because sleep is what actually determines how you feel.
 
 ### The before/after
 
 **Today (recovery 83%, mediocre sleep):**
-- Before dampener: z=0.9 → para=0.11, symp=0.59, grnd=0.30 (strong energy lean)
-- After dampener: z_eff=0.1 → para=0.14, symp=0.52, grnd=0.34 (near-neutral, honest)
+- Without dampener: z=0.9 → para=0.11, symp=0.59 (strong energy lean — wrong)
+- With dampener: z_eff=-0.1 → para=0.17, symp=0.48 (slightly calming — honest, sleep was below average)
 
 **Yesterday (recovery 58%, great sleep):**
-- Before dampener: z=0.7 → para=0.11, symp=0.59, grnd=0.30
-- After dampener: z_eff=0.8 → para=0.11, symp=0.60, grnd=0.29 (reinforced energy — correct)
+- Without dampener: z=0.7 → para=0.11, symp=0.59
+- With dampener: z_eff=0.8 → para=0.11, symp=0.60 (reinforced energy — both signals agree)
 
 ### Why this matters
 

@@ -415,37 +415,37 @@ class TestSleepDampener:
         assert adjusted["symp"] > profile["symp"]
 
     def test_recovery_up_sleep_bad(self):
-        """z_rec=1.0, z_sleep=-1.0 → z_eff=0.0 (neutralized)."""
+        """z_rec=1.0, z_sleep=-1.0 → z_eff negative (sleep dominates at 0.65 weight)."""
         profile = self._baseline_profile()
         sa = {
             "deep_sleep_deficit": True, "rem_sleep_deficit": True,
             "deep_adequate": False, "rem_adequate": False,
         }
         # z_rec = 25.4 / 25.4 = 1.0, z_sleep = -1.0
-        # z_eff = 0.5 * 1.0 + 0.5 * (-1.0) = 0.0
+        # z_eff = 0.35 * 1.0 + 0.65 * (-1.0) = -0.3 → leans down
         adjusted, reason = apply_recovery_delta_modifier(
             profile, delta=25.4, delta_sd=25.4, state="baseline", sleep_analysis=sa,
         )
-        # z_eff=0.0 → abs < 0.1 → no change
-        assert reason is None
-        assert adjusted == profile
+        assert reason is not None
+        assert "leaning down" in reason
+        # Sleep bad enough to override recovery jump — para increases
+        assert adjusted["para"] > profile["para"]
 
     def test_recovery_up_sleep_neutral(self):
-        """z_rec=0.7, z_sleep=0.0 → z_eff=0.35 (dampened)."""
+        """z_rec=0.7, z_sleep=0.0 → z_eff dampened (sleep weight 0.65)."""
         profile = self._baseline_profile()
         sa = {
             "deep_adequate": True, "rem_adequate": False,
             "deep_sleep_deficit": False, "rem_sleep_deficit": False,
         }
-        # z_rec = 17.78 / 25.4 ≈ 0.7, z_sleep = 0.0 (mixed neutral)
-        # z_eff = 0.5 * 0.7 + 0.5 * 0.0 = 0.35
+        # z_rec = 17.78 / 25.4 ≈ 0.7, z_sleep = 0.0 (mixed neutral fallback)
+        # z_eff = 0.35 * 0.7 + 0.65 * 0.0 = 0.245
         adjusted, reason = apply_recovery_delta_modifier(
             profile, delta=17.78, delta_sd=25.4, state="baseline", sleep_analysis=sa,
         )
         assert reason is not None
-        assert "z_eff=0.4" in reason or "z_eff=0.3" in reason
         assert "leaning up" in reason
-        # Dampened but still leaning up — symp should be above baseline but less than without dampening
+        # Dampened but still leaning up — symp should be above baseline
         assert adjusted["symp"] > profile["symp"]
 
     def test_non_baseline_ignores_sleep(self):

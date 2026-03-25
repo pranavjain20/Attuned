@@ -108,7 +108,9 @@ RECOVERY_DELTA_EXEMPT_STATES = frozenset({"accumulated_fatigue", "peak_readiness
 BASELINE_CALM_ANCHOR = {"para": 0.45, "symp": 0.15, "grnd": 0.40}
 BASELINE_ENERGY_ANCHOR = {"para": 0.05, "symp": 0.75, "grnd": 0.20}
 BASELINE_Z_CLAMP = 2.0
-BASELINE_SLEEP_WEIGHT = 0.5  # How much sleep quality dampens/boosts baseline vs recovery delta
+BASELINE_SLEEP_WEIGHT = 0.65  # Sleep architecture vs recovery delta weight for baseline scaling
+# Research basis: sleep-subjective correlation r=0.4-0.6 (Vitale 2015, PMC6456824)
+# vs HRV-subjective correlation r=0.2-0.3 (Hynynen 2011). Roughly 2:1 ratio.
 TOKEN_EXPIRY_BUFFER_SECONDS = 300  # 5-minute buffer before refresh
 
 # ---------------------------------------------------------------------------
