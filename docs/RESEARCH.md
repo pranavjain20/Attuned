@@ -446,6 +446,118 @@ Research-backed target ranges for the matching engine. Each state maps to an ide
 
 ---
 
+## 9. Sleep Quality and Next-Day Subjective State
+
+### 9.1 Sleep Quality Predicts How You Feel More Than How You Slept
+
+The key insight for Attuned: playlists target how you FEEL, not your lab-measured cognitive performance. A person who slept great last night doesn't want "slow down" even if the week has been rough. The research strongly supports subjective state being disproportionately driven by last night's sleep.
+
+- **Holding et al. (PMC6456824):** Bidirectional relationship between sleep quality and affect: sleep quality predicts next-day positive affect with a coefficient 2.6× larger than the reverse direction (affect → sleep). Sleep quality is the single strongest predictor of next-morning subjective state.
+
+- **Nature Scientific Reports (2024):** Sleep efficiency is the strongest objective correlate of subjective sleep quality — stronger than total duration, onset latency, or wake-after-sleep-onset. People who spend more of their time in bed actually sleeping rate their sleep significantly better.
+
+- **PMC12208346:** Reallocating just 30 minutes from light sleep to deep sleep improves positive affect by +0.38, independent of total sleep duration. It's not about sleeping longer — it's about sleeping better. The quality of sleep architecture matters more than quantity.
+
+- **Dinges et al. / Belenky et al. (cumulative fatigue literature):** One good night does NOT fully reverse accumulated fatigue objectively. Cognitive performance, reaction time, and physiological markers require multiple recovery nights. However, subjective experience is disproportionately driven by the most recent night — people feel dramatically better after one good night even when objective impairment persists.
+
+**Design decision:** Added a restorative sleep gate to the accumulated fatigue classifier. If last night meets all four conditions (no deep deficit, no REM deficit, efficiency >=85%, total >=6h), skip the fatigue classification and fall through to baseline. The playlist should match how the person feels, not what the week's trend says. Backtest: 62 of 150 fatigue days flipped to baseline. All had genuinely restorative sleep.
+
+### 9.2 Sleep Efficiency as a Quality Marker
+
+Sleep efficiency (time asleep / time in bed) emerges as the most reliable single proxy for sleep quality:
+
+- Values >=85% are the clinical standard for "good" sleep efficiency (AASM)
+- Below 85% is a diagnostic criterion for insomnia
+- In the Nature Sci Rep 2024 study, efficiency predicted subjective quality better than any stage-specific metric
+
+The restorative sleep gate uses 85% as the efficiency threshold — the clinical boundary between good and poor sleep efficiency.
+
+---
+
+## 10. Mood Tag Affinity — How Emotional Labels Map to Autonomic Dimensions
+
+### 10.1 The Problem with Binary Mood Tags
+
+The original system used three binary sets: parasympathetic tags (calm, peaceful, etc.), sympathetic tags (energetic, upbeat, etc.), and grounding tags (nostalgic, warm, etc.). A tag was either in a set (1.0) or not (0.0). This had three problems:
+
+1. **No gradation:** "Motivational" was identical to "energetic" for sympathetic scoring, but motivational has a cognitive/grounding component that pure energy doesn't.
+2. **No cross-dimensional contribution:** "Sad" was purely parasympathetic, but sad music has a strong grounding effect through self-referential processing.
+3. **25% unassigned:** 449 tag instances across 45 unique tags defaulted to neutral 0.5 because they weren't in any set.
+
+### 10.2 Russell's Circumplex Model (1980)
+
+The foundational framework for mapping emotions to dimensions. All emotions can be placed on a 2D space of valence (positive–negative) × arousal (high–low). This maps cleanly onto the three autonomic dimensions:
+
+- High arousal, positive valence → sympathetic activation (energetic, excited, euphoric)
+- Low arousal, positive valence → parasympathetic (calm, serene, peaceful)
+- Low arousal, negative valence → parasympathetic + grounding (sad, melancholic, reflective)
+- High arousal, negative valence → sympathetic but different character (angry, anxious, intense)
+
+The circumplex provides the theoretical backbone: mood tags don't live on a single dimension. Every tag has a position in the arousal-valence space that maps to a specific blend of para/symp/grnd weights.
+
+### 10.3 Neurochemistry of Music-Mood Interactions
+
+**Chanda & Levitin 2013 (Trends in Cognitive Sciences, PubMed 23541122):** Identified four neurochemical domains through which music modulates mood:
+
+1. **Reward/Dopamine:** Music triggers dopamine release in the nucleus accumbens — the same reward pathway as food and social bonding. Drives the pleasure response to familiar, preferred, and anticipated music.
+2. **Stress/Cortisol:** Calming music reduces cortisol levels. The parasympathetic pathway.
+3. **Immunity:** Music influences immune function markers (IgA, natural killer cells). Less directly relevant to playlists but supports the physiological basis.
+4. **Social/Oxytocin:** Group music and emotionally resonant music elevate oxytocin levels. Drives the "connection" feeling in grounding music.
+
+**Salimpoor et al. 2011 (Nature Neuroscience, nn.2726):** Dopamine release occurs both during anticipation of a musical peak and during the experience itself. Familiar music triggers stronger anticipatory dopamine — supporting the familiarity effect and explaining why recently-played songs feel more rewarding.
+
+**Keeler et al. 2015 (PMC4585277):** Group singing elevated oxytocin levels. While this studied group contexts, the oxytocin pathway is relevant to why devotional and community-oriented music (bhajans, spiritual songs) has grounding effects.
+
+### 10.4 Mood Regulation Strategies
+
+**Saarikallio & Erkkilä 2007:** Identified seven mood regulation strategies people use with music:
+
+1. **Revival** — using music to get energy (sympathetic)
+2. **Entertainment** — maintaining/improving positive mood (sympathetic + grounding)
+3. **Solace** — seeking comfort when sad (parasympathetic + grounding)
+4. **Mental work** — using music to think through problems (grounding)
+5. **Diversion** — forgetting worries through music (sympathetic)
+6. **Discharge** — releasing anger/sadness through music (sympathetic, despite negative valence)
+7. **Strong sensation** — seeking intense emotional experience (sympathetic + grounding)
+
+These strategies map to specific mood tags. "Motivational" aligns with revival + diversion (primarily sympathetic but with grounding). "Melancholic" aligns with solace + mental work (parasympathetic + grounding). The strategies informed the specific affinity weights.
+
+### 10.5 Default Mode Network (DMN) and Self-Referential Processing
+
+Three studies establish that certain types of music activate the brain's default mode network — the system responsible for self-reflection, memory, and emotional processing. This is the neurological basis for grounding scores.
+
+**Taruffi et al. 2017 (Nature Scientific Reports, srep14396):** Sad music is the strongest DMN activator for self-referential processing. Listeners reported increased mind-wandering, memories, and introspective thought during sad music compared to happy or neutral music. This is why "sad" has a high grounding weight (0.55) — it triggers the exact processing that emotional grounding targets.
+
+**Wilkins et al. 2014 (Nature Scientific Reports, srep6130):** Preferred/familiar music engages DMN more than unfamiliar music, supporting introspective processing. This is separate from the dopamine/reward pathway — familiar music activates both reward (dopamine) and self-referential (DMN) circuits.
+
+**Barrett et al. 2023 (PMC11907061):** Nostalgia activates both DMN and reward networks simultaneously. Nostalgic music triggers autobiographical memory retrieval (DMN) alongside pleasure (reward). This dual activation explains why nostalgic songs feel both comforting and pleasurable — they ground you in personal history while activating reward circuits.
+
+### 10.6 The Consolation Theory of Sad Music
+
+**Huron 2011 (Music Perception, Sage 1029864911401171):** The prolactin consolation theory explains why people enjoy sad music. Sad stimuli trigger prolactin release (a consoling neurochemical), but because the sadness is vicarious (not a real loss), the listener gets the consolation without the grief. This creates a pleasant, bittersweet experience.
+
+This explains the counterintuitive finding that sad music can be comforting rather than depressing. For mood tag affinity, "sad" and "melancholic" tags get parasympathetic weight (calming) AND grounding weight (emotional processing), not sympathetic activation. Sad music doesn't activate — it consoles and grounds.
+
+### 10.7 Design Decision: The MOOD_AFFINITY Table
+
+Based on the aggregate research, the binary frozensets were replaced with a `MOOD_AFFINITY` dictionary mapping 64 mood tags to (parasympathetic, sympathetic, grounding) weight triples. Examples:
+
+| Tag | Para | Symp | Grnd | Rationale |
+|---|---|---|---|---|
+| calm | 0.80 | 0.00 | 0.30 | Classic parasympathetic, some grounding through stillness |
+| energetic | 0.00 | 0.85 | 0.05 | Pure sympathetic activation |
+| motivational | 0.00 | 0.65 | 0.25 | Revival strategy — energizing but with cognitive/grounding component |
+| sad | 0.60 | 0.00 | 0.55 | Prolactin consolation (para) + DMN self-referential (grnd) |
+| nostalgic | 0.35 | 0.00 | 0.75 | Barrett 2023 — DMN + reward, primarily grounding |
+| spiritual | 0.65 | 0.00 | 0.55 | Parasympathetic + oxytocin grounding (Keeler 2015) |
+| devotional | 0.70 | 0.00 | 0.50 | Deeper parasympathetic than spiritual, similar grounding |
+| triumphant | 0.00 | 0.75 | 0.15 | Strong sympathetic with slight grounding from achievement |
+| bittersweet | 0.40 | 0.00 | 0.65 | Consolation + strong self-referential processing |
+
+`compute_mood_score` now returns a weighted average across all tags instead of a binary fraction. A song tagged ["motivational", "upbeat"] scores sympathetic = mean(0.65, 0.80) = 0.725, not 1.0. A song tagged ["spiritual", "peaceful"] scores parasympathetic = mean(0.65, 0.80) = 0.725 and grounding = mean(0.55, 0.30) = 0.425.
+
+---
+
 ## References
 
 ### Music and ANS
@@ -485,6 +597,23 @@ Research-backed target ranges for the matching engine. Each state maps to an ide
 - Doherty, Lambe, Altini et al., 2025 — Composite Health Scores in Consumer Wearables (Translational Exercise Biomedicine)
 - Altini, M. — Measurements vs Made Up Scores (HRV4Training / Substack)
 - Antwerp University Hospital — WHOOP HRV Accuracy Validation (PMC)
+
+### Sleep Quality and Subjective State
+- Holding et al. (PMC6456824) — Bidirectional sleep quality / affect relationship
+- Nature Scientific Reports, 2024 — Sleep efficiency as strongest correlate of subjective sleep quality
+- PMC12208346 — Light→deep sleep reallocation improves positive affect
+- Dinges et al. — Cumulative fatigue and recovery timelines
+- Belenky et al. — Sleep restriction and recovery of sustained performance
+
+### Mood, Emotion, and Music Neuroscience
+- Russell, 1980 — Circumplex Model of Affect (valence × arousal)
+- Saarikallio & Erkkilä, 2007 — Seven mood regulation strategies with music
+- Taruffi et al., 2017 — Sad music and DMN activation (Nature Scientific Reports, srep14396)
+- Wilkins et al., 2014 — Preferred music engages DMN (Nature Scientific Reports, srep6130)
+- Barrett et al., 2023 — Nostalgia activates DMN + reward networks (PMC11907061)
+- Keeler et al., 2015 — Group music and oxytocin elevation (PMC4585277)
+- Salimpoor et al., 2011 — Dopamine release during music anticipation (Nature Neuroscience, nn.2726)
+- Huron, 2011 — Prolactin consolation theory for sad music (Music Perception, Sage 1029864911401171)
 
 ### LLM Classification
 - Yang et al., 2025 — LLMs for Automated Music Emotion Annotation (arXiv)

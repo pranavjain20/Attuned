@@ -294,6 +294,70 @@ A song with para=0.65, grnd=0.70 gets labeled "GRND" (counted wrong). But it STI
 **Decision (Day 8):** Added recovery delta modifier. Large day-over-day recovery swings (>1.5 SD) nudge the neuro profile toward sympathetic (coming up) or parasympathetic (crashing down).
 **Effect:** Same recovery score, different playlist energy based on trajectory.
 
+### Continuous baseline profile replaces static compromise
+**What we noticed:** Baseline state produced scattered playlists — a mix of slow, inspirational, party songs. The static profile {para:0.15, symp:0.50, grnd:0.35} is a compromise that satisfies no one. "Fuel Up" name implies energy but the playlist was directionless.
+**The insight:** Recovery always has direction. On any given day you're trending up or down. True "flat" is rare. The recovery delta (z-score of day-over-day change) already captures this — use it to commit to a direction instead of sitting in a dead zone.
+**Decision:** Piecewise linear interpolation on the recovery delta z-score:
+- z = -2 → calm anchor: {para:0.45, symp:0.15, grnd:0.40}
+- z = 0 → current baseline: {para:0.15, symp:0.50, grnd:0.35}
+- z = +2 → energy anchor: {para:0.05, symp:0.75, grnd:0.20}
+
+Replaces the 1.5 SD dead zone threshold. Non-baseline states keep their threshold behavior (the nudge only applies to baseline).
+**Effect:** Yesterday's playlist leaned up (z=0.7, +20pp delta) → profile shifted to {0.11, 0.59, 0.30}. More energetic, coherent feel. The playlist committed to a direction instead of averaging everything.
+
+### Recent anchors: guaranteed slots for recently-played songs
+**What we noticed:** The "5 recent anchors" design from Day 5 was never implemented. Cohesion picked purely by sonic similarity. Result: 1 of 20 songs had been played in the last 30 days. Chicken Kuk-Doo-Koo (3× this month, score 0.825) was excluded. G Phaad Ke (2 plays, last played 2023) was included.
+**Decision:** Added `identify_anchors()` — top-scored songs played within 90 days get guaranteed slots. Cohesion fills the remaining 15 slots. Extended `expand_cluster()` with a `pre_selected` parameter so anchors are part of the cluster from the start.
+**Effect:** 5 recently-played songs guaranteed in every playlist. Songs you actually listen to appear. The playlist feels like YOUR music, not a random selection from your library.
+
+### Motivational songs excluded from anchors
+**What we noticed:** Chak De India (motivational, recently played at the gym) was getting anchor slots in morning playlists. Gym songs don't belong at breakfast.
+**Decision:** Anchors skip songs tagged "motivational" (via `CONTEXT_EXCLUDE_TAGS`). The song can still make the playlist through normal scoring — just not through the guaranteed recent-anchor mechanism.
+**Effect:** Chak De India dropped from anchors. Replaced by Daru Badnaam (recently played, not motivational). Morning playlists feel morning-appropriate.
+
+### Weighted mood tag affinity replaces binary sets
+**What we noticed:** Mood tags were binary — in a set (1.0) or not (0.0). "Motivational" was identical to "energetic" for sympathetic scoring. 25% of tag instances (449 across 45 tags) were unassigned and defaulted to neutral 0.5. No cross-dimensional contribution.
+**Research (12 cited studies):**
+- Russell's Circumplex Model (1980): valence × arousal maps to para/symp/grnd dimensions
+- Bernardi et al. 2006 (PMC1860846): cardiovascular changes proportional to tempo/complexity
+- Chanda & Levitin 2013 (PubMed 23541122): four neurochemical domains — reward/dopamine, stress/cortisol, immunity, social/oxytocin
+- Saarikallio & Erkkilä 2007: seven mood regulation strategies (revival, entertainment, solace, mental work, diversion, discharge, strong sensation)
+- Taruffi et al. 2017 (Nature srep14396): sad music is the strongest DMN activator for self-referential processing
+- Wilkins et al. 2014 (Nature srep6130): preferred music engages DMN for introspective processing
+- Barrett et al. 2023 (PMC11907061): nostalgia activates DMN + reward networks
+- Keeler et al. 2015 (PMC4585277): group music elevates oxytocin
+- Salimpoor et al. 2011 (Nature nn.2726): dopamine release during music anticipation/experience
+- Huron 2011 (Sage 1029864911401171): prolactin consolation theory for sad music
+- Bretherton et al. 2019: 60 BPM increases vagal modulation
+- Thoma et al. 2013 (PMC3734071): music accelerates autonomic recovery
+
+**Decision:** Replaced 3 binary frozensets with a `MOOD_AFFINITY` dict — 64 tags, each with (para, symp, grnd) weights. "Motivational" = (0.00, 0.65, 0.25), not (0, 1.0, 0). "Sad" = (0.60, 0.00, 0.55), not (1.0, 0, 0). "Spiritual" = (0.65, 0.00, 0.55), not neutral 0.5. `compute_mood_score` now returns a weighted average instead of a binary fraction.
+**Effect:** Motivational songs properly deprioritized for parasympathetic states. Spiritual/devotional songs now correctly score parasympathetic. Cross-dimensional contributions (sad → grounding) are captured.
+
+### Era hard cap on cohesion similarity
+**What we noticed:** Baadshah O Baadshah (1999) kept appearing in 2010s playlists. Era similarity was 0.0000 (correctly penalized by Gaussian decay), but era weight was only 20% of cohesion. Other dimensions (mood 1.0, BPM 0.98, genre 0.47) compensated, giving total similarity 0.65.
+**Research basis:** The era cohesion research doc states "production era changes are more jarring than cultural differences." A 1999 song in a 2013 cluster sounds wrong regardless of mood/tempo match.
+**Decision:** When `era_sim < 0.05` (different production eras), cap total pairwise similarity at 0.30. This prevents any dimension from compensating for a fundamental era mismatch.
+**Effect:** Baadshah eliminated from 2010s playlists. Tested against all 9 pre-2005 high-sympathetic songs — all correctly excluded from modern clusters.
+
+### System hardening (10 issues)
+**What we fixed:**
+- Spotify availability check batched to 50 URIs per call (was unbounded)
+- Metadata fallback warns user about time estimate before proceeding
+- URI validation before any Spotify API call
+- LLM 60-second timeout on both OpenAI and Anthropic providers
+- Essentia logs actual exceptions instead of swallowing them
+- WHOOP pagination validates response structure before processing
+- Classification merge warns on missing critical fields (BPM, energy)
+- Global Spotify rate limit handler with exponential backoff
+- `fetch_batch_metadata` fills ALL missing metadata, not just engaged songs
+- Spotify API lockout from unthrottled fallback fixed with 3-second delay between retries
+
+### Onboarding pipeline
+**What we built:** `onboard` CLI command — single command for new users. Handles Spotify auth, library sync, extended history import, metadata fetch, LLM classification, Essentia analysis, score computation, and WHOOP sync in sequence.
+**Documentation:** Created `docs/ONBOARDING.md` with step-by-step instructions.
+**Bug fixed:** `fetch_batch_metadata` was only filling metadata for songs with 5+ meaningful listens. New users need ALL songs to have metadata before classification can run.
+
 ---
 
 ## Crosscutting Lessons

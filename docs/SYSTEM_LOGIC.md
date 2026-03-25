@@ -119,17 +119,17 @@ Not just "did you sleep enough" but "what kind of sleep did you get." This is wh
 ### Step 5: State Classification
 The classifier takes today's data + baselines + trends and assigns one of six composite states. It evaluates top-to-bottom and returns the first match (so more serious states are checked first):
 
-1. **Accumulated Fatigue** — multi-day decline across HRV, RHR, and sleep debt
+1. **Accumulated Fatigue** — multi-day decline across HRV, RHR, and sleep debt. **Restorative sleep gate:** if last night's sleep was genuinely restorative (no deep deficit, no REM deficit, efficiency >=85%, total >=6h), fatigue is skipped. Playlists target how you feel, not the week's trend — and a person who slept great feels ready even if the week was rough (PMC6456824: sleep quality predicts next-day affect with 2.6x the coefficient of the reverse direction).
 2. **Physical Recovery Deficit** — deep sleep significantly low, REM adequate
 3. **Emotional Processing Deficit** — REM significantly low, deep sleep adequate
 4. **Poor Recovery** — today is bad but the 7-day trend is fine
-5. **Baseline** — yellow zone, nothing stands out
+5. **Baseline** — yellow zone, nothing stands out. **Continuous profile:** instead of a static neuro profile, baseline uses piecewise linear interpolation on the recovery delta z-score to commit to a direction. Trending up (z=+2) → energy-forward profile. Trending down (z=-2) → calm-forward profile. True "flat" baseline is the midpoint.
 6. **Peak Readiness** — everything is great
 
 Each state maps to specific song property targets (detailed in Section 8).
 
 ### Step 6: Song Matching
-The matching engine scores every classified song by the neurological dot product between the song's neuro vector (parasympathetic, sympathetic, grounding) and the state's neuro profile. Scores are adjusted by classification confidence and a small freshness nudge for songs in recent playlists (4-day window). The top 60 candidates feed into a cohesion layer (seed-and-expand) that selects a sonically coherent subset of 15-20 songs sharing genre and mood DNA.
+The matching engine scores every classified song by the neurological dot product between the song's neuro vector (parasympathetic, sympathetic, grounding) and the state's neuro profile. Scores are adjusted by classification confidence and a small freshness nudge for songs in recent playlists (4-day window). Before cohesion runs, up to 5 **recent anchors** are identified — top-scored songs played within 90 days that get guaranteed playlist slots (excluding motivational songs, which are context-inappropriate for morning playlists). The top 60 candidates feed into a cohesion layer (seed-and-expand) that selects a sonically coherent subset of 15-20 songs sharing genre and mood DNA, with anchors pre-seeded into the cluster.
 
 ### Step 7: Lead Track Ordering
 The first 3 songs set the emotional tone before you press play. After scoring and cohesion selection, the top 10 candidates are re-ranked for positions 1-3 by blending neuro score (70%) with engagement (30%). Songs you genuinely love float to the front — but only from the pool that's already neurologically matched. Positions 4+ stay in pure neuro-score order.
@@ -534,6 +534,17 @@ This is better than hard cutoffs because it gives partial credit. A song at 72 B
 
 **These formulas are starting points.** They will be calibrated against subjective listening tests ("does this playlist actually feel calming?") and adjusted. The weights and centers are derived from the research but the exact numbers will evolve with real use.
 
+### 6.5 Mood Tag Affinity — Weighted Semantic Scoring
+
+Beyond the seven acoustic properties, each song's mood tags contribute to its neuro scores through a **weighted affinity table**. The original system used binary sets (a tag was "parasympathetic" or "sympathetic" or "grounding" — 1.0 or 0.0). This was replaced with a `MOOD_AFFINITY` dictionary mapping 64 tags to (para, symp, grnd) weight triples informed by 12 research studies (see RESEARCH.md Section 10).
+
+**Why weights instead of binary sets:**
+- **Gradation:** "Motivational" (0.00, 0.65, 0.25) is primarily sympathetic but has a grounding component — different from pure "energetic" (0.00, 0.85, 0.05).
+- **Cross-dimensional contribution:** "Sad" (0.60, 0.00, 0.55) activates both parasympathetic (prolactin consolation, Huron 2011) and grounding (DMN self-referential processing, Taruffi 2017).
+- **Full coverage:** All 64 observed tags have explicit weights. No tags default to neutral 0.5.
+
+`compute_mood_score` returns a weighted average across all of a song's mood tags for each dimension, replacing the binary fraction. This feeds into the neuro scoring alongside the acoustic property scores.
+
 ---
 
 ## 8. The Six States — The Complete Bridge from Body to Music
@@ -545,6 +556,8 @@ The classifier evaluates states top-to-bottom and returns the first match. This 
 ### State 1: Accumulated Fatigue
 
 **WHOOP Trigger:** LnRMSSD <1.0 SD below 30-day mean, sustained 3+ days AND RHR rising (+5 bpm above baseline) AND sleep debt >5 hours (7-day rolling).
+
+**Restorative sleep gate:** Even when all fatigue triggers fire, if last night's sleep was genuinely restorative — no deep sleep deficit, no REM deficit, sleep efficiency >=85%, total sleep >=6 hours — fatigue classification is skipped. The person falls through to baseline. Research (PMC6456824) shows sleep quality is the strongest predictor of next-morning subjective state, with a coefficient 2.6× larger than the reverse direction. One good night doesn't reverse accumulated fatigue objectively, but subjective experience is disproportionately driven by the most recent night. Playlists target how you FEEL, not lab-measured performance. Backtest: 62 of 150 fatigue days flipped to baseline, all with genuinely restorative sleep.
 
 **What's happening in your body:** This isn't a bad morning — it's a downward trend across multiple systems over multiple days. Your autonomic nervous system is depleted. The parasympathetic branch (rest/recovery) is suppressed. The requirement for all three signals to align (HRV + RHR + sleep debt) means this is high-confidence — no single bad reading can trigger it.
 
@@ -622,9 +635,17 @@ The classifier evaluates states top-to-bottom and returns the first match. This 
 
 **WHOOP Trigger:** Yellow recovery (34-66%), no strong deficit signals. No significant HRV decline, no sleep architecture deficits exceeding 1.5 SD.
 
-**What's happening in your body:** A normal day. Nothing stands out positively or negatively. Your body is in its typical operating range. This is the most common state — most days aren't exceptional in either direction.
+**What's happening in your body:** A normal day. Nothing stands out positively or negatively. Your body is in its typical operating range. This is the most common state — most days aren't exceptional in either direction. But "normal" still has direction — recovery is trending up or down relative to yesterday.
 
-**What your body needs from music:** Nothing specific. Widest ranges of any state. Music should be pleasant, balanced, and varied — a good general-purpose playlist from your library.
+**Continuous profile instead of static:** The original static baseline profile {para:0.15, symp:0.50, grnd:0.35} was a compromise that produced scattered playlists — a mix of slow, inspirational, and party songs that satisfied no one. Instead, baseline now uses **piecewise linear interpolation** on the recovery delta z-score to commit to a direction:
+
+- z = -2 (trending down) → calm anchor: {para:0.45, symp:0.15, grnd:0.40}
+- z = 0 (flat) → midpoint: {para:0.15, symp:0.50, grnd:0.35}
+- z = +2 (trending up) → energy anchor: {para:0.05, symp:0.75, grnd:0.20}
+
+This replaces the 1.5 SD dead zone from the recovery delta modifier. Non-baseline states keep threshold behavior. The result: a baseline day trending up produces an energetic, coherent playlist. A baseline day trending down produces a calmer, more grounded one. No more directionless compromises.
+
+**What your body needs from music:** Depends on direction. Trending up → more energy. Trending down → more calm. Flat → balanced variety.
 
 | Song Property | Target Range | Why This Range |
 |---|---|---|
@@ -635,7 +656,7 @@ The classifier evaluates states top-to-bottom and returns the first match. This 
 | Valence | 0.4-0.7 | Moderately positive. |
 | Mode | No strong preference | Not driving the decision. |
 
-**What this playlist sounds like:** A well-curated mix of your favorites. Not pushing in any direction — just good music you enjoy.
+**What this playlist sounds like:** Depends on direction. Trending up → your upbeat favorites, a "Fuel Up" playlist that commits to energy. Trending down → calmer songs, a "Settle In" playlist that leans into comfort. The target ranges above are the midpoint — the continuous profile shifts them based on the day's trajectory.
 
 ### State 6: Peak Readiness
 
@@ -717,10 +738,12 @@ Rather than per-property range matching with progressive relaxation, the engine 
 
 1. Score ALL classified songs by neuro_match × confidence.
 2. Take the top 60 candidates (all neurologically correct for the state).
-3. Run seed-and-expand cohesion to pick a sonically coherent subset of 20 — the seed is the highest-scoring song, then expand by adding songs with high genre/mood similarity to the growing cluster.
-4. If fewer than 15 songs pass the similarity threshold, progressively relax the cohesion threshold until 15-20 songs qualify.
+3. Identify up to 5 **recent anchors** — top-scored songs played within 90 days. Anchors get guaranteed slots. Songs tagged "motivational" are excluded from anchors (context-inappropriate for morning playlists) but can still enter through normal scoring.
+4. Run seed-and-expand cohesion to pick a sonically coherent subset of 15-20 songs — the seed is the highest-scoring song, anchors are pre-seeded into the cluster, then expand by adding songs with high genre/mood/era similarity.
+5. **Era hard cap:** When two songs have `era_sim < 0.05` (different production eras), total pairwise similarity is capped at 0.30 regardless of how well other dimensions (mood, BPM, genre) match. A 1999 Bollywood song in a 2013 cluster sounds wrong no matter how similar the mood — production era changes are more jarring than individual property differences.
+6. If fewer than 15 songs pass the similarity threshold, progressively relax the cohesion threshold until 15-20 songs qualify.
 
-This produces playlists that feel like they belong together — not just individually matched songs thrown into a list, but a coherent set that shares genre and mood DNA.
+This produces playlists that feel like they belong together — not just individually matched songs thrown into a list, but a coherent set that shares genre, mood, and era DNA. The anchor mechanism ensures recently-played songs appear (the playlist feels like YOUR current rotation), while the era hard cap prevents cross-era sonic mismatches that other dimensions can't compensate for.
 
 Every relaxation is logged — the playlist reasoning notes what was relaxed and how many times.
 
