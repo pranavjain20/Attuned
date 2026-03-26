@@ -1,12 +1,18 @@
-"""Tests for spotify/auth.py — SQLite cache handler and client creation."""
+"""Tests for spotify/auth.py — SQLite cache handler, client creation, rate limit wrapper."""
 
 from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
+import spotipy
 
 from db import queries
-from spotify.auth import SQLiteCacheHandler, _refresh_spotify_token
+from spotify.auth import (
+    SQLiteCacheHandler,
+    SpotifyRateLimitError,
+    _RateLimitedSpotify,
+    _refresh_spotify_token,
+)
 
 
 class TestSQLiteCacheHandler:
@@ -66,3 +72,121 @@ class TestRefreshSpotifyTokenErrors:
     def test_refresh_token_missing_token_raises(self, db_conn):
         with pytest.raises(RuntimeError, match="No Spotify refresh token"):
             _refresh_spotify_token(db_conn, None)
+
+
+def _make_spotify_exception(status: int, retry_after: int | None = None) -> spotipy.SpotifyException:
+    """Build a SpotifyException with optional Retry-After header."""
+    headers = {"Retry-After": str(retry_after)} if retry_after is not None else {}
+    return spotipy.SpotifyException(status, -1, "test error", headers=headers)
+
+
+@patch("spotify.auth.time.sleep")
+class TestRateLimitedSpotify:
+    def _make_wrapper(self, side_effect):
+        sp = MagicMock(spec=spotipy.Spotify)
+        sp.track.side_effect = side_effect
+        return _RateLimitedSpotify(sp)
+
+    def test_success_no_retry(self, mock_sleep):
+        sp = MagicMock(spec=spotipy.Spotify)
+        sp.track.return_value = {"name": "Song"}
+        wrapper = _RateLimitedSpotify(sp)
+        result = wrapper.track("abc")
+        assert result == {"name": "Song"}
+        mock_sleep.assert_not_called()
+
+    def test_429_short_retry_after_retries(self, mock_sleep):
+        """429 with Retry-After <= 60s should wait and retry."""
+        wrapper = self._make_wrapper([
+            _make_spotify_exception(429, retry_after=5),
+            {"name": "Song"},
+        ])
+        result = wrapper.track("abc")
+        assert result == {"name": "Song"}
+        mock_sleep.assert_called_once_with(10)  # 5 + 5 buffer
+
+    def test_429_long_retry_after_raises_circuit_breaker(self, mock_sleep):
+        """429 with Retry-After > 60s should raise SpotifyRateLimitError immediately."""
+        wrapper = self._make_wrapper([
+            _make_spotify_exception(429, retry_after=84580),
+        ])
+        with pytest.raises(SpotifyRateLimitError, match="Daily API quota exhausted"):
+            wrapper.track("abc")
+        mock_sleep.assert_not_called()
+
+    def test_429_default_retry_after_retries(self, mock_sleep):
+        """429 without Retry-After header defaults to 30+5=35s (under circuit breaker)."""
+        wrapper = self._make_wrapper([
+            _make_spotify_exception(429, retry_after=None),
+            {"name": "Song"},
+        ])
+        # No Retry-After header → defaults to 30 + 5 = 35
+        result = wrapper.track("abc")
+        assert result == {"name": "Song"}
+        mock_sleep.assert_called_once_with(35)
+
+    def test_429_at_circuit_breaker_boundary_retries(self, mock_sleep):
+        """429 with Retry-After exactly at boundary (55+5=60) should still retry."""
+        wrapper = self._make_wrapper([
+            _make_spotify_exception(429, retry_after=55),
+            {"name": "Song"},
+        ])
+        result = wrapper.track("abc")
+        assert result == {"name": "Song"}
+        mock_sleep.assert_called_once_with(60)
+
+    def test_429_just_over_circuit_breaker_aborts(self, mock_sleep):
+        """429 with Retry-After just over boundary (56+5=61) should abort."""
+        wrapper = self._make_wrapper([
+            _make_spotify_exception(429, retry_after=56),
+        ])
+        with pytest.raises(SpotifyRateLimitError):
+            wrapper.track("abc")
+        mock_sleep.assert_not_called()
+
+    def test_500_retries_with_delay(self, mock_sleep):
+        """Server errors should retry with 5s delay."""
+        wrapper = self._make_wrapper([
+            _make_spotify_exception(500),
+            {"name": "Song"},
+        ])
+        result = wrapper.track("abc")
+        assert result == {"name": "Song"}
+        mock_sleep.assert_called_once_with(5)
+
+    def test_502_retries(self, mock_sleep):
+        wrapper = self._make_wrapper([
+            _make_spotify_exception(502),
+            _make_spotify_exception(502),
+            {"name": "Song"},
+        ])
+        result = wrapper.track("abc")
+        assert result == {"name": "Song"}
+        assert mock_sleep.call_count == 2
+
+    def test_server_error_exhausts_retries(self, mock_sleep):
+        """After MAX_RETRIES server errors, final attempt raises."""
+        wrapper = self._make_wrapper([
+            _make_spotify_exception(500),
+            _make_spotify_exception(500),
+            _make_spotify_exception(500),
+            _make_spotify_exception(500),  # final attempt
+        ])
+        with pytest.raises(spotipy.SpotifyException):
+            wrapper.track("abc")
+
+    def test_403_raises_immediately(self, mock_sleep):
+        """403 Forbidden should not retry — raises immediately."""
+        wrapper = self._make_wrapper([
+            _make_spotify_exception(403),
+        ])
+        with pytest.raises(spotipy.SpotifyException):
+            wrapper.track("abc")
+        mock_sleep.assert_not_called()
+
+    def test_non_callable_attribute_passthrough(self, mock_sleep):
+        """Non-callable attributes should pass through without wrapping."""
+        sp = MagicMock(spec=spotipy.Spotify)
+        sp.prefix = "https://api.spotify.com/v1/"
+        wrapper = _RateLimitedSpotify(sp)
+        assert wrapper.prefix == "https://api.spotify.com/v1/"

@@ -67,15 +67,48 @@ def get_spotify_client(conn: sqlite3.Connection) -> spotipy.Spotify:
     if expires_at and time.time() >= (expires_at - TOKEN_EXPIRY_BUFFER_SECONDS):
         access_token = _refresh_spotify_token(conn, token_row["refresh_token"])
 
-    return _wrap_with_rate_limit(spotipy.Spotify(auth=access_token))
+    return _wrap_with_rate_limit(
+        spotipy.Spotify(auth=access_token, retries=0, status_retries=0)
+    )
+
+
+class SpotifyRateLimitError(Exception):
+    """Raised when Spotify's daily API quota is exhausted.
+
+    Retry-After > 60 seconds means the app hit a daily quota, not a burst
+    limit. Sleeping for hours is never the right response — abort and retry
+    tomorrow.
+    """
+
+    def __init__(self, retry_after: int) -> None:
+        hours = retry_after / 3600
+        super().__init__(
+            f"Daily API quota exhausted. Retry-After: {retry_after}s (~{hours:.1f} hours). "
+            "Try again tomorrow."
+        )
+        self.retry_after = retry_after
+
+
+# Retry-After above this threshold means daily quota exhausted — abort immediately
+_CIRCUIT_BREAKER_SECONDS = 60
+
+# Transient server errors worth retrying
+_RETRYABLE_SERVER_ERRORS = (500, 502, 503, 504)
+
+_SERVER_ERROR_DELAY_SECONDS = 5
 
 
 class _RateLimitedSpotify:
-    """Wrapper around spotipy.Spotify that handles 429 rate limits globally.
+    """Wrapper around spotipy.Spotify that handles rate limits and transient errors.
 
-    Every Spotify API call goes through this. On 429, reads Retry-After header,
-    waits, and retries automatically. No individual command needs its own rate
-    limit handling.
+    Spotipy's built-in urllib3 retry is DISABLED (retries=0, status_retries=0)
+    to prevent double-retry amplification. This wrapper is the single retry layer.
+
+    Behavior:
+    - 429 with Retry-After <= 60s: wait and retry (burst limit, recoverable)
+    - 429 with Retry-After > 60s: raise SpotifyRateLimitError immediately (daily quota)
+    - 500/502/503/504: retry up to 3 times with 5s delay (transient server errors)
+    - All other errors: raise immediately
     """
 
     MAX_RETRIES = 3
@@ -94,12 +127,23 @@ class _RateLimitedSpotify:
                     return attr(*args, **kwargs)
                 except spotipy.SpotifyException as e:
                     if e.http_status == 429:
-                        retry_after = int(e.headers.get("Retry-After", 30)) + 5
+                        retry_after = int(
+                            (e.headers or {}).get("Retry-After", 30)
+                        ) + 5
+                        if retry_after > _CIRCUIT_BREAKER_SECONDS:
+                            raise SpotifyRateLimitError(retry_after) from e
                         logger.warning(
                             "Spotify 429 on %s (attempt %d/%d). Waiting %ds.",
                             name, attempt + 1, self.MAX_RETRIES, retry_after,
                         )
                         time.sleep(retry_after)
+                    elif e.http_status in _RETRYABLE_SERVER_ERRORS:
+                        logger.warning(
+                            "Spotify %d on %s (attempt %d/%d). Retrying in %ds.",
+                            e.http_status, name, attempt + 1, self.MAX_RETRIES,
+                            _SERVER_ERROR_DELAY_SECONDS,
+                        )
+                        time.sleep(_SERVER_ERROR_DELAY_SECONDS)
                     else:
                         raise
             # Final attempt — let it raise
@@ -109,7 +153,7 @@ class _RateLimitedSpotify:
 
 
 def _wrap_with_rate_limit(sp: spotipy.Spotify) -> spotipy.Spotify:
-    """Wrap a Spotipy client with global rate limit handling."""
+    """Wrap a Spotipy client with rate limit and transient error handling."""
     return _RateLimitedSpotify(sp)
 
 

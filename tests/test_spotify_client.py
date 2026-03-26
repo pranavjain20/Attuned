@@ -1,5 +1,7 @@
 """Tests for spotify/client.py — data extraction from Spotify API responses."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from spotify.client import parse_track, get_liked_songs, get_top_tracks, get_tracks_metadata
@@ -131,3 +133,43 @@ def _mock_sp_top(tracks):
         },
         "next": lambda self, results: None,
     })()
+
+
+@patch("spotify.client.time.sleep")
+class TestPaginationThrottle:
+    def _make_track(self, uri="spotify:track:abc"):
+        return {
+            "uri": uri, "name": "Song", "artists": [{"name": "Artist"}],
+            "album": {"name": "Album", "release_date": "2020-01-01"},
+            "duration_ms": 200000,
+        }
+
+    def test_liked_songs_throttles_between_pages(self, mock_sleep):
+        """Multi-page liked songs should sleep between pages."""
+        page2 = {"items": [{"track": self._make_track("spotify:track:b")}], "next": None}
+        page1 = {"items": [{"track": self._make_track("spotify:track:a")}], "next": "url"}
+        sp = MagicMock()
+        sp.current_user_saved_tracks.return_value = page1
+        sp.next.return_value = page2
+        tracks = get_liked_songs(sp)
+        assert len(tracks) == 2
+        mock_sleep.assert_called_once_with(1)
+
+    def test_liked_songs_no_throttle_on_single_page(self, mock_sleep):
+        """Single page should not sleep."""
+        page1 = {"items": [{"track": self._make_track()}], "next": None}
+        sp = MagicMock()
+        sp.current_user_saved_tracks.return_value = page1
+        get_liked_songs(sp)
+        mock_sleep.assert_not_called()
+
+    def test_top_tracks_throttles_between_pages(self, mock_sleep):
+        """Multi-page top tracks should sleep between pages."""
+        page2 = {"items": [self._make_track("spotify:track:b")], "next": None}
+        page1 = {"items": [self._make_track("spotify:track:a")], "next": "url"}
+        sp = MagicMock()
+        sp.current_user_top_tracks.return_value = page1
+        sp.next.return_value = page2
+        tracks = get_top_tracks(sp, "short_term")
+        assert len(tracks) == 2
+        mock_sleep.assert_called_once_with(1)
