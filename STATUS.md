@@ -1,8 +1,33 @@
 # Attuned — Current Status
 
 **Last updated:** Mar 25, 2026
-**Current phase:** Day 9-10. 1,030 tests passing. 25+ commits pushed across two days. Full playlist generation pipeline refined: sleep quality dampener, continuous baseline scaling, recent anchors, weighted mood affinity (64 tags), vibe hard cap, anchor vibe outlier detection. WHOOP Insights doc (10,313 words). Repo scrubbed and public-ready.
-**Next action:** See tasks/todo.md — Spotify tracks endpoint still 403 (metadata backfill for both profiles), then second user's audio pipeline.
+**Current phase:** Day 11. 1,044 tests passing. Spotify API rate limit architecture completely rebuilt: removed all batch sp.tracks() calls (never worked in dev mode), disabled Spotipy's hidden double-retry layer, added circuit breaker for daily quota exhaustion, throttled all pagination. Three consecutive 24-hour lockouts traced to root cause and fixed.
+**Next action:** When rate limit clears (~Mar 26 afternoon), run `python main.py --profile komal sync-spotify` to complete second user's metadata backfill (2,643 songs, ~2.2 hours). Then audio pipeline.
+
+---
+
+## What's Done (Day 11: Spotify Rate Limit Fix)
+
+### Batch endpoint removal
+- Removed all `sp.tracks()` (batch) calls from 6 production files — batch returned 403 from Day 1 on dev-mode app
+- All metadata, availability, and preview URL fetching now uses `sp.track()` with 3-second throttle
+- Renamed `fetch_batch_metadata` → `fetch_track_metadata`, `SPOTIFY_BATCH_SIZE` → `SPOTIFY_PROGRESS_LOG_INTERVAL`
+- Updated 7 test files, 3 docs, 1 lesson
+
+### Rate limit architecture rewrite
+- Disabled Spotipy's built-in urllib3 retry (`retries=0, status_retries=0`) — was silently retrying 429s up to 3 times, sleeping up to 6 hours each
+- `_RateLimitedSpotify` wrapper is now the single retry layer
+- Circuit breaker: Retry-After > 60s → `SpotifyRateLimitError` immediately (daily quota, not burst)
+- Server error retry: 500/502/503/504 retry 3 times with 5s delay
+- Pagination throttle: 1-second delay between `sp.next()` calls in liked songs + top tracks
+
+### Root cause of three-day lockout
+1. Batch sp.tracks() → 403 → fallback to individual calls (initially unthrottled)
+2. Spotipy's hidden urllib3 retry + our wrapper = double retry = up to 19 HTTP requests per 429
+3. No circuit breaker — Retry-After: 84580s caused code to sleep for 23 hours
+4. Running sync-spotify with broken code as diagnostic test burned quota on day 3
+
+### 1,044 tests passing, 2 commits pushed.
 
 ---
 

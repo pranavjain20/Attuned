@@ -280,13 +280,22 @@
 
 ---
 
-## Blocked (Spotify API — tracks endpoint 403)
+## Day 11: Spotify Rate Limit Architecture Fix (DONE)
+- [x] Remove all `sp.tracks()` batch calls from 6 production files (never worked in dev mode)
+- [x] All fetching uses `sp.track()` with 3-second throttle
+- [x] Disable Spotipy's hidden urllib3 retry layer (`retries=0, status_retries=0`)
+- [x] Circuit breaker: Retry-After > 60s → `SpotifyRateLimitError` (abort, don't sleep for hours)
+- [x] Server error retry: 500/502/503/504 retry 3 times with 5s delay
+- [x] Pagination throttle: 1-second delay between `sp.next()` calls
+- [x] Renamed `fetch_batch_metadata` → `fetch_track_metadata`
+- [x] 14 new tests, 1,044 total passing
+- [x] 2 commits pushed
 
-Both profiles hit Spotify rate limit. Batch `/v1/tracks` endpoint returns 403 (dev mode app restriction), fallback to individual calls was unthrottled and triggered escalating rate limit. Now fixed with 3-second delay in fallback path.
+## Blocked (Spotify API — daily rate limit, clears ~Mar 26 afternoon)
 
 ### When rate limit clears — run these:
 - [ ] `python main.py sync-spotify` — fill missing release_years/duration_ms
-- [ ] `python main.py --profile <name> sync-spotify` — fill second user's missing metadata
+- [ ] `python main.py --profile komal sync-spotify` — fill second user's missing metadata (~2,643 songs, ~2.2 hours)
 
 ---
 
