@@ -190,22 +190,20 @@ def sync_top_tracks(conn: sqlite3.Connection, sp: Any) -> int:
     return len(seen_uris)
 
 
-def fetch_batch_metadata(conn: sqlite3.Connection, sp: Any) -> int:
+def fetch_track_metadata(conn: sqlite3.Connection, sp: Any) -> int:
     """Fetch duration_ms and release_year for all songs missing either field.
 
     Fetches metadata for every song in the songs table that is missing
-    duration_ms or release_year, regardless of play count. Uses the Spotify
-    tracks batch endpoint (50 per call).
+    duration_ms or release_year, regardless of play count. Uses individual
+    sp.track() calls with throttling (batch endpoint returns 403 in dev mode).
 
     Returns count of songs updated.
     """
     from spotify.client import get_tracks_metadata
-    from config import SPOTIFY_BATCH_SIZE
 
     missing_rows = queries.get_songs_missing_metadata(conn)
     raw_uris = [r["spotify_uri"] for r in missing_rows]
 
-    # Validate URI format before hitting the API — one malformed URI fails the batch
     _SPOTIFY_URI_RE = re.compile(r"^spotify:track:[A-Za-z0-9]+$")
     missing = []
     for uri in raw_uris:
@@ -219,14 +217,9 @@ def fetch_batch_metadata(conn: sqlite3.Connection, sp: Any) -> int:
         logger.info("All songs already have metadata")
         return 0
 
-    updated = 0
-    for i in range(0, len(missing), SPOTIFY_BATCH_SIZE):
-        batch_uris = missing[i : i + SPOTIFY_BATCH_SIZE]
-        # Spotify tracks endpoint expects track IDs, not full URIs
-        track_ids = [uri.split(":")[-1] for uri in batch_uris]
-        metadata = get_tracks_metadata(sp, track_ids)
-        queries.update_song_metadata_batch(conn, metadata)
-        updated += len(metadata)
+    track_ids = [uri.split(":")[-1] for uri in missing]
+    metadata = get_tracks_metadata(sp, track_ids)
+    queries.update_song_metadata_batch(conn, metadata)
 
-    logger.info("Fetched metadata for %d songs", updated)
-    return updated
+    logger.info("Fetched metadata for %d songs", len(metadata))
+    return len(metadata)

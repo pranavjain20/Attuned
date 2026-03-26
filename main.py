@@ -388,7 +388,7 @@ def _cmd_sync_whoop(db_path: Path) -> None:
 
 def _cmd_sync_spotify(db_path: Path) -> None:
     from spotify.auth import get_spotify_client
-    from spotify.sync import sync_liked_songs, sync_top_tracks, fetch_batch_metadata
+    from spotify.sync import sync_liked_songs, sync_top_tracks, fetch_track_metadata
     from spotify.dedup import consolidate_duplicate_songs
     from spotify.engagement import compute_engagement_scores
 
@@ -397,7 +397,7 @@ def _cmd_sync_spotify(db_path: Path) -> None:
         sp = get_spotify_client(conn)
         liked = sync_liked_songs(conn, sp)
         top = sync_top_tracks(conn, sp)
-        metadata = fetch_batch_metadata(conn, sp)
+        metadata = fetch_track_metadata(conn, sp)
         print(f"\nSpotify sync complete:")
         print(f"  Liked songs:   {liked:,}")
         print(f"  Top tracks:    {top:,}")

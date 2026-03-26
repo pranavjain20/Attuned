@@ -512,7 +512,7 @@ attuned/
 
 ### Database Tables
 
-- **songs** — Every unique song. Key: spotify_uri. Contains track name, artist, album, duration_ms (from Spotify track metadata API — batch endpoint, up to 50 tracks per request), sources (JSON list, e.g. `["liked", "top_track", "extended_history"]`), and engagement columns: play_count (meaningful listens >30s), completion_rate, active_play_rate, skip_rate, engagement_score (composite), first_played, last_played.
+- **songs** — Every unique song. Key: spotify_uri. Contains track name, artist, album, duration_ms (from Spotify track metadata API — individual sp.track() calls with throttling), sources (JSON list, e.g. `["liked", "top_track", "extended_history"]`), and engagement columns: play_count (meaningful listens >30s), completion_rate, active_play_rate, skip_rate, engagement_score (composite), first_played, last_played.
 - **whoop_recovery** — One row per day. Key: cycle_id. Contains date (DATE — derived from cycle end time in user's local timezone), recovery_score, hrv_rmssd_milli, ln_rmssd (REAL — natural log of hrv_rmssd_milli, computed on storage), resting_heart_rate, spo2, skin_temp.
 - **whoop_sleep** — One row per sleep session. Contains date (DATE — derived from sleep end time in user's local timezone), recovery_cycle_id (FK to whoop_recovery.cycle_id — links sleep to its recovery day), plus all stage durations in ms (deep, REM, light, awake), sleep quality metrics (efficiency, performance, consistency, respiratory rate, disturbance count, cycle count), and sleep_needed breakdown (baseline, debt, strain, nap offset).
 - **listening_history** — Every play event. Contains spotify_uri, played_at timestamp, ms_played, reason_start, reason_end, skipped, shuffle, platform. Unique on (spotify_uri, played_at).

@@ -6,6 +6,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+SPOTIFY_TRACK_THROTTLE_SECONDS = 3
+SPOTIFY_PAGINATION_THROTTLE_SECONDS = 1
+
 
 def get_liked_songs(sp: Any) -> list[dict[str, Any]]:
     """Fetch all liked (saved) songs from Spotify. Handles pagination."""
@@ -16,7 +19,11 @@ def get_liked_songs(sp: Any) -> list[dict[str, Any]]:
             parsed = parse_track(item["track"])
             if parsed:
                 tracks.append(parsed)
-        results = sp.next(results) if results.get("next") else None
+        if results.get("next"):
+            time.sleep(SPOTIFY_PAGINATION_THROTTLE_SECONDS)
+            results = sp.next(results)
+        else:
+            results = None
     logger.info("Fetched %d liked songs", len(tracks))
     return tracks
 
@@ -33,7 +40,11 @@ def get_top_tracks(sp: Any, time_range: str = "medium_term") -> list[dict[str, A
             parsed = parse_track(item)
             if parsed:
                 tracks.append(parsed)
-        results = sp.next(results) if results.get("next") else None
+        if results.get("next"):
+            time.sleep(SPOTIFY_PAGINATION_THROTTLE_SECONDS)
+            results = sp.next(results)
+        else:
+            results = None
     logger.info("Fetched %d top tracks (%s)", len(tracks), time_range)
     return tracks
 
@@ -41,46 +52,20 @@ def get_top_tracks(sp: Any, time_range: str = "medium_term") -> list[dict[str, A
 def get_tracks_metadata(sp: Any, track_ids: list[str]) -> list[dict[str, Any]]:
     """Fetch track metadata (including duration_ms) for a list of track IDs.
 
-    Uses batch endpoint (up to 50 per call). Falls back to one-at-a-time
-    if batch returns 403 (seen on very new Spotify apps).
+    Uses individual sp.track() calls with throttling. The batch /v1/tracks
+    endpoint returns 403 on Spotify apps in dev mode.
     """
     if not track_ids:
         return []
 
-    parsed = []
-    # Try batch first (50x fewer API calls)
-    try:
-        batch = track_ids[:50]
-        result = sp.tracks(batch)
-        # Batch works — use it for everything
-        for track in (result.get("tracks") or []):
-            if track:
-                p = parse_track(track)
-                if p:
-                    parsed.append(p)
-        # Process remaining batches
-        for i in range(50, len(track_ids), 50):
-            batch = track_ids[i : i + 50]
-            result = sp.tracks(batch)
-            for track in (result.get("tracks") or []):
-                if track:
-                    p = parse_track(track)
-                    if p:
-                        parsed.append(p)
-        return parsed
-    except Exception as e:
-        if "403" in str(e):
-            logger.warning(
-                "Batch track endpoint unavailable (403). Falling back to individual "
-                "fetches with 3s delay — %d songs will take ~%d minutes.",
-                len(track_ids), len(track_ids) * 3 // 60,
-            )
-        else:
-            logger.warning("Batch fetch failed (%s), falling back to single-track fetch", e)
+    from config import SPOTIFY_PROGRESS_LOG_INTERVAL
 
-    # Fallback: one at a time with 3-second delay to avoid rate limits.
-    # The batch endpoint returns 403 on Spotify apps in development mode.
-    # Without throttling, rapid-fire individual calls trigger 429 lockout.
+    logger.info(
+        "Fetching metadata for %d tracks (~%d minutes)",
+        len(track_ids),
+        len(track_ids) * SPOTIFY_TRACK_THROTTLE_SECONDS // 60 + 1,
+    )
+
     parsed = []
     for i, track_id in enumerate(track_ids):
         try:
@@ -92,9 +77,9 @@ def get_tracks_metadata(sp: Any, track_ids: list[str]) -> list[dict[str, Any]]:
         except Exception:
             logger.warning("Failed to fetch metadata for track %s", track_id)
         if i < len(track_ids) - 1:
-            time.sleep(3)
-        if (i + 1) % 50 == 0:
-            logger.info("Metadata fallback: %d/%d tracks fetched", i + 1, len(track_ids))
+            time.sleep(SPOTIFY_TRACK_THROTTLE_SECONDS)
+        if (i + 1) % SPOTIFY_PROGRESS_LOG_INTERVAL == 0:
+            logger.info("Metadata: %d/%d tracks fetched", i + 1, len(track_ids))
     return parsed
 
 

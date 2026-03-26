@@ -16,8 +16,8 @@ class TestConstants:
     def test_whoop_page_size(self):
         assert config.WHOOP_PAGE_SIZE == 25
 
-    def test_spotify_batch_size(self):
-        assert config.SPOTIFY_BATCH_SIZE == 50
+    def test_spotify_progress_log_interval(self):
+        assert config.SPOTIFY_PROGRESS_LOG_INTERVAL == 50
 
     def test_min_play_duration_ms(self):
         assert config.MIN_PLAY_DURATION_MS == 30_000

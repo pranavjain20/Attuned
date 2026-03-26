@@ -34,59 +34,53 @@ class TestUriToFilename:
         assert len(name) == 16 + 4  # 16 hex chars + ".mp3"
 
 
+@patch("classification.audio.time.sleep")
 class TestFetchPreviewUrls:
-    def test_returns_preview_urls(self):
+    def test_returns_preview_urls(self, mock_sleep):
         sp = MagicMock()
-        sp.tracks.return_value = {
-            "tracks": [
-                {"preview_url": "https://example.com/preview1.mp3"},
-                {"preview_url": "https://example.com/preview2.mp3"},
-            ]
-        }
+        sp.track.side_effect = [
+            {"preview_url": "https://example.com/preview1.mp3"},
+            {"preview_url": "https://example.com/preview2.mp3"},
+        ]
         result = fetch_preview_urls(sp, ["uri:1", "uri:2"])
         assert result["uri:1"] == "https://example.com/preview1.mp3"
         assert result["uri:2"] == "https://example.com/preview2.mp3"
+        assert sp.track.call_count == 2
 
-    def test_none_for_missing_preview(self):
+    def test_none_for_missing_preview(self, mock_sleep):
         sp = MagicMock()
-        sp.tracks.return_value = {
-            "tracks": [
-                {"preview_url": "https://example.com/preview1.mp3"},
-                {"preview_url": None},
-            ]
-        }
+        sp.track.side_effect = [
+            {"preview_url": "https://example.com/preview1.mp3"},
+            {"preview_url": None},
+        ]
         result = fetch_preview_urls(sp, ["uri:1", "uri:2"])
         assert result["uri:1"] == "https://example.com/preview1.mp3"
         assert result["uri:2"] is None
 
-    def test_none_for_null_track(self):
+    def test_none_for_null_track(self, mock_sleep):
         sp = MagicMock()
-        sp.tracks.return_value = {"tracks": [None]}
+        sp.track.return_value = None
         result = fetch_preview_urls(sp, ["uri:1"])
         assert result["uri:1"] is None
 
-    def test_batches_requests(self):
+    def test_handles_api_error_gracefully(self, mock_sleep):
         sp = MagicMock()
-        sp.tracks.return_value = {"tracks": [{"preview_url": "url"} for _ in range(3)]}
-        uris = [f"uri:{i}" for i in range(3)]
-        fetch_preview_urls(sp, uris, batch_size=2)
-        assert sp.tracks.call_count == 2  # 2 + 1
-
-    def test_handles_api_error_gracefully(self):
-        sp = MagicMock()
-        sp.tracks.side_effect = Exception("API error")
         sp.track.side_effect = Exception("API error")
         result = fetch_preview_urls(sp, ["uri:1", "uri:2"])
         assert result["uri:1"] is None
         assert result["uri:2"] is None
 
-    def test_falls_back_to_individual_calls_on_batch_403(self):
+    def test_throttles_between_calls(self, mock_sleep):
         sp = MagicMock()
-        sp.tracks.side_effect = Exception("403 Forbidden")
-        sp.track.return_value = {"preview_url": "https://example.com/p.mp3"}
-        result = fetch_preview_urls(sp, ["uri:1"])
-        assert result["uri:1"] == "https://example.com/p.mp3"
-        sp.track.assert_called_once()
+        sp.track.return_value = {"preview_url": "url"}
+        fetch_preview_urls(sp, ["uri:1", "uri:2", "uri:3"])
+        assert mock_sleep.call_count == 2  # between 3 tracks, not after last
+
+    def test_single_uri_no_throttle(self, mock_sleep):
+        sp = MagicMock()
+        sp.track.return_value = {"preview_url": "url"}
+        fetch_preview_urls(sp, ["uri:1"])
+        mock_sleep.assert_not_called()
 
 
 class TestDownloadPreview:
@@ -169,6 +163,7 @@ class TestDownloadFromYoutube:
         assert result is False
 
 
+@patch("classification.audio.time.sleep")
 class TestAcquireAudioClips:
     def _make_songs(self, uris):
         return [
@@ -177,14 +172,14 @@ class TestAcquireAudioClips:
             for i, uri in enumerate(uris)
         ]
 
-    def test_skips_already_cached(self, tmp_path):
+    def test_skips_already_cached(self, mock_sleep, tmp_path):
         songs = self._make_songs(["uri:1", "uri:2"])
         # Pre-cache one clip
         cached_path = tmp_path / uri_to_filename("uri:1")
         cached_path.write_bytes(b"existing clip data")
 
         sp = MagicMock()
-        sp.tracks.return_value = {"tracks": [{"preview_url": "https://example.com/p.mp3"}]}
+        sp.track.return_value = {"preview_url": "https://example.com/p.mp3"}
 
         with patch("classification.audio.download_preview", return_value=True):
             stats = acquire_audio_clips(sp, songs, tmp_path)
@@ -192,10 +187,10 @@ class TestAcquireAudioClips:
         assert stats["already_cached"] == 1
         assert stats["downloaded"] == 1
 
-    def test_preview_success(self, tmp_path):
+    def test_preview_success(self, mock_sleep, tmp_path):
         songs = self._make_songs(["uri:1"])
         sp = MagicMock()
-        sp.tracks.return_value = {"tracks": [{"preview_url": "https://example.com/p.mp3"}]}
+        sp.track.return_value = {"preview_url": "https://example.com/p.mp3"}
 
         with patch("classification.audio.download_preview", return_value=True) as mock_dl:
             stats = acquire_audio_clips(sp, songs, tmp_path)
@@ -205,10 +200,10 @@ class TestAcquireAudioClips:
         assert stats["ytdlp_count"] == 0
         mock_dl.assert_called_once()
 
-    def test_falls_back_to_ytdlp_verified(self, tmp_path):
+    def test_falls_back_to_ytdlp_verified(self, mock_sleep, tmp_path):
         songs = self._make_songs(["uri:1"])
         sp = MagicMock()
-        sp.tracks.return_value = {"tracks": [{"preview_url": None}]}
+        sp.track.return_value = {"preview_url": None}
 
         with patch("classification.audio.download_preview") as mock_preview, \
              patch("classification.audio.download_from_youtube_verified", return_value=True) as mock_yt:
@@ -219,10 +214,10 @@ class TestAcquireAudioClips:
         mock_preview.assert_not_called()
         mock_yt.assert_called_once()
 
-    def test_both_fail_counts_as_failed(self, tmp_path):
+    def test_both_fail_counts_as_failed(self, mock_sleep, tmp_path):
         songs = self._make_songs(["uri:1"])
         sp = MagicMock()
-        sp.tracks.return_value = {"tracks": [{"preview_url": "https://example.com/p.mp3"}]}
+        sp.track.return_value = {"preview_url": "https://example.com/p.mp3"}
 
         with patch("classification.audio.download_preview", return_value=False), \
              patch("classification.audio.download_from_youtube_verified", return_value=False):
@@ -231,13 +226,13 @@ class TestAcquireAudioClips:
         assert stats["downloaded"] == 0
         assert stats["failed"] == 1
 
-    def test_empty_song_list(self, tmp_path):
+    def test_empty_song_list(self, mock_sleep, tmp_path):
         sp = MagicMock()
         stats = acquire_audio_clips(sp, [], tmp_path)
         assert stats["downloaded"] == 0
         assert stats["already_cached"] == 0
 
-    def test_all_cached_skips_preview_fetch(self, tmp_path):
+    def test_all_cached_skips_preview_fetch(self, mock_sleep, tmp_path):
         songs = self._make_songs(["uri:1"])
         cached_path = tmp_path / uri_to_filename("uri:1")
         cached_path.write_bytes(b"cached")
@@ -247,13 +242,13 @@ class TestAcquireAudioClips:
 
         assert stats["already_cached"] == 1
         assert stats["downloaded"] == 0
-        sp.tracks.assert_not_called()  # No API calls needed
+        sp.track.assert_not_called()  # No API calls needed
 
-    def test_creates_output_directory(self, tmp_path):
+    def test_creates_output_directory(self, mock_sleep, tmp_path):
         output_dir = tmp_path / "new_dir" / "clips"
         songs = self._make_songs(["uri:1"])
         sp = MagicMock()
-        sp.tracks.return_value = {"tracks": [{"preview_url": "https://example.com/p.mp3"}]}
+        sp.track.return_value = {"preview_url": "https://example.com/p.mp3"}
 
         with patch("classification.audio.download_preview", return_value=True):
             acquire_audio_clips(sp, songs, output_dir)

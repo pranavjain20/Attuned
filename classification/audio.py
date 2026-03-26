@@ -10,6 +10,7 @@ import logging
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -27,41 +28,26 @@ def uri_to_filename(uri: str) -> str:
 def fetch_preview_urls(
     sp_client: Any,
     uris: list[str],
-    batch_size: int = 50,
 ) -> dict[str, str | None]:
     """Fetch preview URLs from Spotify for a list of URIs.
 
-    Tries batch endpoint first (sp.tracks), falls back to individual
-    sp.track() calls if batch returns 403 (known Spotify API restriction).
-    Returns {uri: preview_url_or_None}.
+    Uses individual sp.track() calls with throttling (batch endpoint
+    returns 403 in dev mode). Returns {uri: preview_url_or_None}.
     """
+    from spotify.client import SPOTIFY_TRACK_THROTTLE_SECONDS
+
     results: dict[str, str | None] = {}
 
-    # Try batch endpoint first
-    batch_works = True
-    for i in range(0, len(uris), batch_size):
-        batch_uris = uris[i : i + batch_size]
-        track_ids = [u.split(":")[-1] for u in batch_uris]
-
-        if batch_works:
-            try:
-                response = sp_client.tracks(track_ids)
-                for uri, track in zip(batch_uris, response["tracks"]):
-                    results[uri] = track.get("preview_url") if track else None
-                continue
-            except Exception:
-                logger.info("Batch /tracks endpoint unavailable, falling back to individual calls")
-                batch_works = False
-
-        # Individual fallback
-        for uri in batch_uris:
-            track_id = uri.split(":")[-1]
-            try:
-                track = sp_client.track(track_id)
-                results[uri] = track.get("preview_url") if track else None
-            except Exception:
-                logger.warning("Failed to fetch track %s", uri)
-                results[uri] = None
+    for i, uri in enumerate(uris):
+        track_id = uri.split(":")[-1]
+        try:
+            track = sp_client.track(track_id)
+            results[uri] = track.get("preview_url") if track else None
+        except Exception:
+            logger.warning("Failed to fetch track %s", uri)
+            results[uri] = None
+        if i < len(uris) - 1:
+            time.sleep(SPOTIFY_TRACK_THROTTLE_SECONDS)
 
     return results
 
@@ -408,15 +394,13 @@ def acquire_audio_clips(
         uris = [s["spotify_uri"] for s in uris_needing_download]
         preview_urls = fetch_preview_urls(sp_client, uris)
 
-    import time as _time
-
     for idx, song in enumerate(uris_needing_download):
         uri = song["spotify_uri"]
         clip_path = output_dir / uri_to_filename(uri)
 
         # Pace requests to avoid YouTube bot detection (every 5 downloads)
         if idx > 0 and idx % 5 == 0:
-            _time.sleep(3)
+            time.sleep(3)
 
         # Try Spotify preview first (if not skipped)
         preview_url = preview_urls.get(uri)

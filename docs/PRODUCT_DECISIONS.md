@@ -350,13 +350,13 @@ Replaces the 1.5 SD dead zone threshold. Non-baseline states keep their threshol
 - WHOOP pagination validates response structure before processing
 - Classification merge warns on missing critical fields (BPM, energy)
 - Global Spotify rate limit handler with exponential backoff
-- `fetch_batch_metadata` fills ALL missing metadata, not just engaged songs
+- `fetch_track_metadata` fills ALL missing metadata, not just engaged songs
 - Spotify API rate limit from unthrottled fallback fixed with 3-second delay between retries
 
 ### Onboarding pipeline
 **What we built:** `onboard` CLI command — single command for new users. Handles Spotify auth, library sync, extended history import, metadata fetch, LLM classification, Essentia analysis, score computation, and WHOOP sync in sequence.
 **Documentation:** Created `docs/ONBOARDING.md` with step-by-step instructions.
-**Bug fixed:** `fetch_batch_metadata` was only filling metadata for songs with 5+ meaningful listens. New users need ALL songs to have metadata before classification can run.
+**Bug fixed:** `fetch_track_metadata` was only filling metadata for songs with 5+ meaningful listens. New users need ALL songs to have metadata before classification can run.
 
 ---
 

@@ -800,10 +800,11 @@ The 3 highest lead-score songs become the playlist openers. Positions 4+ stay in
 
 ### 8.6 Unavailable Track Filtering
 
-Before creating the Spotify playlist, the engine validates the final track list against the Spotify API (`sp.tracks()`). Any track with `is_playable=False` — removed from Spotify, region-locked, or otherwise unavailable — is silently dropped. This prevents greyed-out songs from appearing in playlists.
+Before creating the Spotify playlist, the engine validates the final track list against the Spotify API (individual `sp.track()` calls with 3-second throttling). Any track with `is_playable=False` — removed from Spotify, region-locked, or otherwise unavailable — is silently dropped. This prevents greyed-out songs from appearing in playlists.
 
-- Single API call (batch of up to 50 URIs)
-- If the API call fails, the filter is skipped (graceful degradation — better to have a playlist with a potentially unavailable song than no playlist)
+- Individual `sp.track()` calls per song (batch endpoint returns 403 in dev mode)
+- If an individual track fetch fails, that track is treated as available (graceful degradation — better to have a playlist with a potentially unavailable song than no playlist)
+- For a typical 15-20 track playlist, this adds ~45-60 seconds to generation
 - Dry runs skip the check (no Spotify client)
 - Dropped tracks are logged but don't block generation (18-19 songs is fine, MIN_PLAYLIST_SIZE=15)
 

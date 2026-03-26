@@ -2,6 +2,7 @@
 
 import logging
 import sqlite3
+import time
 from datetime import date, datetime
 
 import spotipy
@@ -20,40 +21,29 @@ from spotify.playlist import (
 logger = logging.getLogger(__name__)
 
 
-_SPOTIFY_TRACKS_BATCH_LIMIT = 50
-
-
 def _filter_unavailable_tracks(
     sp: spotipy.Spotify,
     songs: list[dict],
 ) -> list[dict]:
     """Remove songs that are no longer playable on Spotify.
 
-    Calls sp.tracks() in batches of 50 (Spotify's limit) and drops any
-    track where is_playable is False or missing. Logs each dropped track.
+    Checks each track individually via sp.track() with throttling (batch
+    endpoint returns 403 in dev mode). Drops tracks where is_playable is False.
+    On per-track errors, treats the track as available (graceful degradation).
     """
+    from spotify.client import SPOTIFY_TRACK_THROTTLE_SECONDS
+
     if not songs:
         return songs
 
-    uris = [s["spotify_uri"] for s in songs]
     unavailable_uris: set[str] = set()
 
-    for i in range(0, len(uris), _SPOTIFY_TRACKS_BATCH_LIMIT):
-        batch = uris[i : i + _SPOTIFY_TRACKS_BATCH_LIMIT]
+    for i, song in enumerate(songs):
+        uri = song["spotify_uri"]
+        track_id = uri.split(":")[-1]
         try:
-            response = sp.tracks(batch)
-        except Exception:
-            logger.warning(
-                "Failed to check track availability for batch %d–%d — skipping filter",
-                i, i + len(batch),
-            )
-            continue
-
-        for track in response.get("tracks", []):
-            if track is None:
-                continue
-            if not track.get("is_playable", True):
-                uri = track.get("uri", "")
+            track = sp.track(track_id)
+            if track and not track.get("is_playable", True):
                 unavailable_uris.add(uri)
                 logger.info(
                     "Dropping unavailable track: '%s' — %s (uri=%s)",
@@ -61,6 +51,10 @@ def _filter_unavailable_tracks(
                     track.get("artists", [{}])[0].get("name", "?"),
                     uri,
                 )
+        except Exception:
+            logger.warning("Failed to check availability for %s — treating as available", uri)
+        if i < len(songs) - 1:
+            time.sleep(SPOTIFY_TRACK_THROTTLE_SECONDS)
 
     if unavailable_uris:
         logger.info("Filtered %d unavailable track(s)", len(unavailable_uris))

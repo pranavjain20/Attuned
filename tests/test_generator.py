@@ -333,74 +333,62 @@ def _make_mock_sp():
 # _filter_unavailable_tracks
 # ---------------------------------------------------------------------------
 
+@patch("matching.generator.time.sleep")
 class TestFilterUnavailableTracks:
 
     def _make_songs(self, uris):
         return [{"spotify_uri": uri, "name": f"Song {i}"} for i, uri in enumerate(uris)]
 
-    def test_filters_unavailable_tracks(self):
+    def test_filters_unavailable_tracks(self, mock_sleep):
         sp = MagicMock(spec=spotipy.Spotify)
-        sp.tracks.return_value = {
-            "tracks": [
-                {"uri": "spotify:track:a", "name": "A", "artists": [{"name": "Art"}], "is_playable": True},
-                {"uri": "spotify:track:b", "name": "B", "artists": [{"name": "Art"}], "is_playable": False},
-                {"uri": "spotify:track:c", "name": "C", "artists": [{"name": "Art"}], "is_playable": True},
-            ]
-        }
+        sp.track.side_effect = [
+            {"uri": "spotify:track:a", "name": "A", "artists": [{"name": "Art"}], "is_playable": True},
+            {"uri": "spotify:track:b", "name": "B", "artists": [{"name": "Art"}], "is_playable": False},
+            {"uri": "spotify:track:c", "name": "C", "artists": [{"name": "Art"}], "is_playable": True},
+        ]
         songs = self._make_songs(["spotify:track:a", "spotify:track:b", "spotify:track:c"])
         result = _filter_unavailable_tracks(sp, songs)
         assert len(result) == 2
         assert all(s["spotify_uri"] != "spotify:track:b" for s in result)
 
-    def test_all_available_no_change(self):
+    def test_all_available_no_change(self, mock_sleep):
         sp = MagicMock(spec=spotipy.Spotify)
-        sp.tracks.return_value = {
-            "tracks": [
-                {"uri": "spotify:track:a", "name": "A", "artists": [{"name": "Art"}], "is_playable": True},
-                {"uri": "spotify:track:b", "name": "B", "artists": [{"name": "Art"}], "is_playable": True},
-            ]
-        }
+        sp.track.side_effect = [
+            {"uri": "spotify:track:a", "name": "A", "artists": [{"name": "Art"}], "is_playable": True},
+            {"uri": "spotify:track:b", "name": "B", "artists": [{"name": "Art"}], "is_playable": True},
+        ]
         songs = self._make_songs(["spotify:track:a", "spotify:track:b"])
         result = _filter_unavailable_tracks(sp, songs)
         assert len(result) == 2
 
-    def test_api_failure_returns_all_songs(self):
+    def test_api_failure_returns_all_songs(self, mock_sleep):
         sp = MagicMock(spec=spotipy.Spotify)
-        sp.tracks.side_effect = Exception("API error")
+        sp.track.side_effect = Exception("API error")
         songs = self._make_songs(["spotify:track:a", "spotify:track:b"])
         result = _filter_unavailable_tracks(sp, songs)
         assert len(result) == 2  # graceful fallback
 
-    def test_empty_songs_returns_empty(self):
+    def test_empty_songs_returns_empty(self, mock_sleep):
         sp = MagicMock(spec=spotipy.Spotify)
         result = _filter_unavailable_tracks(sp, [])
         assert result == []
-        sp.tracks.assert_not_called()
+        sp.track.assert_not_called()
 
-    def test_missing_is_playable_treated_as_available(self):
+    def test_missing_is_playable_treated_as_available(self, mock_sleep):
         """Tracks without is_playable field default to available (True)."""
         sp = MagicMock(spec=spotipy.Spotify)
-        sp.tracks.return_value = {
-            "tracks": [
-                {"uri": "spotify:track:a", "name": "A", "artists": [{"name": "Art"}]},
-            ]
-        }
+        sp.track.return_value = {"uri": "spotify:track:a", "name": "A", "artists": [{"name": "Art"}]}
         songs = self._make_songs(["spotify:track:a"])
         result = _filter_unavailable_tracks(sp, songs)
         assert len(result) == 1
 
-    def test_null_track_in_response_ignored(self):
-        """Spotify returns null for invalid URIs — should not crash."""
+    def test_null_track_treated_as_available(self, mock_sleep):
+        """sp.track() returning None should not crash — treat as available."""
         sp = MagicMock(spec=spotipy.Spotify)
-        sp.tracks.return_value = {
-            "tracks": [
-                None,
-                {"uri": "spotify:track:b", "name": "B", "artists": [{"name": "Art"}], "is_playable": True},
-            ]
-        }
-        songs = self._make_songs(["spotify:track:a", "spotify:track:b"])
+        sp.track.return_value = None
+        songs = self._make_songs(["spotify:track:a"])
         result = _filter_unavailable_tracks(sp, songs)
-        assert len(result) == 2  # null track doesn't match any URI, so no filtering
+        assert len(result) == 1  # no crash, treated as available
 
 
 class TestGeneratePlaylist:

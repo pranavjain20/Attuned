@@ -56,7 +56,7 @@ SPOTIFY_SCOPES = [
     "playlist-modify-private",
     "user-read-private",
 ]
-SPOTIFY_BATCH_SIZE = 50
+SPOTIFY_PROGRESS_LOG_INTERVAL = 50
 
 # ---------------------------------------------------------------------------
 # Engagement scoring
