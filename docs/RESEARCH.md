@@ -558,6 +558,30 @@ Based on the aggregate research, the binary frozensets were replaced with a `MOO
 
 ---
 
+## 11. Playlist Cohesion — Why Individual Song Quality Isn't Enough
+
+Picking the 20 highest-scoring songs individually doesn't make a good playlist. Songs must belong in the same sonic space.
+
+### DJ Craft: Harmonic Mixing and Flow
+
+Professional DJs maintain flow through harmonic mixing (compatible keys via the Camelot Wheel), BPM corridors (±5-8 BPM within a set), and energy arcs (build, peak, resolve — not random oscillation).
+
+### Spotify Engineering: Algorithmic Playlists
+
+Spotify's engineering research found genre coherence is the #1 signal — users tolerate variation in energy, tempo, and mood, but mixing genres destroys the experience. Their "audio neighborhoods" cluster songs by co-listening patterns, discovering "what belongs in the same room" from aggregate behavior.
+
+### Music Therapy: The Iso Principle Applied to Playlists
+
+Music therapists use the iso principle for playlist construction: start near the current state, gradually transition toward the desired state. Clinical research shows 3-5+ songs are needed for effective transition — 2 songs creates too-abrupt shifts (Saarikallio et al., 2021).
+
+### Era Cohesion
+
+Production technology creates sonic eras. Songs from different decades sound fundamentally different even in the same genre. Bollywood has longer stable periods punctuated by sudden breaks (A.R. Rahman in 1992, Honey Singh in 2011). Western music evolves more continuously. Genre-aware Gaussian decay on release year handles this: hip-hop σ=2 (tight eras), ghazal σ=12 (loose eras), Bollywood σ=6.
+
+_Full era cohesion analysis: reference/era_cohesion_research.md. Full playlist cohesion research: reference/playlist_cohesion_research.md._
+
+---
+
 ## References
 
 ### Music and ANS
