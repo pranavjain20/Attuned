@@ -114,16 +114,14 @@ class TestRateLimitedSpotify:
             wrapper.track("abc")
         mock_sleep.assert_not_called()
 
-    def test_429_default_retry_after_retries(self, mock_sleep):
-        """429 without Retry-After header defaults to 30+5=35s (under circuit breaker)."""
+    def test_429_missing_header_circuit_breaks(self, mock_sleep):
+        """429 without Retry-After header → circuit break (header stripped by MaxRetryError)."""
         wrapper = self._make_wrapper([
             _make_spotify_exception(429, retry_after=None),
-            {"name": "Song"},
         ])
-        # No Retry-After header → defaults to 30 + 5 = 35
-        result = wrapper.track("abc")
-        assert result == {"name": "Song"}
-        mock_sleep.assert_called_once_with(35)
+        with pytest.raises(SpotifyRateLimitError, match="header stripped"):
+            wrapper.track("abc")
+        mock_sleep.assert_not_called()
 
     def test_429_at_circuit_breaker_boundary_retries(self, mock_sleep):
         """429 with Retry-After exactly at boundary (55+5=60) should still retry."""

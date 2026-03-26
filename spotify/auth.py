@@ -81,11 +81,18 @@ class SpotifyRateLimitError(Exception):
     """
 
     def __init__(self, retry_after: int) -> None:
-        hours = retry_after / 3600
-        super().__init__(
-            f"Daily API quota exhausted. Retry-After: {retry_after}s (~{hours:.1f} hours). "
-            "Try again tomorrow."
-        )
+        if retry_after > 0:
+            hours = retry_after / 3600
+            msg = (
+                f"Daily API quota exhausted. Retry-After: {retry_after}s "
+                f"(~{hours:.1f} hours). Try again tomorrow."
+            )
+        else:
+            msg = (
+                "Daily API quota exhausted (Retry-After header stripped by "
+                "Spotipy). Try again tomorrow."
+            )
+        super().__init__(msg)
         self.retry_after = retry_after
 
 
@@ -127,9 +134,13 @@ class _RateLimitedSpotify:
                     return attr(*args, **kwargs)
                 except spotipy.SpotifyException as e:
                     if e.http_status == 429:
-                        retry_after = int(
-                            (e.headers or {}).get("Retry-After", 30)
-                        ) + 5
+                        raw_retry = (e.headers or {}).get("Retry-After")
+                        if raw_retry is None:
+                            # Header stripped by Spotipy's MaxRetryError path —
+                            # means the original Retry-After was too large for
+                            # urllib3 to handle. Circuit break immediately.
+                            raise SpotifyRateLimitError(0) from e
+                        retry_after = int(raw_retry) + 5
                         if retry_after > _CIRCUIT_BREAKER_SECONDS:
                             raise SpotifyRateLimitError(retry_after) from e
                         logger.warning(
