@@ -651,64 +651,45 @@ def get_recent_playlist_track_uris(
 
     for days_ago in range(days, 0, -1):  # Process oldest first so newest overwrites
         check_date = (target - timedelta(days=days_ago)).strftime("%Y-%m-%d")
-        rows = conn.execute(
-            "SELECT track_uris FROM generated_playlists WHERE date = ?",
+        row = conn.execute(
+            "SELECT track_uris FROM generated_playlists WHERE date = ? ORDER BY id DESC LIMIT 1",
             (check_date,),
-        ).fetchall()
-        for row in rows:
-            if row["track_uris"]:
-                uris = json.loads(row["track_uris"])
-                for uri in uris:
-                    result[uri] = days_ago
+        ).fetchone()
+        if row and row["track_uris"]:
+            for uri in json.loads(row["track_uris"]):
+                result[uri] = days_ago
 
     return result
 
 
-def get_consecutive_playlist_days(
+def get_days_since_last_appearance(
     conn: sqlite3.Connection,
     before_date: str,
     max_lookback: int = 7,
 ) -> dict[str, int]:
-    """Count how many consecutive recent days each track appeared in playlists.
+    """Find how many days ago each track last appeared in a playlist.
 
-    Walks backwards from before_date. A track that appeared yesterday, the day
-    before, and the day before that gets a count of 3. Stops counting at the
-    first day the track was absent.
+    Walks backwards from before_date. Uses only the latest playlist per date.
+    A track that appeared 2 days ago (but not yesterday) gets a value of 2.
 
-    Returns dict of {uri: consecutive_days}. Tracks not in any recent playlist
+    Returns dict of {uri: days_since_last}. Tracks not in any recent playlist
     are not included.
     """
     from datetime import datetime, timedelta
 
     target = datetime.strptime(before_date, "%Y-%m-%d")
 
-    # Collect per-day URI sets
-    day_uris: list[set[str]] = []
+    result: dict[str, int] = {}
     for days_ago in range(1, max_lookback + 1):
         check_date = (target - timedelta(days=days_ago)).strftime("%Y-%m-%d")
-        rows = conn.execute(
-            "SELECT track_uris FROM generated_playlists WHERE date = ?",
+        row = conn.execute(
+            "SELECT track_uris FROM generated_playlists WHERE date = ? ORDER BY id DESC LIMIT 1",
             (check_date,),
-        ).fetchall()
-        uris: set[str] = set()
-        for row in rows:
-            if row["track_uris"]:
-                uris.update(json.loads(row["track_uris"]))
-        day_uris.append(uris)
-
-    # Count consecutive days for each URI (starting from yesterday)
-    result: dict[str, int] = {}
-    if not day_uris or not day_uris[0]:
-        return result
-
-    for uri in day_uris[0]:  # Only tracks from yesterday can have consecutive streaks
-        count = 1
-        for day_set in day_uris[1:]:
-            if uri in day_set:
-                count += 1
-            else:
-                break
-        result[uri] = count
+        ).fetchone()
+        if row and row["track_uris"]:
+            for uri in json.loads(row["track_uris"]):
+                if uri not in result:
+                    result[uri] = days_ago
 
     return result
 

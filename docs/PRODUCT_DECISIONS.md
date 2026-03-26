@@ -508,3 +508,67 @@ The cohesion system has two layers that serve different purposes:
 - **Vibe dimensions** (energy, acousticness, danceability) define how the music FEELS — quiet acoustic vs loud electronic, danceable vs still, intimate vs produced
 
 Both matter for coherence, but either can be a dealbreaker. A 1999 Bollywood song in a 2015 cluster is jarring (era gap — handled by era hard cap). A party banger in an acoustic ballad cluster is jarring (vibe gap — now handled by vibe hard cap + outlier detection). The system needs hard floors on both, not just weights that can be overridden by strong matches on other dimensions.
+
+---
+
+## Day 11: Playlist Freshness Uses Latest-Per-Day Only
+
+### The observation
+
+After iterating on playlists 4 times on Mar 25 (generate, evaluate, tweak, regenerate), the freshness/repeat mechanism was treating all 4 iterations as separate playlists. Songs from iteration 1 (later dropped in iteration 4) still counted as "recently played," polluting the rotation. Result: the "recently used" set was 4x larger than it should be, reducing effective song rotation.
+
+### The decision
+
+`get_recent_playlist_track_uris()` and `get_consecutive_playlist_days()` now query only the latest playlist per date (`ORDER BY id DESC LIMIT 1`). Earlier iterations are ignored for freshness/repeat purposes.
+
+### Why this is correct
+
+When iterating during a session, intermediate playlists are drafts. The user hears and evaluates the final one. The freshness mechanism should model what the user actually experienced, not every draft the system produced. A song dropped from iteration 1 shouldn't block it from appearing tomorrow — the user never heard it in that context.
+
+### Effect
+
+With a 1,188-song library, the hard cap is 3 days (bangers: 2). Previously, the inflated "recently used" set meant songs were effectively blocked for longer because they appeared in draft playlists they were later removed from. Now the rotation reflects actual listening.
+
+---
+
+## Day 11: Days-Since-Last-Appearance Replaces Consecutive-Day Streak
+
+### The observation
+
+I'll Do The Talking Tonight appeared on Mar 24, skipped Mar 25, and returned Mar 26. With the old consecutive-streak counter, the gap on Mar 25 reset the streak to 0 — the song looked "fresh" even though it was just 2 days old. The hard cap only blocked songs with unbroken streaks, so a song could appear every other day indefinitely.
+
+### The decision
+
+Replaced `get_consecutive_playlist_days()` with `get_days_since_last_appearance()`. The hard cap now checks when a song last appeared, not whether it appeared on consecutive days. A song that appeared 2 days ago is blocked regardless of whether it was in yesterday's playlist.
+
+### Why this is correct
+
+The listener's experience is "I heard this recently" — whether it was yesterday or 2 days ago. A 1-day gap doesn't make a song feel fresh. The rotation should be a function of library depth (log2-scaled), not streak length.
+
+### Effect
+
+39 songs blocked per playlist (was ~5 with consecutive-streak). 15 new songs per playlist vs previous day. Score floor remained high (0.900). Library depth of 1,188 songs gives a 3-day minimum gap — enough rotation without sacrificing quality.
+
+---
+
+## Day 11: Bollywood Motivational Songs Excluded (Scene-Tied Context)
+
+### The observation
+
+Chak De India and Toofan kept appearing in baseline "Fuel Up" playlists. Musically they match (high energy, uplifting) but they're Bollywood sports anthems — hearing them evokes the movie scene (hockey team training, boxing montage), not a general morning energy boost.
+
+### The decision
+
+Bollywood motivational songs are excluded from all playlists except peak_readiness. English motivational songs (Hall of Fame, Lose Yourself) are allowed through — Western pop isn't written for specific film scenes, so they don't carry the same contextual baggage.
+
+Detection has two layers:
+1. **Tag-based**: mood includes "motivational" AND genre is Bollywood/Punjabi/soundtrack → auto-excluded (catches 15 songs)
+2. **Manual override**: `_MOTIVATIONAL_OVERRIDES` set for songs the LLM missed tagging (Halla Bol, Chak Lein De — tagged "uplifting, energetic" but are clearly sports anthems)
+
+### Why Bollywood specifically
+
+Bollywood music is written for a movie scene. A motivational Bollywood song = someone is training, fighting, overcoming odds. That's a specific physical context (gym, workout) that doesn't match a morning recovery playlist. English motivational is more abstract — "you can do anything" rather than "the hockey team is winning." The scene-specificity is the key distinction, not the language.
+
+### Effect
+
+16 Bollywood motivational songs excluded from non-peak playlists. English motivational songs still available. Manual override catches the LLM's blind spots without needing reclassification.

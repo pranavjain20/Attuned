@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from db.queries import (
-    get_consecutive_playlist_days,
+    get_days_since_last_appearance,
     get_recent_playlist_track_uris,
     insert_generated_playlist,
     upsert_song,
@@ -838,37 +838,56 @@ class TestComputeEngagementP75:
         assert compute_engagement_p75([]) == 0.0
 
 
-class TestGetConsecutivePlaylistDays:
+class TestGetDaysSinceLastAppearance:
 
-    def test_three_consecutive_days(self, db_conn):
-        insert_generated_playlist(db_conn, date="2026-03-17", detected_state="baseline",
+    def test_yesterday_returns_1(self, db_conn):
+        insert_generated_playlist(db_conn, date="2026-03-19", detected_state="baseline",
                                   track_uris=["spotify:track:a"])
+        result = get_days_since_last_appearance(db_conn, "2026-03-20")
+        assert result["spotify:track:a"] == 1
+
+    def test_two_days_ago_returns_2(self, db_conn):
         insert_generated_playlist(db_conn, date="2026-03-18", detected_state="baseline",
-                                  track_uris=["spotify:track:a", "spotify:track:b"])
-        insert_generated_playlist(db_conn, date="2026-03-19", detected_state="baseline",
-                                  track_uris=["spotify:track:a", "spotify:track:b"])
-        result = get_consecutive_playlist_days(db_conn, "2026-03-20")
-        assert result["spotify:track:a"] == 3
-        assert result["spotify:track:b"] == 2  # appeared on 3/18 and 3/19
+                                  track_uris=["spotify:track:a"])
+        result = get_days_since_last_appearance(db_conn, "2026-03-20")
+        assert result["spotify:track:a"] == 2
 
-    def test_gap_breaks_streak(self, db_conn):
+    def test_gap_still_finds_most_recent(self, db_conn):
+        """Song appeared 3 days ago and 1 day ago — returns 1 (most recent)."""
         insert_generated_playlist(db_conn, date="2026-03-17", detected_state="baseline",
                                   track_uris=["spotify:track:a"])
-        # No playlist on 3/18
         insert_generated_playlist(db_conn, date="2026-03-19", detected_state="baseline",
                                   track_uris=["spotify:track:a"])
-        result = get_consecutive_playlist_days(db_conn, "2026-03-20")
-        assert result["spotify:track:a"] == 1  # streak broken by gap
+        result = get_days_since_last_appearance(db_conn, "2026-03-20")
+        assert result["spotify:track:a"] == 1
+
+    def test_song_only_in_old_playlist_still_found(self, db_conn):
+        """Song from 3 days ago (no gap issue) is found with days_since=3."""
+        insert_generated_playlist(db_conn, date="2026-03-17", detected_state="baseline",
+                                  track_uris=["spotify:track:a"])
+        result = get_days_since_last_appearance(db_conn, "2026-03-20")
+        assert result["spotify:track:a"] == 3
+
+    def test_beyond_lookback_not_found(self, db_conn):
+        """Songs older than max_lookback are not returned."""
+        insert_generated_playlist(db_conn, date="2026-03-10", detected_state="baseline",
+                                  track_uris=["spotify:track:a"])
+        result = get_days_since_last_appearance(db_conn, "2026-03-20", max_lookback=7)
+        assert result == {}
 
     def test_no_playlists(self, db_conn):
-        assert get_consecutive_playlist_days(db_conn, "2026-03-20") == {}
+        assert get_days_since_last_appearance(db_conn, "2026-03-20") == {}
 
-    def test_only_counts_from_yesterday(self, db_conn):
-        """Tracks from 2+ days ago without yesterday don't count."""
-        insert_generated_playlist(db_conn, date="2026-03-18", detected_state="baseline",
-                                  track_uris=["spotify:track:a"])
-        result = get_consecutive_playlist_days(db_conn, "2026-03-20")
-        assert result == {}  # no playlist on 3/19, so no streak
+    def test_multiple_playlists_same_date_uses_latest_only(self, db_conn):
+        """When multiple playlists exist for one date, only the latest counts."""
+        insert_generated_playlist(db_conn, date="2026-03-19", detected_state="baseline",
+                                  track_uris=["spotify:track:old", "spotify:track:dropped"])
+        insert_generated_playlist(db_conn, date="2026-03-19", detected_state="baseline",
+                                  track_uris=["spotify:track:final"])
+        result = get_days_since_last_appearance(db_conn, "2026-03-20")
+        assert "spotify:track:final" in result
+        assert "spotify:track:old" not in result
+        assert "spotify:track:dropped" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -909,6 +928,17 @@ class TestPlaylistQueries:
         insert_generated_playlist(db_conn, date="2026-03-15", detected_state="baseline",
                                   track_uris=["spotify:track:old"])
         assert get_recent_playlist_track_uris(db_conn, "2026-03-19", days=2) == {}
+
+    def test_multiple_playlists_same_date_uses_latest_only(self, db_conn):
+        """Iterations on same day: only the final playlist counts for freshness."""
+        insert_generated_playlist(db_conn, date="2026-03-18", detected_state="baseline",
+                                  track_uris=["spotify:track:draft1", "spotify:track:dropped"])
+        insert_generated_playlist(db_conn, date="2026-03-18", detected_state="baseline",
+                                  track_uris=["spotify:track:final"])
+        result = get_recent_playlist_track_uris(db_conn, "2026-03-19", days=2)
+        assert "spotify:track:final" in result
+        assert "spotify:track:draft1" not in result
+        assert "spotify:track:dropped" not in result
 
 
 # ---------------------------------------------------------------------------

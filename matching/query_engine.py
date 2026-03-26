@@ -21,7 +21,7 @@ from config import (
 )
 from db.queries import (
     get_all_classified_songs,
-    get_consecutive_playlist_days,
+    get_days_since_last_appearance,
     get_recent_playlist_track_uris,
 )
 from matching.cohesion import select_cohesive_songs
@@ -148,10 +148,10 @@ FRESHNESS_NUDGE = {1: 0.04, 2: 0.03, 3: 0.02, 4: 0.01}  # days_ago → subtracti
 # float up. Songs with engagement are unaffected (1.0).
 UNFAMILIAR_PENALTY = 0.95
 
-# Hard cap: minimum days between repeat appearances. Scales logarithmically
-# with library size — more songs = longer gap because there's more depth
-# to rotate through. Current bangers (top quartile engagement + played in
-# last 30 days) get a 1-day discount.
+# Hard cap: minimum days since last appearance before a song can return.
+# Scales logarithmically with library size — more songs = longer gap because
+# there's more depth to rotate through. Current bangers (top quartile
+# engagement + played in last 30 days) get a 1-day discount.
 BANGER_RECENCY_DAYS = 30
 
 
@@ -266,6 +266,40 @@ def compute_selection_scores(
 # ---------------------------------------------------------------------------
 
 CONTEXT_EXCLUDE_TAGS = frozenset({"motivational"})
+
+# Bollywood motivational songs are tied to specific movie scenes (training
+# montages, sports anthems). Hearing them evokes the scene, not the mood.
+# English motivational songs don't carry this baggage — Western pop isn't
+# written for a specific film scene. Exclude Bollywood motivational from
+# all playlists except peak_readiness, where the pump-up context fits.
+BOLLYWOOD_GENRE_TAGS = frozenset({
+    "bollywood", "punjabi", "bhangra", "soundtrack", "inspirational",
+})
+
+
+def is_bollywood_motivational(song: dict) -> bool:
+    """Check if a song is a Bollywood motivational (scene-tied, context-specific).
+
+    Two detection paths:
+    1. Tag-based: mood includes "motivational" AND genre is Bollywood/Punjabi
+    2. Manual override: songs the LLM missed tagging but are known motivational
+    """
+    uri = song.get("spotify_uri", "")
+    if uri in _MOTIVATIONAL_OVERRIDES:
+        return True
+    mood_tags = song.get("mood_tags") or []
+    genre_tags = song.get("genre_tags") or []
+    has_motivational = any(t.lower() == "motivational" for t in mood_tags)
+    has_bollywood_genre = any(t.lower() in BOLLYWOOD_GENRE_TAGS for t in genre_tags)
+    return has_motivational and has_bollywood_genre
+
+
+# Songs the LLM didn't tag as motivational but are context-specific
+# (sports anthems, training montages). Add URIs here as you spot them.
+_MOTIVATIONAL_OVERRIDES = frozenset({
+    "spotify:track:3DYE6xs5FgGqkFZzlxjd1D",  # Halla Bol — Pritam
+    "spotify:track:3E0D36S3MKA9e3f8yCOFR3",  # Chak Lein De — Kailash Kher
+})
 
 
 def identify_anchors(
@@ -437,27 +471,34 @@ def select_songs(
                             "cohesion_stats": {}},
         }
 
+    # Exclude Bollywood motivational songs from all states except peak_readiness
+    if state != "peak_readiness":
+        before_count = len(all_songs)
+        all_songs = [s for s in all_songs if not is_bollywood_motivational(s)]
+        excluded = before_count - len(all_songs)
+        if excluded:
+            logger.info("Excluded %d Bollywood motivational song(s) (state=%s)", excluded, state)
+
     # Get recent playlist URIs for freshness nudge
     recent_playlist_uris = get_recent_playlist_track_uris(conn, before_date=date, days=4)
 
-    # Hard cap: exclude songs that have hit their consecutive appearance limit
-    consecutive_days = get_consecutive_playlist_days(conn, before_date=date)
+    # Hard cap: exclude songs that appeared too recently
+    days_since = get_days_since_last_appearance(conn, before_date=date)
     blocked_uris: set[str] = set()
-    if consecutive_days:
+    if days_since:
         library_size = len(all_songs)
         eng_p75 = compute_engagement_p75(all_songs)
-        for uri, streak in consecutive_days.items():
-            # Find the song to check banger status
+        for uri, last_days_ago in days_since.items():
             song_data = next((s for s in all_songs if s["spotify_uri"] == uri), None)
             banger = song_data is not None and is_current_banger(song_data, eng_p75)
             min_gap = compute_min_repeat_gap(library_size, banger)
-            if streak >= min_gap and min_gap > 0:
+            if last_days_ago < min_gap and min_gap > 0:
                 blocked_uris.add(uri)
         if blocked_uris:
             all_songs = [s for s in all_songs if s["spotify_uri"] not in blocked_uris]
             logger.info(
-                "Hard cap: blocked %d song(s) from repeat (library=%d, p75=%.3f)",
-                len(blocked_uris), library_size, eng_p75,
+                "Hard cap: blocked %d song(s) — appeared within %d-day gap (library=%d)",
+                len(blocked_uris), min_gap, library_size,
             )
 
     # Score and rank all songs (unified ranking, with freshness nudge)
