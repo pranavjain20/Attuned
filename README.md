@@ -2,16 +2,19 @@
 
 Every WHOOP user sees their recovery score and thinks "I should do something about this." Nobody does. You can't will your nervous system into recovery. But you can press play on a playlist — and music directly modulates the autonomic nervous system, the same system WHOOP measures.
 
-Attuned reads your morning WHOOP data, figures out what your nervous system needs, and builds a playlist from your own library whose acoustic properties are scientifically matched to your recovery state. Not a calming sounds app. Your songs, chosen by neuroscience.
+Attuned reads your morning WHOOP data — not just the recovery score, but 12 physiological signals including HRV trends, resting heart rate, sleep architecture, and accumulated debt — computes a continuous neurological profile of what your body needs right now, and builds a playlist from your own Spotify library whose acoustic properties are scientifically matched to that profile.
+
+Not a calming sounds app. Not a mood button. Your songs, chosen by neuroscience.
 
 ```
 python main.py generate
 ```
 
 ```
-State: Accumulated Fatigue  |  Recovery: 25%  |  HRV: 32ms
-Playlist: "Mar 20 — Slow Down" (18 tracks)
-Calming your nervous system · Bollywood · Melancholy, Reflective
+State: Baseline (leaning calmer)  |  Recovery: 44%  |  HRV: 39.4ms
+Profile: Para 0.40 · Symp 0.26 · Grnd 0.34  (12 signals)
+Playlist: "Mar 27 — Rest & Repair" (20 tracks)
+Calming your nervous system · Bollywood · Romantic, Melancholy, Reflective
 → open.spotify.com/playlist/...
 ```
 
@@ -29,114 +32,153 @@ A generic calming app feels like medicine — you use it when you "should" and a
 
 ## How It Works
 
-```
-WHOOP Recovery Data
-        |
-        v
-  +-----------+     30-day rolling baselines
-  |  WHOOP    |     7-day HRV/RHR trend slopes
-  |  Intel    |     Sleep architecture analysis (deep/REM ratios)
-  +-----------+     Sleep debt trajectory
-        |
-        v
-  +-----------+
-  |  State    |---> 1 of 7 physiological states
-  | Classifier|     (priority-ordered, personal-baseline-relative)
-  +-----------+
-        |
-        v
-  +-----------+     Neuro-score dot product (para x symp x grnd)
-  | Matching  |     Confidence weighting, freshness nudge
-  |  Engine   |     Seed-and-expand cohesion for sonic coherence
-  +-----------+
-        |
-        v
-  +-----------+
-  | Spotify   |---> Dated playlist with state-specific description
-  |   Push    |     Logged to DB with full reasoning chain
-  +-----------+
-```
+### 1. Read the Body
 
-### The Two Intelligence Layers
+Every morning, WHOOP calculates your recovery. Most apps stop there — one number, one bucket. Attuned reads **12 independent signals** and computes each one as a z-score against your personal 30-day baseline:
 
-**Body intelligence.** Every WHOOP metric is interpreted against personal baselines — 30-day rolling means, standard deviations, and coefficients of variation using log-transformed RMSSD (following the Plews/Buchheit methodology from sports science). A 50% recovery means something completely different if your 30-day HRV average is 48ms versus 65ms. The system tracks 7-day trend slopes for HRV and resting heart rate, computes rolling sleep debt, and analyzes sleep stage ratios against personal norms. All of this feeds a priority-ordered state classifier.
+| Signal | What it tells us | Example |
+|--------|-----------------|---------|
+| Recovery score | Overall readiness | 44% today vs your 60% average → z = -0.56 |
+| Recovery delta | How you changed from yesterday | Dropped 10pp → z = -0.33 |
+| HRV (heart rate variability) | Autonomic nervous system balance | 39ms vs your 45ms baseline → z = -0.97 |
+| HRV day-over-day change | Is your nervous system trending better or worse? | Declined from yesterday → z = -0.56 |
+| Resting heart rate | Sympathetic stress level | 57 bpm vs your 56 average → slightly elevated |
+| RHR day-over-day change | Is stress building or resolving? | Rose 2 bpm → z = -0.70 |
+| Deep sleep (absolute) | Physical recovery quality | 1.3h vs your 1.5h average → z = -0.97 |
+| Deep sleep (ratio to total) | Did the body prioritize deep sleep? | 1.3h in 5h night ≠ 1.3h in 9h night |
+| REM sleep | Emotional processing quality | 1.7h — fine for you |
+| Sleep efficiency | How well you slept vs time in bed | 92% — actually good |
+| Sleep debt (7-day rolling) | Accumulated deficit | 26h — elevated |
+| HRV trend (7-day slope) | Multi-day nervous system trajectory | Declining → z = -0.66 |
 
-**Song intelligence.** Every song in your library is classified with two independent sources:
+**Why 12 signals instead of 1?** Because a 44% recovery day where your HRV is crashing, RHR is rising, and you barely got deep sleep is fundamentally different from a 44% recovery day where your HRV is stable and you just had a short night. Same number, completely different body state, completely different playlist needed.
 
-| Source | What it measures | Strength |
-|--------|-----------------|----------|
-| GPT-4o-mini (LLM) | BPM, valence, danceability, instrumentalness, mood tags, genre tags, direct neuro scores | Cultural context, semantic understanding |
-| Essentia (audio analysis) | BPM, key, mode, energy, acousticness from 30-second audio clips | Objective measurement — 71% energy accuracy vs LLM's 42% |
+### 2. Compute What the Body Needs
 
-A confidence-aware ensemble blends the two sources, weighting each based on structural knowledge of where they fail (e.g., the LLM stereotypes obscure Indian music; Essentia can't measure valence).
+Each z-score pushes a three-dimensional neurological profile:
 
-Each song receives three neurological scores via a weighted profiler formula:
-- **Parasympathetic** (calming) — slow tempo, low energy, acoustic, instrumental
-- **Sympathetic** (energizing) — fast tempo, high energy, electronic, danceable
-- **Grounding** (emotional centering) — moderate tempo, vocal, warm, reflective
+- **Parasympathetic** (calming) — your nervous system needs to slow down
+- **Sympathetic** (energizing) — your nervous system is ready for stimulation
+- **Grounding** (emotional centering) — your mind needs stability and warmth
 
-These three dimensions were deliberately decorrelated (r=0.638, down from 0.921) so the system can distinguish "your body needs deep rest" from "your mind needs emotional processing."
+The push is proportional. A slightly bad day shifts the profile slightly calmer. A terrible day across all metrics shifts it strongly calming. There are no buckets, no cliffs, no thresholds where you suddenly flip from "energetic playlist" to "meditation mode." The profile moves continuously as your body state changes.
 
-### The Seven States
+Interaction terms capture compound stress: if HRV is crashing AND resting heart rate is spiking simultaneously, that's a stronger signal than either alone — the profile gets an extra parasympathetic boost.
 
-| Priority | State | Trigger | What the playlist does |
-|----------|-------|---------|----------------------|
-| 1 | Accumulated Fatigue | Recovery < 60% for 3+ of last 5 days | Parasympathetic restoration — slow, acoustic, instrumental |
-| 2 | Poor Sleep | Both deep AND REM deficit | Mixed calming + grounding |
-| 3 | Physical Recovery Deficit | Deep sleep deficit, REM adequate | Gentle music — body rests, mind stays present |
-| 4 | Emotional Processing Deficit | REM deficit, deep sleep adequate | Warm, vocal, familiar — emotional grounding through lyrics |
-| 5 | Poor Recovery | Recovery < 40% (acute) or < 60% (isolated) | Light support without overreacting |
-| 6 | Peak Readiness | Recovery >= 80%, HRV >= baseline, no deficits | High-energy, positive, full intensity |
-| 7 | Baseline | No strong signals | Good varied playlist, no intervention needed |
+**Example — two consecutive days:**
 
-Priority order matters. Multi-day fatigue is checked before single-day poor recovery. Sleep deficits are checked before general poor recovery because they're more specific — knowing it's deep sleep versus REM changes the music.
+| | Yesterday (54% recovery) | Today (44% recovery) |
+|--|--------------------------|----------------------|
+| **Profile** | Para 0.36 · Symp 0.32 · Grnd 0.33 | Para 0.40 · Symp 0.26 · Grnd 0.34 |
+| **Playlist character** | Gentle romantic Bollywood | Calmer, more reflective — same genre, lower energy |
+| **Why different** | HRV was stable, deep sleep was good | HRV crashed, RHR rose, deep sleep dropped |
 
-### The Matching Engine
+The 10-point recovery drop produced a visible but proportional shift — not a genre flip.
 
-Songs are scored against the detected state using a dot product across the three neurological dimensions:
+### 3. Know Your Music
 
-```
-neuro_match = (song.para * state.para + song.symp * state.symp + song.grnd * state.grnd) / |state_vector|
-```
+Every song in your Spotify library (2+ meaningful listens) is classified using two independent sources:
 
-The top 60 candidates pass through a seed-and-expand cohesion engine that ensures sonic coherence — genre overlap, mood alignment, BPM similarity, era clustering (with genre-aware decay: hip-hop clusters tightly by year, ghazal is timeless), energy similarity. The result is 15-20 songs that are both neurologically correct and sound like they belong together.
+**LLM classification (GPT-4o-mini):** Knows what a song sounds like from its training data. Classifies BPM, energy, valence, mood tags (64-tag weighted affinity table), genre tags. Excels at cultural context — knows that Kun Faya Kun is a Sufi devotional prayer, not just a slow song.
 
-Additional modifiers: confidence weighting penalizes LLM-only songs, freshness nudge rotates near-ties across consecutive days (~45% turnover), a restorative sleep gate overrides accumulated fatigue when last night's sleep was genuinely restorative (research: last night's sleep is the strongest predictor of next-morning subjective state), and recovery delta modifiers boost playlist energy when recovery jumps sharply (24% to 80% gets a different playlist than steady 80%).
+**Audio analysis (Essentia):** Listens to the actual audio. Measures key, mode, energy (RMS), acousticness (spectral flatness) from 30-second clips. Excels at objective measurement — can't be fooled by song titles or genres.
+
+A confidence-aware ensemble blends both sources, weighting each based on where they're known to fail. The LLM stereotypes obscure Indian music; Essentia can't measure valence or mood. Where they agree, confidence is high. Where they disagree, the more reliable source for that specific property wins.
+
+Each song gets three neurological scores — parasympathetic, sympathetic, grounding — computed from a weighted profiler formula backed by published research (tempo 35%, energy 25%, acousticness 10%, instrumentalness 10%, valence 10%, mode 5%, danceability 5%).
+
+### 4. Match Song to Body
+
+Songs are scored against the target profile using **cosine similarity** — measuring directional alignment, not just magnitude. A song that points in exactly the same direction as the target (same proportional balance of calming, energizing, grounding) scores highest, regardless of how extreme its individual scores are.
+
+The top candidates pass through a **cohesion engine** that ensures the playlist sounds coherent:
+- **Genre clustering** — a playlist of all indie rock but spanning 80-130 BPM feels right; mixing K-pop, country, and metal feels broken
+- **Era cohesion** — songs from different decades sound different even in the same genre. Genre-aware Gaussian decay: hip-hop clusters tight by year (σ=2), ghazal is timeless (σ=12)
+- **Mood alignment** — "reflective" songs stay with "reflective," not mixed with "party"
+- **BPM corridors** — no jumping from 60 BPM to 140 BPM
+
+**Rotation:** Songs can't repeat within a minimum gap that scales with library size (log2-based). With 1,200 songs, minimum 3 days between appearances. Recently-played songs get 5 guaranteed "anchor" slots for familiarity — the rest rotate.
+
+**Context filters:** Bollywood motivational songs (Chak De India, Dangal — tied to movie training scenes) are excluded from all playlists except peak readiness, where the pump-up context fits. English motivational (Hall of Fame, Lose Yourself) passes through — no scene-specific baggage.
+
+### 5. Push to Spotify
+
+A dated playlist appears in your Spotify: "Mar 27 — Rest & Repair" with a description explaining what the music is doing and why. Only one playlist per day — iterations during testing replace the previous version automatically.
 
 ---
 
 ## The Science
 
-Every threshold, weight, and property range traces back to published research. Key studies:
+This isn't vibes. Every threshold, weight, and property range traces back to published research:
 
-- **Bretherton et al., 2019** — Baroreflex sensitivity significantly greater at 60 BPM vs 120 BPM (p < 0.001), driven entirely by parasympathetic activity
-- **Bernardi et al., 2006** — Blood pressure, heart rate, LF:HF ratio all increase proportional to tempo
-- **Plews et al., 2012 / Buchheit, 2014** — LnRMSSD rolling averages as the standard for detecting overreaching and recovery status
-- **Thoma et al., 2013** — Classical/acoustic music reduced cortisol, HR, and BP in controlled stress paradigm
-- **Chanda & Levitin, 2013** — Familiar music triggers stronger dopamine release via reward circuit
-- **Kim et al., 2024** — 60-80 BPM music inhibited sympathetic activity; 120-140 BPM increased it
-- **Khalfa et al., 2002** — Major mode produced larger skin conductance responses and faster HR than minor mode
-- **Zhang et al., 2024** — Major mode decreased salivary cortisol more than minor; minor elicited higher arousal
-- **Karageorghis & Priest, 2012** — Comprehensive review confirming tempo as primary driver, energy/rhythm as secondary
-- **European Heart Journal, 2024** — 74.8% of participants responded more strongly to personal preferred music
-- **Van Dongen & Dinges, 2003** — 5+ hours cumulative sleep debt over 7 days produces detectable cognitive impairment
+**Music and the autonomic nervous system:**
+- 60 BPM = maximum baroreflex sensitivity, driven entirely by parasympathetic activity (Bretherton et al., 2019 — Music Perception)
+- Blood pressure, heart rate, and LF:HF ratio increase proportional to tempo (Bernardi et al., 2006 — Heart)
+- 60-80 BPM music inhibited sympathetic activity; 120-140 BPM increased it (Kim et al., 2024 — J Exerc Rehabil)
+- Classical/acoustic music reduced cortisol, HR, and BP in controlled stress paradigm (Thoma et al., 2013 — PLOS ONE)
+- Familiar music triggers significantly stronger physiological responses via the dopamine reward circuit (Chanda & Levitin, 2013 — Trends in Cognitive Sciences)
 
-The profiler uses a 69-tag weighted mood affinity table mapping mood descriptors to neurological dimensions (e.g., "reflective" scores 0.85 grounding, 0.30 parasympathetic, 0.05 sympathetic). Audio properties carry 85% of the scoring weight; mood tags add a 15% semantic signal orthogonal to audio — "reflective" versus "melancholy" can't be distinguished by BPM alone.
+**HRV monitoring:**
+- 7-day rolling LnRMSSD averages superior to single-day measurements for detecting overreaching (Plews et al., 2012 — Eur J Appl Physiol)
+- CV of LnRMSSD detects non-functional overreaching before traditional markers (Buchheit, 2014 — Frontiers in Physiology)
+
+**Sleep architecture:**
+- Shifting 30 minutes from light to deep sleep improves positive affect by +0.38, independent of total duration (PMC12208346)
+- Sleep quality predicts next-day positive affect with a coefficient 2.6x larger than the reverse (PMC6456824)
+- 5+ hours cumulative sleep debt over 7 days produces detectable cognitive impairment; subjects are unaware (Van Dongen & Dinges, 2003 — SLEEP)
 
 Full research analysis with methodology notes and evidence quality caveats: [docs/RESEARCH.md](docs/RESEARCH.md)
 
 ---
 
+## What Makes This Different from a Weekend Project
+
+A weekend project picks calming songs when recovery is low and upbeat songs when it's high. Three states, three playlists, done.
+
+Attuned does something fundamentally different:
+
+**Personal baselines, not population averages.** A 50% recovery with HRV at 45ms means something completely different if your 30-day average is 48ms versus 65ms. Every metric is interpreted relative to YOUR norms, computed from YOUR history.
+
+**Continuous intelligence, not brackets.** 12 physiological signals feed a weighted function that produces a continuous profile. There are no thresholds that flip a switch. A slightly worse day produces a slightly calmer playlist. A much worse day produces a much calmer playlist. The system responds proportionally.
+
+**Two independent classification sources.** The LLM knows cultural context (Kun Faya Kun is a Sufi prayer, not just a slow song). Essentia measures the actual audio (energy from RMS, not the LLM's guess). They cross-validate each other and a confidence-aware ensemble resolves disagreements.
+
+**Cohesion, not just scoring.** Picking the 20 highest-scoring songs individually doesn't make a good playlist. Songs must belong in the same sonic space — same era, similar genre, compatible BPM, aligned mood. The cohesion engine ensures playlists sound intentional.
+
+**Real rotation.** Songs can't repeat within a library-size-scaled gap. Freshness uses only the latest playlist per day (not test iterations). Recently-played anchors get guaranteed slots for familiarity; the rest rotate.
+
+**Context awareness.** Bollywood motivational songs are excluded from non-peak playlists — they're tied to movie training scenes and evoke the wrong context for a recovery morning. This distinction is genre-aware: English motivational passes through because Western pop isn't written for specific film scenes.
+
+**Multi-user.** Each user gets their own database, own baselines, own library, own playlists. Same algorithm, personalized to their body and their music.
+
+---
+
+## Current Numbers
+
+- **3,953** classified songs per user (2+ meaningful listens)
+- **3,521** with Essentia audio analysis (89% coverage)
+- **825** days of WHOOP recovery data
+- **33,427** listening history records
+- **12** physiological z-score signals driving continuous profiles
+- **64** mood tags with research-backed neurological weights
+- **22** cited research papers
+- **1,048** tests across 25 test files
+- **2** active users with live daily playlists
+- **12** days of iterative development and refinement
+
+---
+
 ## Running Attuned
 
-Attuned runs locally and requires your own WHOOP and Spotify accounts. Each user authenticates with their own credentials through OAuth — no data is shared.
+Runs locally. Requires your own WHOOP and Spotify accounts. Each user authenticates with their own credentials through OAuth — no data is shared.
 
 ```bash
 python main.py generate            # Generate today's playlist
 python main.py generate --dry-run  # Preview without pushing to Spotify
+python main.py classify-state      # See today's physiological classification
 ```
 
-New user setup is documented in [ONBOARDING.md](docs/ONBOARDING.md).
+New user setup: [docs/ONBOARDING.md](docs/ONBOARDING.md)
 
 ---
 
@@ -144,78 +186,38 @@ New user setup is documented in [ONBOARDING.md](docs/ONBOARDING.md).
 
 ```
 attuned/
-├── main.py                          # CLI entry point
-├── config.py                        # Constants, mood affinity table, thresholds
-├── db/
-│   ├── schema.py                    # SQLite table definitions + migrations
-│   └── queries.py                   # Database access layer
-├── whoop/
-│   ├── auth.py                      # OAuth 2.0 with offline refresh tokens
-│   ├── client.py                    # Recovery, sleep, cycle API calls (httpx)
-│   └── sync.py                      # Full history sync + incremental updates
-├── spotify/
-│   ├── auth.py                      # OAuth 2.0 via Spotipy
-│   ├── client.py                    # Library access (liked songs, top tracks, history)
-│   ├── playlist.py                  # Playlist creation + description generation
-│   ├── engagement.py                # 5-signal engagement scoring
-│   ├── dedup.py                     # Near-duplicate detection
-│   └── sync.py                      # Song pool sync + deduplication
 ├── intelligence/
-│   ├── baselines.py                 # 30-day rolling means, SDs, CVs (LnRMSSD)
-│   ├── trends.py                    # 7-day HRV/RHR slopes, sleep debt trajectory
-│   ├── sleep_analysis.py            # Deep/REM ratios vs personal norms
-│   └── state_classifier.py          # Priority-ordered composite state detection
+│   ├── continuous_profile.py    # 12-signal weighted function → neuro profile
+│   ├── baselines.py             # 30-day rolling means, SDs, CVs (LnRMSSD)
+│   ├── trends.py                # 7-day HRV/RHR slopes, trajectory
+│   ├── sleep_analysis.py        # Deep/REM ratios vs personal norms
+│   └── state_classifier.py      # Display labels (demoted from profile driver)
 ├── classification/
-│   ├── llm_classifier.py            # GPT-4o-mini batch classification (5 songs/call)
-│   ├── essentia_analyzer.py         # Audio feature extraction from clips
-│   ├── profiler.py                  # Neurological impact scoring (3 dimensions)
-│   └── validator.py                 # Post-classification quality checks
+│   ├── llm_classifier.py        # GPT-4o-mini batch classification
+│   ├── essentia_analyzer.py     # Audio feature extraction from clips
+│   ├── profiler.py              # Neurological impact scoring (3 dimensions)
+│   └── validator.py             # Post-classification quality checks
 ├── matching/
-│   ├── state_mapper.py              # State -> neuro profile targets
-│   ├── query_engine.py              # Dot product scoring + candidate selection
-│   ├── cohesion.py                  # Seed-and-expand with genre-aware era decay
-│   └── generator.py                 # End-to-end pipeline orchestration
-├── tests/                           # 1,016 tests across 25 test files
+│   ├── query_engine.py          # Cosine similarity scoring + rotation
+│   ├── cohesion.py              # Genre-aware era decay, mood/BPM clustering
+│   └── generator.py             # End-to-end pipeline orchestration
+├── whoop/                       # OAuth, API client, sync
+├── spotify/                     # OAuth, library sync, playlist creation
+├── db/                          # SQLite schema + queries
+├── tests/                       # 1,048 tests
 └── docs/
-    ├── RESEARCH.md                  # Full research analysis with citations
-    ├── HOW_IT_WORKS.md              # Complete technical guide
-    ├── SYSTEM_LOGIC.md              # Plain-language system explanation
-    └── PRODUCT_DECISIONS.md         # Chronological decision log
+    ├── RESEARCH.md              # Full research analysis with citations
+    ├── SYSTEM_LOGIC.md          # How the system thinks (bridge between research and code)
+    ├── PRODUCT_DECISIONS.md     # Every non-obvious decision with reasoning
+    └── HOW_IT_WORKS.md          # Complete technical guide
 ```
-
-## Tech Stack
-
-| Component | Technology | Why |
-|-----------|-----------|-----|
-| Language | Python 3.11+ | Type hints, pattern matching, asyncio |
-| Database | SQLite | Single-user, local, zero setup, one file |
-| WHOOP | httpx + custom OAuth client | Direct API, offline refresh tokens, pagination handling |
-| Spotify | Spotipy | OAuth, library access, playlist creation |
-| Computations | pandas + numpy | Rolling averages, trend slopes, sleep ratios |
-| Song classification | OpenAI GPT-4o-mini | Batch classification with structured outputs |
-| Audio analysis | Essentia | BPM, key, mode, energy, acousticness from audio |
-| Validation | Pydantic | Schema enforcement on API responses and classifications |
-
----
 
 ## Documentation
 
 | Document | What it covers |
 |----------|---------------|
-| [RESEARCH.md](docs/RESEARCH.md) | Every study cited, methodology notes, evidence quality caveats |
-| [HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) | Complete technical guide — enough to rebuild from scratch |
+| [RESEARCH.md](docs/RESEARCH.md) | 22 studies cited, methodology notes, evidence quality caveats |
 | [SYSTEM_LOGIC.md](docs/SYSTEM_LOGIC.md) | Plain-language explanation of the full chain from wake-up to playlist |
-| [PRODUCT_DECISIONS.md](docs/PRODUCT_DECISIONS.md) | What was tried, what worked, what didn't, and why |
-
----
-
-## Current Numbers
-
-- 1,360 classified songs across Bollywood, hip-hop, pop, devotional, ghazal, EDM
-- 1,348 with Essentia audio analysis (99.1% coverage)
-- 825 days of WHOOP recovery data
-- 33,427 listening history records
-- 69-tag mood affinity table informed by 12 neuroscience studies
-- 0/140 weak matches across all 7 states in validation (worst neuro_match: 0.816)
-- ~45% daily song turnover when the same state repeats on consecutive days
-- 1,016 tests across 25 test files
+| [PRODUCT_DECISIONS.md](docs/PRODUCT_DECISIONS.md) | Every decision — what was tried, what worked, what didn't, why |
+| [HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) | Technical guide — enough to rebuild from scratch |
+| [TECH_STACK.md](docs/TECH_STACK.md) | Every technology choice with rationale and alternatives considered |
