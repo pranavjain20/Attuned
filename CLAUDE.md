@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Attuned — a personal system that connects WHOOP recovery data to Spotify using neuroscience research on how music affects the autonomic nervous system. Reads morning WHOOP data (HRV, sleep architecture, trends), classifies physiological state into one of six states, then generates a Spotify playlist of 15-20 songs from your own library whose acoustic properties are scientifically matched to what your body needs.
+Attuned — a personal system that connects WHOOP recovery data to Spotify using neuroscience research on how music affects the autonomic nervous system. Reads morning WHOOP data (12 signals: HRV, RHR, sleep architecture, trends, deltas, debt), computes a continuous neurological profile of what the body needs, then generates a Spotify playlist of 15-20 songs from your own library whose acoustic properties are scientifically matched to that profile.
 
-Single-user, runs locally. Not a company — a personal tool.
+Multi-user, runs locally. Not a company — a personal tool.
 
 ## Current Status
 
@@ -65,7 +65,8 @@ attuned/
 │   ├── baselines.py           # Personal rolling averages, standard deviations, CVs
 │   ├── trends.py              # 7-day HRV/RHR slopes, sleep debt trajectory
 │   ├── sleep_analysis.py      # Deep/REM/light ratios vs personal norms
-│   └── state_classifier.py    # Composite state detection (6 states)
+│   ├── continuous_profile.py   # 12-signal weighted function → neuro profile
+│   └── state_classifier.py    # Composite state detection (7 states)
 ├── classification/
 │   ├── llm_classifier.py      # LLM song classification (BPM, key, energy, valence, etc.)
 │   └── profiler.py            # Neurological impact scoring per song
@@ -87,6 +88,8 @@ attuned/
 - **generated_playlists** — Log of every playlist created. Date, detected state, reasoning, WHOOP metrics, track URIs, Spotify description.
 
 ## Composite States (priority order)
+
+The state classifier produces display labels only. The actual neuro profile is computed by `intelligence/continuous_profile.py` — a weighted function of 12 z-score signals. States still describe what's happening but don't drive song selection.
 
 If fewer than 14 days of HRV data exist, returns `insufficient_data` — cannot compute baselines.
 
@@ -112,7 +115,7 @@ If fewer than 14 days of HRV data exist, returns `insufficient_data` — cannot 
 
 ## Key Concepts
 
-- **WHOOP = body state, Spotify = song pool, Song Properties = the bridge.** WHOOP tells us what the ANS needs. Song properties tell us what each song does to the ANS. The matching engine connects the two.
+- **WHOOP = body state, Spotify = song pool, Song Properties = the bridge.** WHOOP data feeds a continuous 12-signal weighted neuro profile (not a discrete state classification) that captures what the ANS needs. Song properties tell us what each song does to the ANS. The matching engine connects the two.
 - **Personal baselines over absolute numbers.** A 50% recovery with HRV at 45ms means something completely different if the 30-day average is 48ms vs 65ms. Every metric is interpreted relative to the user's personal norms.
 - **Multi-day trends over single-day snapshots.** Single-day numbers are noisy. 7-day HRV slope, RHR trend, sleep debt trajectory — these reveal the real picture. The composite state classifier uses trends, not just today's data.
 - **Progressive filter relaxation.** With a small library, strict matching criteria might return 3 songs. The engine widens BPM range, lowers acousticness threshold, etc. until 15-20 songs qualify. Always log what was relaxed and why.
@@ -121,6 +124,8 @@ If fewer than 14 days of HRV data exist, returns `insufficient_data` — cannot 
 ## Commands
 
 - `python main.py generate` — Generate today's playlist (manual trigger)
+- `python main.py sync-spotify --metadata-only` — Fetch metadata without re-syncing liked/top tracks
+- `python main.py --profile <name> generate` — Generate playlist for a specific user profile
 - `pytest tests/ -x -v` — Run all tests
 - `pytest tests/test_specific.py -x -v` — Run a single test file
 - `pytest tests/test_specific.py::test_name -x -v` — Run a single test

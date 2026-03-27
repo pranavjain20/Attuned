@@ -683,14 +683,14 @@ This replaces the 1.5 SD dead zone from the recovery delta modifier. Non-baselin
 
 ### 8.1 The Selection Formula
 
-The matching engine scores every classified song using a neurological dot product, not per-property range matching. Each state maps to a neuro profile — a weighted blend of parasympathetic, sympathetic, and grounding targets (summing to 1.0). Each song has three corresponding neuro scores (0.0-1.0) computed from its acoustic properties. The core score is the normalized dot product between the song's neuro vector and the state's neuro profile:
+The matching engine scores every classified song using **cosine similarity** against the target neuro profile. The neuro profile is computed by `intelligence/continuous_profile.py` — a weighted function of 12 physiological z-scores — not a static lookup from the state label. Each song has three neuro scores (parasympathetic, sympathetic, grounding) computed from its acoustic properties. Cosine similarity measures directional alignment:
 
 ```
-neuro_match = dot(song_vector, state_profile) / magnitude(state_profile)
+neuro_match = dot(song_vector, profile) / (magnitude(song_vector) × magnitude(profile))
 selection_score = neuro_match × confidence_multiplier × familiarity_multiplier - freshness_nudge
 ```
 
-**Neuro match (primary):** How closely the song's neurological impact aligns with what the body needs. A song with high parasympathetic score paired with a fatigue state (high para weight) scores near 1.0. The same song paired with peak readiness (high symp weight) scores near 0.0.
+**Neuro match (primary):** How closely the song's neurological direction aligns with what the body needs. Cosine similarity rewards proportional alignment, not magnitude — a song that's "too parasympathetic" for a balanced target gets penalized because its direction diverges. A song with high parasympathetic score paired with a calming profile scores high. The same song paired with an energetic profile scores low.
 
 **Confidence multiplier:** Songs classified with higher confidence (Essentia + LLM agreement, ≥0.7) get full weight (1.0×). LLM-only classifications (0.5-0.7) get 0.85×. Low confidence (<0.5) gets 0.6×.
 

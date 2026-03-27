@@ -313,7 +313,8 @@
 - [ ] 12 songs still LLM-only (no YouTube audio) — low priority, marginal impact
 
 ### Code changes — not yet built
-- [ ] `/onboard` skill — bulletproof end-to-end onboarding. Build ONLY after Komal's playlist ships and is approved. Encodes every rate limit lesson, correct step ordering, idempotent resume, filtered metadata fetch, dry-run table at end. The skill is the proof we got it right.
+- [ ] `/onboard` skill — bulletproof end-to-end onboarding. Encodes every rate limit lesson, correct step ordering, idempotent resume, filtered metadata fetch, dry-run table at end.
+- [ ] Dynamic library sync — daily `recently-played` pull before playlist generation. Update engagement scores, classify new songs, keep database fresh as listening evolves. Part of automated daily generation.
 - [ ] HRV CV modifier in `state_mapper.py` — adjusts neuro profile when day-to-day HRV variability is high. Same pattern as recovery delta modifier. Research done, design in SYSTEM_LOGIC.md. ~1 hour.
 - [ ] Quality testing framework — automated before/after comparison for classifier changes. ~2 hours.
 - [ ] Era cohesion sigma tuning — tune Gaussian decay values based on real playlist output

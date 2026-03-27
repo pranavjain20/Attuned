@@ -24,7 +24,7 @@ _If I had to rebuild this from scratch, this is everything I'd need to know._
 
 Attuned reads your morning WHOOP data, figures out what your nervous system needs, and builds a Spotify playlist of 15-20 songs from YOUR library that have the right neurological properties. Not generic "chill vibes" — your songs, chosen by science.
 
-It runs locally on your laptop. Single user. One command: `python main.py generate`.
+It runs locally on your laptop. Supports multiple users via `--profile` flag (separate databases per user). One command: `python main.py generate`.
 
 ---
 
@@ -49,11 +49,11 @@ WHOOP measures your ANS state. Song properties determine what a song does to you
 
 The system has two independent intelligence layers:
 
-**Brain 1 (WHOOP Intelligence):** Takes your recovery data, sleep architecture, and multi-day trends → outputs one of 7 physiological states (e.g., "accumulated fatigue," "peak readiness").
+**Brain 1 (WHOOP Intelligence):** Takes your recovery data, sleep architecture, and multi-day trends → computes 12 physiological z-scores → feeds them through a weighted function to produce a continuous neuro profile (parasympathetic/sympathetic/grounding weights). The state classifier still runs for display labels (e.g., "Rest & Repair," "Fuel Up") but does NOT drive song selection.
 
-**Brain 2 (Song Intelligence):** Takes your 1,360 songs → classifies each with 3 neurological scores: parasympathetic (calming), sympathetic (energizing), grounding (emotional centering). Uses a combination of LLM classification and Essentia audio analysis.
+**Brain 2 (Song Intelligence):** Takes your songs (5,313 classified across 2 users) → classifies each with 3 neurological scores: parasympathetic (calming), sympathetic (energizing), grounding (emotional centering). Uses a combination of LLM classification and Essentia audio analysis.
 
-**The Bridge (Matching Engine):** Given a state from Brain 1 and scored songs from Brain 2, selects the 20 best songs via dot product scoring + cohesion filtering.
+**The Bridge (Matching Engine):** Given a continuous neuro profile from Brain 1 and scored songs from Brain 2, selects the 20 best songs via cosine similarity scoring + cohesion filtering.
 
 ---
 
@@ -101,9 +101,9 @@ Not just "did I sleep enough" but "what KIND of sleep."
 
 The gap between "deficit" (1.5 SD) and "adequate" (1.0 SD) creates a buffer zone — neither deficit nor adequate — which prevents flip-flopping between states.
 
-### 4.4 State Classification
+### 4.4 State Classification (Display Labels Only)
 
-The classifier evaluates states in priority order and returns the FIRST match:
+The classifier evaluates states in priority order and returns the FIRST match. As of Day 12, the state classifier is used for display labels and logging only — it does NOT drive song selection. The continuous neuro profile (section 6.1) drives scoring.
 
 | Priority | State | What it means | When it triggers |
 |----------|-------|---------------|-----------------|
@@ -118,7 +118,7 @@ The classifier evaluates states in priority order and returns the FIRST match:
 
 **Why this order matters:** Accumulated fatigue (multi-day pattern) is checked before single-day poor recovery. Sleep deficits are checked before general poor recovery because they're more specific — knowing it's a deep sleep deficit vs REM deficit changes what music you need.
 
-**Why 7 states, not 3 or 20?** Three states (good/ok/bad) can't differentiate "your body needs rest" from "your mind needs emotional processing." Twenty states would have too few songs per state from a 1,360-song library. Seven is the sweet spot where each state has a genuine product difference (different music) and enough songs to fill a playlist.
+**Why keep the classifier if it doesn't drive selection?** The state label provides human-readable context in playlist names, Spotify descriptions, and database logs. "Rest & Repair" is easier to glance at than "para=0.42, symp=0.26, grnd=0.32." The continuous profile replaced it for scoring because physiological states are continuous — a 44% recovery day and a 15% recovery day both hit "poor_recovery" but need very different music.
 
 ---
 
@@ -146,7 +146,7 @@ Every song gets classified with two sources:
 | Mood tags | Yes | No | LLM only |
 | Genre tags | Yes | No | LLM only |
 
-**Current coverage:** 1,348/1,360 songs have Essentia (99.1%). 12 songs are LLM-only.
+**Current coverage:** 5,313 songs classified across 2 users. Essentia coverage is 99%+ per user. A handful of songs per library are LLM-only (YouTube unavailable).
 
 ### 5.2 The Confidence-Aware Ensemble
 
@@ -245,59 +245,98 @@ Getting audio clips for Essentia analysis:
 5. Download and trim to 30 seconds (skip first 30 seconds to avoid intros)
 6. If no duration match, fall back to title-matching (trust the search result if title matches)
 
-**Coverage:** 1,348/1,360 songs (99.1%). The remaining 12 are genuinely unavailable on YouTube.
+**Coverage:** 99%+ per user library. A handful of songs per library are genuinely unavailable on YouTube.
 
 ---
 
 ## 6. The Bridge: Matching Body State to Music
 
-### 6.1 State Neuro Profiles
+### 6.1 Continuous Neuro Profile
 
-Each state maps to a 3-dimensional target:
+**The old architecture (Days 1-11):** State classifier → one of 7 static profiles → modifier chain (recovery delta, sleep quality). Each state had a fixed target like `para=0.95, symp=0.00, grnd=0.05`. Problem: a 44% recovery and a 15% recovery both mapped to the same static profile. Modifiers tried to patch this but added complexity without solving the fundamental discretization problem.
 
-```
-accumulated_fatigue:          para=0.95  symp=0.00  grnd=0.05
-poor_sleep:                   para=0.55  symp=0.00  grnd=0.45
-physical_recovery_deficit:    para=0.60  symp=0.00  grnd=0.40
-emotional_processing_deficit: para=0.10  symp=0.00  grnd=0.90
-poor_recovery:                para=0.25  symp=0.30  grnd=0.45
-baseline:                     para=0.15  symp=0.50  grnd=0.35
-peak_readiness:               para=0.00  symp=0.90  grnd=0.10
-```
+**The new architecture (Day 12+):** 12 physiological z-scores feed a weighted function that produces a continuous neuro profile. No thresholds, no cliffs, no gates. Every metric contributes proportionally.
 
-These were deliberately widened so adjacent states produce different playlists. Fatigue (0.95 para) and physical recovery (0.60 para) are 0.35 apart — enough that different songs win even with noisy scores.
+**The 12 signals:**
 
-### 6.2 The Dot Product
+| Signal | What it measures | Direction |
+|--------|-----------------|-----------|
+| recovery_z | Today's recovery vs 30-day baseline | Negative → more para |
+| recovery_delta_z | Day-over-day recovery change vs personal delta baseline | Negative → more para |
+| hrv_z | Today's LnRMSSD vs 30-day baseline | Negative → more para |
+| hrv_delta_z | Day-over-day HRV change | Negative → more para |
+| rhr_z | Today's RHR vs baseline (inverted: high RHR = negative) | Negative → more para |
+| rhr_delta_z | Day-over-day RHR change (inverted) | Negative → more para |
+| deep_sleep_z | Last night's deep sleep vs baseline | Negative → more para + grounding |
+| deep_ratio_z | Deep sleep as fraction of total vs baseline | Negative → more grounding |
+| rem_sleep_z | Last night's REM vs baseline | Negative → more grounding |
+| sleep_efficiency_z | Sleep efficiency vs baseline | Negative → more para |
+| sleep_debt_z | 7-day debt vs baseline (inverted: high debt = negative) | Negative → more para + grounding |
+| hrv_trend_z | 7-day HRV slope normalized by baseline SD | Negative → more para |
+
+**How it works:**
+
+1. Start with neutral profile: `para=0.33, symp=0.34, grnd=0.33`
+2. For each available signal, add `z_score × weight × WEIGHT_SENSITIVITY` to each dimension
+3. Apply interaction bonuses: when HRV AND RHR are both stressed (z < -1.0), add 0.05 to para. Same for deep+REM both deficit.
+4. Clamp all dimensions to [0, 1], then normalize to sum to 1.0
+
+**Weight sensitivity (0.20):** Scales all weights globally. At 1.0, a bad day where many signals correlate produces extreme profiles. At 0.20, the profile moves proportionally but stays moderate. Calibrated across scenarios:
+- Great day (85% recovery): Para 0.21, Symp 0.46 (energetic)
+- Okay day (54%): Para 0.36, Symp 0.32 (balanced, slightly calm)
+- Bad day (44%): Para 0.40, Symp 0.26 (noticeably calmer, not rest mode)
+- Terrible day (15%): Para 0.59, Symp 0.06 (deep rest)
+
+**Why this is better than the state machine:** Two days at 44% recovery with different sleep architecture, different HRV trends, and different recovery trajectories now produce genuinely different profiles. The old system mapped both to the same "poor_recovery" bucket.
+
+The static state profiles still exist as fallback targets in `state_mapper.py` (used if continuous profile computation fails), and the state classifier still runs for display labels.
+
+### 6.2 Cosine Similarity
 
 For each song, the match score is:
 
 ```
-neuro_match = (song_para × state_para + song_symp × state_symp + song_grnd × state_grnd) / |state_vector|
+neuro_match = dot(song, profile) / (|song| × |profile|)
 ```
 
-Where |state_vector| = sqrt(para² + symp² + grnd²).
+Where:
+- `dot = song_para × profile_para + song_symp × profile_symp + song_grnd × profile_grnd`
+- `|song| = sqrt(song_para² + song_symp² + song_grnd²)`
+- `|profile| = sqrt(profile_para² + profile_symp² + profile_grnd²)`
 
-This is clamped to [0, 1]. The result means: "how aligned is this song's neurological profile with what the state needs?"
+This is clamped to [0, 1]. Cosine similarity measures directional alignment: a song that points in the same direction as the target scores high regardless of magnitude. A song that's "too much" in one dimension gets penalized — it's pointing slightly off-axis.
 
-A song with para=0.9, symp=0.1, grnd=0.1 scores high for fatigue (para-dominant) and low for peak readiness (symp-dominant). That's exactly what we want.
+**Why cosine instead of one-sided dot product?** The old formula (`dot / |profile|`) only normalized by the profile magnitude, not the song magnitude. This meant songs with large magnitudes (high scores in all dimensions) could score near 1.0 for ANY profile, creating ties at the top. Cosine similarity normalizes both sides, so only songs whose neuro shape genuinely matches the profile score high.
 
 ### 6.3 Confidence Multiplier
 
 Songs with Essentia validation (confidence ≥ 0.7) get full weight. LLM-only songs (confidence 0.5-0.7) get multiplied by 0.85 — slightly penalized because their properties are less accurate.
 
-### 6.4 Freshness Nudge
+### 6.4 Playlist Rotation
 
-If a song was in yesterday's playlist, subtract 0.02 from its score. Two days ago: subtract 0.01. This is tiny — only breaks ties among similarly-scored songs. If a song is genuinely the best match, the nudge doesn't override it.
+Two layers prevent repetition:
 
-Result: same state on consecutive days → ~45% of songs change, ~55% stay. The core best songs persist; near-ties rotate for freshness.
+**Hard cap (days-since-last-appearance):** Songs that appeared in a recent playlist are blocked entirely until a minimum gap has passed. The gap scales logarithmically with library size — more songs means a longer gap because there's more depth to rotate through. Formula: `base = max(1, round(log2(library_size / 150)))`. Current bangers (top-quartile engagement + played in last 30 days) get a 1-day discount.
 
-### 6.5 The Selection Algorithm
+**Freshness nudge (soft tiebreaker):** Songs that appeared 1-4 days ago (if they passed the hard cap) get a small score subtraction: 0.04 for yesterday, 0.03 for 2 days, 0.02 for 3, 0.01 for 4. This only breaks ties among similarly-scored songs — never overrides a genuinely better neurological match.
 
-1. Score ALL 1,360 songs by `neuro_match × confidence - freshness_nudge`
-2. Rank by score (unified ranking — no pools, no splitting)
-3. Take the top 60 candidates
-4. Pass to the cohesion engine for sonic coherence filtering
-5. Get back 15-20 songs that are neurologically correct AND sound good together
+The old system only had the soft nudge, which wasn't enough — the same 12 "perfect match" songs dominated every playlist. The hard cap forces the engine to explore deeper into the library.
+
+### 6.5 Bollywood Motivational Filter
+
+Bollywood motivational songs (Chak De India, Ziddi Dil, Halla Bol) are tied to specific movie scenes — training montages, sports anthems. Hearing them evokes the scene, not the mood. They're excluded from all playlists except peak_readiness, where the pump-up context fits.
+
+Detection: mood tags include "motivational" AND genre tags include any Bollywood/Punjabi variant. Plus a manual override set for songs the LLM missed tagging. English motivational songs are allowed everywhere — Western pop isn't written for a specific film scene.
+
+### 6.6 The Selection Algorithm
+
+1. Compute continuous neuro profile from 12 physiological z-scores
+2. Exclude blocked songs: user blocklist, Bollywood motivational (if not peak_readiness), hard-cap rotation
+3. Score ALL remaining songs by `cosine_similarity × confidence × familiarity - freshness_nudge`
+4. Rank by score (unified ranking — no pools, no splitting)
+5. Take the top 60 candidates
+6. Pass to the cohesion engine for sonic coherence filtering
+7. Get back 15-20 songs that are neurologically correct AND sound good together
 
 ---
 
@@ -328,69 +367,67 @@ Every pair of songs gets a similarity score (0-1) based on:
 ## 8. The Full Pipeline: From Wake-Up to Playlist
 
 ```
-python main.py generate
+python main.py [--profile <name>] generate
 ```
 
 1. Read WHOOP data for today
 2. Compute personal baselines (30-day rolling)
 3. Detect trends (7-day HRV/RHR slopes)
 4. Analyze sleep architecture (deep/REM deficits)
-5. Classify physiological state (priority-ordered)
-6. Get state's neuro profile (e.g., fatigue → para=0.95)
-7. Score all 1,360 songs by dot product × confidence - freshness
-8. Take top 60 → run cohesion seed-and-expand → get 20 coherent songs
-9. Create Spotify playlist: "Mar 20 — Accumulated Fatigue"
-10. Write description: "Accumulated Fatigue · Recovery 25% · HRV 32ms · Tuned for parasympathetic · 18 tracks"
-11. Log everything to database (state, reasoning, metrics, tracks, description)
+5. Classify physiological state (priority-ordered) — used for display label only
+6. Compute 12 physiological z-scores (recovery, HRV, RHR, sleep stages, debt, trends, deltas)
+7. Feed z-scores through weighted function → continuous neuro profile (para/symp/grnd)
+8. Apply rotation hard cap: exclude songs that appeared within minimum gap
+9. Score all songs by cosine similarity × confidence × familiarity - freshness nudge
+10. Take top 60 → run cohesion seed-and-expand → get 20 coherent songs
+11. Create Spotify playlist: "Mar 20 — Rest & Repair"
+12. Write description: "Calming your nervous system · Bollywood · Melancholy, Reflective, Romantic"
+13. Log everything to database (state, z-scores, neuro profile, reasoning, metrics, tracks, description)
+
+Multi-user: the `--profile <name>` flag routes to a separate database (`attuned_<name>.db`), allowing each user to have their own WHOOP data, song library, baselines, and playlists.
 
 ---
 
 ## 9. Design Decisions & Iteration History
 
-See [PRODUCT_DECISIONS.md](PRODUCT_DECISIONS.md) for the full log of what we tried, what worked, what didn't, and why — organized chronologically across all 9 days of development.
+See [PRODUCT_DECISIONS.md](PRODUCT_DECISIONS.md) for the full log of what we tried, what worked, what didn't, and why — organized chronologically across all 12 days of development.
 
 ---
 
 ## 10. Current Performance
 
 **Data quality:**
-- 1,360 classified songs
-- 1,348 with Essentia-measured energy/acousticness (99.1%)
-- All 1,360 have LLM valence, mood tags, genre tags
+- 5,313 classified songs across 2 users
+- Essentia coverage 99%+ per user
+- All songs have LLM valence, mood tags, genre tags
 - Para↔Grnd correlation: 0.638 (started at 0.921 — 31% reduction)
 
-**Accuracy (Q1): Every song fits its state.**
-- 0/140 weak matches across all 7 states
-- Worst neuro_match in any playlist: 0.816
-- Physical recovery and poor sleep: mean neuro_match 1.000
+**Scoring quality (cosine similarity):**
+- Cosine similarity eliminated the 1.000-score ties that plagued the old one-sided dot product
+- Songs now differentiate properly — a calm song scores high for a calming profile and low for an energizing one, without magnitude inflation
 
-**Optimality (Q2): ~35% of theoretically ideal songs captured.**
-- The cohesion layer intentionally trades some neuro match for playlist sonic coherence
-- A playlist of 20 individually-best songs that don't sound good together is worse than 20 slightly-less-perfect songs that flow
-
-**Variation (Q3): ~45% daily turnover when same state repeats.**
-- Core 55% retained (clearly best, no alternative beats them)
-- 9 fresh songs per day from freshness nudge swapping near-ties
-- Different states: 0-1 songs shared
+**Variation:**
+- Hard cap rotation forces library exploration: songs can't reappear until minimum gap passes
+- Current bangers get a 1-day discount (they've earned repeat access)
+- Different continuous profiles on consecutive days (even if same state label) produce genuinely different playlists
 
 **Sample playlists:**
-- Fatigue → Tujhe Kitna Chahne Lage, Mast Magan, Aashayein Slow Version (slow, emotional ballads)
-- Emotional processing → Saiyaara, Piya O Re Piya, Ajab Si (warm, reflective Bollywood)
-- Peak → Oh Ho Ho Ho Remix, Sweety Tera Drama, Afghan Jalebi (high-energy bangers)
+- Terrible day (para=0.59) → Tujhe Kitna Chahne Lage, Mast Magan, Aashayein Slow Version (slow, emotional ballads)
+- Emotional processing (grnd-dominant) → Saiyaara, Piya O Re Piya, Ajab Si (warm, reflective Bollywood)
+- Great day (symp=0.46) → Oh Ho Ho Ho Remix, Sweety Tera Drama, Afghan Jalebi (high-energy bangers)
 
 ---
 
 ## 11. Remaining Limitations
 
-**Things only fixable with your feedback:**
-- State neuro profiles (is 0.95 para right for fatigue?) — needs listening and adjusting
-- Profiler formula parameters — research-informed but not calibrated to YOUR nervous system
+**Things only fixable with user feedback:**
+- Signal weights and weight sensitivity (0.20) — research-informed starting points, not calibrated to individual nervous systems
+- Profiler formula parameters — research-informed but personal preference matters
 - Mood tag weight (15%) — could be 10% or 20%, needs real playlist evaluation
 
 **Things fixable with more data:**
-- 12 songs LLM-only (YouTube unavailable) — marginal impact
-- 869 songs missing release_year (Spotify rate-limited) — needed for era cohesion
 - Para↔Grnd correlation still at 0.638 — structural from shared audio features. Would need lyrical content analysis or personal feedback to go lower.
+- Some songs missing release_year (Spotify rate-limited) — needed for era cohesion
 
 **Things that are at their ceiling:**
 - LLM valence/danceability accuracy (~42-50%) — only fixable with a different measurement approach
@@ -398,4 +435,4 @@ See [PRODUCT_DECISIONS.md](PRODUCT_DECISIONS.md) for the full log of what we tri
 
 ---
 
-_774 tests passing. 11 commits. Built over 5 days with iterative validation at every step._
+_1,048 tests passing. Built over 12 days with iterative validation at every step._

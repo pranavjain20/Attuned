@@ -51,7 +51,7 @@ OPENAI_API_KEY=your_openai_key
 
 ## 2. Run OAuth Flows
 
-Each user needs to authorize their own WHOOP and Spotify accounts. Replace `<name>` with a short profile name (e.g., `alex`, `jordan`).
+Each user needs to authorize their own WHOOP and Spotify accounts. Replace `<name>` with a short profile name (e.g., `alex`, `jordan`). The `--profile` flag is how Attuned supports multiple users — each profile gets its own database (`db/<name>.db`), tokens, and playlists. All commands require it.
 
 ```bash
 # Authorize WHOOP — opens browser, log in with the user's WHOOP account
@@ -93,6 +93,7 @@ python main.py --profile <name> onboard --history-dir /path/to/spotify-export
 | `--profile <name>` | Yes | User profile name |
 | `--history-dir /path` | No | Path to Spotify extended history export folder |
 | `--skip-audio` | No | Skip audio download + Essentia analysis (faster, less accurate) |
+| `--metadata-only` | No | Skip liked/top tracks pagination and only fetch missing metadata. Use for subsequent syncs after initial onboarding. |
 | `--resume-from <step>` | No | Resume from a specific step after a failure |
 
 ### Examples
@@ -122,7 +123,7 @@ The onboard command runs these steps in order:
 | 1 | **verify-auth** | Checks WHOOP + Spotify tokens exist. Fails early if OAuth isn't done. |
 | 2 | **ingest-history** | Parses extended streaming history JSON files into the database. Only runs if `--history-dir` is provided. |
 | 3 | **sync-whoop-history** | Pulls full WHOOP recovery and sleep history via the API. |
-| 4 | **sync-spotify** | Syncs liked songs, top tracks, fetches metadata, deduplicates, and computes engagement scores. |
+| 4 | **sync-spotify** | Syncs liked songs, top tracks, fetches metadata via `fetch_track_metadata`, deduplicates, and computes engagement scores. **Note:** Spotify dev-mode apps have a limited API quota. The sync uses individual `sp.track()` calls with 3-second throttle. For large libraries (1000+ songs needing metadata), this takes ~42 minutes per 837 songs. If the quota is hit, the circuit breaker aborts cleanly — re-run when the limit clears. |
 | 5 | **download-audio** | Downloads 30-second audio clips via yt-dlp for Essentia analysis. Skipped with `--skip-audio`. |
 | 6 | **analyze-audio** | Runs Essentia audio feature extraction on downloaded clips. Skipped with `--skip-audio`. |
 | 7 | **classify-songs** | Sends songs to OpenAI for LLM classification (BPM, energy, valence, mood, genre, neuro scores). |
