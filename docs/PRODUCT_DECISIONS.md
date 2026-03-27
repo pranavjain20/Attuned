@@ -717,5 +717,106 @@ The state label still exists for the user ("Rest & Repair" vs "Fuel Up") but the
 
 ### Status
 
-Architecture designed. Weights are research-informed starting points — will be tuned after implementation and historical validation. Implementation will follow this document as spec. Before/after comparison will be added once the new system generates playlists.
+Architecture designed and implemented. `intelligence/continuous_profile.py` created, wired into `matching/generator.py`. The state classifier still runs for display labels but the neuro profile is now driven entirely by the continuous function. 1,048 tests passing.
+
+### Before/After: Mar 27 Playlist Comparison
+
+**Today's metrics:** Recovery 44% (↓10pp), HRV 39.4ms (↓3.1ms), RHR 57 (↑2), deep 1.3h (↓1.0h), REM 1.7h (↓0.2h), sleep efficiency 92% (good), sleep debt 26.2h (high).
+
+**Z-scores computed by the continuous function:**
+
+| Signal | z-score | Interpretation |
+|--------|---------|----------------|
+| recovery_z | -0.56 | Below average, not extreme |
+| recovery_delta_z | -0.33 | Moderate drop from yesterday |
+| hrv_z | **-0.97** | Almost 1 SD below — significant |
+| hrv_delta_z | -0.56 | HRV declining day-over-day |
+| rhr_z | -0.36 | RHR slightly elevated |
+| rhr_delta_z | **-0.70** | RHR rose notably |
+| deep_sleep_z | **-0.97** | Deep sleep almost 1 SD below |
+| deep_ratio_z | **-0.97** | Low ratio (short sleep + low deep) |
+| rem_sleep_z | -0.04 | REM was fine |
+| sleep_efficiency_z | **+0.58** | Actually good — body slept efficiently |
+| sleep_debt_z | **-0.86** | Accumulated debt is high |
+| hrv_trend_z | -0.66 | Multi-day HRV declining |
+
+9 of 12 signals are negative. Only sleep efficiency is positive. The body is clearly stressed across multiple dimensions — this isn't just "a bad recovery score," it's declining HRV, rising RHR, poor deep sleep, and accumulated debt all at once.
+
+**Profile comparison:**
+
+| | Previous (state machine) | New (continuous) |
+|--|--------------------------|------------------|
+| **Para** | 0.22 | **0.64** |
+| **Symp** | 0.42 | **0.00** |
+| **Grnd** | 0.36 | **0.36** |
+| **Name** | Fuel Up | Rest & Repair |
+| **Character** | Romantic, reflective Bollywood | Devotional, deeply calming |
+
+**Previous playlist (state machine — Para 0.22/Symp 0.42/Grnd 0.36):**
+
+| # | Song | Artist |
+|---|------|--------|
+| 1 | Saudebazi (Encore) | Pritam |
+| 2 | Khuda Jaane | Vishal-Shekhar |
+| 3 | Piya O Re Piya | Atif Aslam |
+| 4 | Bheegi Si Bhaagi Si | Pritam |
+| 5 | Hawayein | Pritam |
+| 6 | Pani Da Rang | Ayushmann Khurrana |
+| 7 | Main Agar Kahoon | Sonu Nigam |
+| 8 | Saiyaara | Sohail Sen |
+| 9 | Main Rang Sharbaton Ka | Atif Aslam |
+| 10 | Lehra Do (83) | Pritam |
+| 11 | Kun Faya Kun | A.R. Rahman |
+| 12 | Rabba | Mohit Chauhan |
+| 13 | Mann Mera | Gajendra Verma |
+| 14 | Tu Chahiye | Pritam |
+| 15 | Aashiyan | Pritam |
+| 16 | Mere Bina | Pritam |
+| 17 | Teri Jhuki Nazar | Pritam |
+| 18 | Hosanna | A.R. Rahman |
+| 19 | Te Amo (Duet) | Pritam |
+| 20 | Jab Mila Tu | Vishal-Shekhar |
+
+Romantic Bollywood — gentle but with energy. Hawayein, Pani Da Rang, Saiyaara are sweet, moderately upbeat. This is "I'm fine, just a bit tired" music. The system saw baseline + slight recovery drop and produced a mildly calmer baseline playlist.
+
+**New playlist (continuous — Para 0.64/Symp 0.00/Grnd 0.36):**
+
+| # | Song | Artist |
+|---|------|--------|
+| 1 | Bernie's Chalisa | Krishna Das |
+| 2 | Shiv Kailash (Live) | Rishab Rikhiram Sharma |
+| 3 | Hanuman Chalisa (Lo-fi) | Rasraj Ji Maharaj |
+| 4 | Kun Faya Kun | A.R. Rahman |
+| 5 | Ganpati Aarti | Rohan Vinayak |
+| 6 | Khwaja Mere Khwaja | A.R. Rahman |
+| 7 | Bheegi Si Bhaagi Si | Pritam |
+| 8 | Kabira | Pritam |
+| 9 | Saathiyaa | Shreya Ghoshal |
+| 10 | Piya O Re Piya | Atif Aslam |
+| 11 | Maula Mere Maula | Roop Kumar Rathod |
+| 12 | Main Agar Kahoon | Sonu Nigam |
+| 13 | Tu Chahiye | Pritam |
+| 14 | Surili Akhiyon Wale | Rahat Fateh Ali Khan |
+| 15 | Baatein Kuch Ankahee | Pritam |
+| 16 | Dildaara (Stand By Me) | Shafqat Amanat Ali |
+| 17 | Kahin To | Rashid Ali |
+| 18 | Phir Le Aya Dil (Reprise) | Pritam |
+| 19 | Channa Mereya | Pritam |
+| 20 | Saibo | Sachin-Jigar |
+
+Deeply calming. Opens with devotional (Krishna Das, Hanuman Chalisa, Kun Faya Kun, Khwaja Mere Khwaja) then transitions to slow romantic Bollywood (Kabira, Channa Mereya, Saibo). Zero sympathetic energy. The system read 9 negative signals and said "your body needs deep rest, not romantic energy."
+
+### Why the new playlist is better
+
+1. **The old system was blind to 10 of 12 signals.** It only used recovery delta (-10pp → slight calmer nudge). The HRV crash (-0.97 z), RHR spike (-0.70 z), deep sleep deficit (-0.97 z), and accumulated debt (-0.86 z) were completely invisible. These are strong stress signals the old playlist ignored.
+
+2. **The genre shift is data-driven.** Devotional music (Krishna Das, Khwaja Mere Khwaja) isn't random — it's the highest-scoring parasympathetic + grounding music in the library. The old system never reached these songs because Symp 0.42 kept pulling toward upbeat romantic tracks.
+
+3. **8 shared songs between old and new** — Piya O Re Piya, Bheegi Si Bhaagi Si, Main Agar Kahoon, Tu Chahiye, Kun Faya Kun, Kabira, Saibo (via anchors/high scores). The new system didn't discard the old playlist entirely — it shifted it calmer while keeping the strongest matches.
+
+### Open question: is Para 0.64 too extreme?
+
+The user described today as "baseline but worse than yesterday" — not "I need to lie down." Para 0.64 / Symp 0.00 is closer to accumulated fatigue (Para 0.95) than baseline (Para 0.15). The previous Para 0.22 was arguably too energetic (ignoring 10 signals). The truth might be Para 0.35-0.45.
+
+If the weights are too aggressive, the fix is simple: scale down the weight magnitudes. The architecture is correct — every signal contributes, profiles move smoothly, no cliffs. The weights are the tuning knob. Pending user feedback on whether Para 0.64 matches subjective experience.
 

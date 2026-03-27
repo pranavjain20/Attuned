@@ -8,10 +8,8 @@ from datetime import date, datetime
 import spotipy
 
 from db.queries import insert_generated_playlist
-from intelligence.baselines import compute_recovery_delta, compute_recovery_delta_baseline
 from intelligence.state_classifier import classify_state
 from matching.query_engine import select_songs
-from matching.state_mapper import apply_recovery_delta_modifier
 from spotify.playlist import (
     SPOTIFY_DESCRIPTION_MAX_LENGTH,
     SpotifyPlaylistError,
@@ -265,22 +263,19 @@ def generate_playlist(
             "Cannot generate playlist — insufficient WHOOP data (need 14+ days of HRV)"
         )
 
-    # 1b. Recovery delta modifier — nudge neuro profile for big day-over-day swings
-    neuro_profile_override = None
-    delta_reason = None
-    recovery_delta = compute_recovery_delta(conn, date_str)
-    delta_baseline = compute_recovery_delta_baseline(conn, date_str)
-    if recovery_delta is not None and delta_baseline is not None and delta_baseline["sd"] > 0:
-        from matching.state_mapper import get_state_neuro_profile
-        base_profile = get_state_neuro_profile(state)
-        adjusted, delta_reason = apply_recovery_delta_modifier(
-            base_profile, recovery_delta, delta_baseline["sd"], state,
-            sleep_analysis=classification.get("sleep_analysis"),
-        )
-        if delta_reason is not None:
-            neuro_profile_override = adjusted
-            classification["reasoning"].append(delta_reason)
-            logger.info("Recovery delta modifier: %s", delta_reason)
+    # 1b. Continuous profile — weighted function of all physiological signals
+    from intelligence.continuous_profile import compute_continuous_profile
+    continuous = compute_continuous_profile(conn, date_str)
+    neuro_profile_override = continuous["profile"]
+
+    z_summary = {k: round(v, 2) for k, v in continuous["z_scores"].items() if v is not None}
+    logger.info(
+        "Continuous profile: %d signals, z-scores: %s",
+        continuous["signals_used"], z_summary,
+    )
+    if continuous["interactions"]:
+        for interaction in continuous["interactions"]:
+            logger.info("Interaction: %s", interaction)
 
     # 2. Match songs
     match_result = select_songs(conn, state, date_str, neuro_profile_override=neuro_profile_override)
