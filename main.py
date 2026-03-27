@@ -24,6 +24,7 @@ COMMANDS = {
     "sync-whoop": "Pull today's WHOOP recovery + sleep data",
     "sync-spotify": "Sync liked songs, top tracks, and fetch metadata from Spotify",
     "sync-all": "Run sync-whoop and sync-spotify",
+    "sync-recently-played": "Pull recently-played tracks from Spotify (last 24h)",
     "dedup-songs": "Consolidate duplicate songs (same name+artist, different URIs)",
     "compute-engagement": "Compute engagement scores for all eligible songs",
     "classify-state": "Classify today's physiological state from WHOOP data",
@@ -82,6 +83,8 @@ def main() -> None:
     elif command == "sync-all":
         _cmd_sync_whoop(db_path)
         _cmd_sync_spotify(db_path)
+    elif command == "sync-recently-played":
+        _cmd_sync_recently_played(db_path)
     elif command == "dedup-songs":
         _cmd_dedup_songs(db_path)
     elif command == "compute-engagement":
@@ -420,6 +423,23 @@ def _cmd_sync_spotify(db_path: Path, metadata_only: bool = False) -> None:
         conn.close()
 
 
+def _cmd_sync_recently_played(db_path: Path) -> None:
+    from spotify.auth import get_spotify_client
+    from spotify.sync import sync_recently_played
+    from spotify.engagement import compute_engagement_scores
+
+    conn = get_connection(db_path)
+    try:
+        sp = get_spotify_client(conn)
+        recent = sync_recently_played(conn, sp)
+        print(f"Recently-played sync: {recent['plays_added']} plays added, {recent['new_songs']} new songs")
+        if recent["plays_added"] > 0:
+            scored = compute_engagement_scores(conn)
+            print(f"Engagement re-scored: {scored:,} songs")
+    finally:
+        conn.close()
+
+
 def _cmd_dedup_songs(db_path: Path) -> None:
     from spotify.dedup import consolidate_duplicate_songs
 
@@ -726,6 +746,14 @@ def _cmd_generate(db_path: Path) -> None:
         if not dry_run:
             from spotify.auth import get_spotify_client
             sp = get_spotify_client(conn)
+
+            # Auto-sync recently-played before generation
+            from spotify.sync import sync_recently_played
+            from spotify.engagement import compute_engagement_scores
+            recent = sync_recently_played(conn, sp)
+            if recent["plays_added"] > 0:
+                compute_engagement_scores(conn)
+                print(f"  Synced {recent['plays_added']} recent plays, {recent['new_songs']} new songs")
 
         try:
             result = generate_playlist(conn, sp, date_str=target_date, dry_run=dry_run)

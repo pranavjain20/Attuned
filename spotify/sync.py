@@ -223,3 +223,83 @@ def fetch_track_metadata(conn: sqlite3.Connection, sp: Any, min_listens: int = 2
 
     logger.info("Fetched metadata for %d songs", len(metadata))
     return len(metadata)
+
+
+def sync_recently_played(
+    conn: sqlite3.Connection,
+    sp: Any,
+    hours_back: int = 24,
+) -> dict[str, int]:
+    """Pull recently-played tracks from Spotify and update listening_history + songs.
+
+    Uses sp.current_user_recently_played() to fetch the last 50 plays within
+    the lookback window. New songs are upserted; plays are added to
+    listening_history (idempotent via UNIQUE constraint).
+
+    Returns dict with plays_added and new_songs counts.
+    """
+    from datetime import datetime, timedelta, timezone
+    from spotify.client import parse_track, SPOTIFY_PAGINATION_THROTTLE_SECONDS
+    import time
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_back)
+    after_ms = int(cutoff.timestamp() * 1000)
+
+    try:
+        results = sp.current_user_recently_played(limit=50, after=after_ms)
+    except Exception as e:
+        logger.warning("Failed to fetch recently-played: %s", e)
+        return {"plays_added": 0, "new_songs": 0}
+
+    items = results.get("items", []) if results else []
+    if not items:
+        logger.info("No recently-played tracks in last %d hours", hours_back)
+        return {"plays_added": 0, "new_songs": 0}
+
+    history_records: list[dict] = []
+    new_songs = 0
+
+    for item in items:
+        track_data = item.get("track")
+        played_at = item.get("played_at")
+        if not track_data or not played_at:
+            continue
+
+        parsed = parse_track(track_data)
+        if not parsed:
+            continue
+
+        uri = parsed["uri"]
+        duration_ms = parsed.get("duration_ms") or 0
+
+        # Upsert song if new
+        existing = queries.get_song(conn, uri)
+        if not existing:
+            queries.upsert_song(
+                conn, uri=uri, name=parsed["name"], artist=parsed["artist"],
+                album=parsed.get("album"), sources=["recently_played"],
+                duration_ms=duration_ms, release_year=parsed.get("release_year"),
+                last_played=played_at[:10],
+            )
+            new_songs += 1
+
+        # Build listening_history record
+        # recently-played API doesn't provide ms_played, reason, skipped, etc.
+        # Use duration_ms as estimate (if in recently-played, user likely listened)
+        history_records.append({
+            "spotify_uri": uri,
+            "played_at": played_at,
+            "ms_played": duration_ms,
+            "reason_start": "recently_played",
+            "reason_end": None,
+            "skipped": 0,
+            "shuffle": None,
+            "platform": None,
+        })
+
+    plays_added = queries.insert_listening_history_batch(conn, history_records)
+    logger.info(
+        "Recently-played sync: %d plays added, %d new songs (from %d items)",
+        plays_added, new_songs, len(items),
+    )
+    return {"plays_added": plays_added, "new_songs": new_songs}
