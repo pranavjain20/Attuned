@@ -573,3 +573,149 @@ Bollywood music is written for a movie scene. A motivational Bollywood song = so
 
 16 Bollywood motivational songs excluded from non-peak playlists. English motivational songs still available. Manual override catches the LLM's blind spots without needing reclassification.
 
+---
+
+## Day 12: From State Machine to Continuous Intelligence
+
+### The observation that triggered this
+
+Mar 27: Recovery 44% (down from 54%), HRV 39.4ms (down from 42.5ms), RHR 57 (up from 55), deep sleep 1.3h (down from 2.3h). Every single metric is worse than yesterday. The system classified both days as "baseline" and produced similar playlists — romantic reflective Bollywood.
+
+The recovery delta modifier caught the -10pp drop and shifted the profile slightly calmer (Para 0.22 vs 0.15). But the HRV decline, RHR increase, and sleep quality drop were invisible to the playlist. Only recovery delta was used continuously. Everything else was a binary gate.
+
+### The deeper problem: brackets vs intelligence
+
+The current architecture is a state machine:
+1. Classify into 7 discrete states via if/elif thresholds
+2. Look up the state's static neuro profile
+3. Apply recovery delta modifier (continuous, but only for baseline state)
+4. Apply sleep dampener (continuous, but only for baseline state)
+
+This means:
+- A recovery of 39% triggers poor_recovery; 41% does not. Cliff.
+- Deep sleep at mean-1.01*SD is "adequate"; at mean-0.99*SD is not. Cliff.
+- HRV decline and RHR increase are computed but only used as boolean gates for peak readiness. They don't move the playlist dial at all for any other state.
+
+Two days with identical state classification get nearly identical playlists:
+
+| Day A | Day B | Same state? |
+|-------|-------|-------------|
+| Recovery 44%, HRV declining, RHR rising, deep 1.3h/5h total | Recovery 44%, HRV stable, RHR stable, deep 1.3h/9h total | Yes → similar playlists |
+
+These need different playlists. Day A is a body under stress (everything declining). Day B is a relaxed body that didn't recover well (stable vitals, just low deep ratio).
+
+The key insight: **1.5h deep sleep in a 5h night ≠ 1.5h deep sleep in a 9h night.** The body prioritized deep sleep in the short night (high deep ratio = sleep pressure response). Same absolute deep, completely different physiological context. Both the absolute amount AND the ratio AND the total sleep duration matter.
+
+### What the research says about signal strength
+
+**Correlation with subjective state (strongest → weakest):**
+
+| Signal | Strength | Source |
+|--------|----------|--------|
+| Sleep architecture quality (efficiency + deep/REM ratios) | r = 0.4-0.6 | PMC6456824, Nature Sci Rep 2024 |
+| HRV (ln_rmssd) | r = 0.68 with fatigue, r = 0.46 with stress | JSSM 2023, Lundstrom 2024 |
+| RHR | Meaningful only combined with HRV (multiplicative) | System Logic research |
+| WHOOP Recovery composite | r = -0.05 to -0.18 with validated stress scales | Loses raw signal fidelity |
+| Sleep debt | Cognitive impairment >5h cumulative | Van Dongen & Dinges 2003 |
+
+**Key research insights:**
+- Multi-day trends (7-day rolling averages) are more predictive than single-day readings (Plews et al., 2012)
+- Day-over-day deltas predict subjective experience better than absolute position
+- HRV decline + RHR rise together is multiplicative — stronger signal than either alone
+- Deep sleep deficit + REM deficit indicate different problems requiring different music
+- Subjective state recovers after 1 good night; objective impairment takes 9+ days (Dinges/Belenky)
+- Sleep efficiency is the single strongest objective correlate of subjective sleep quality
+- Sleep quality/architecture matters more than quantity for subjective state — shifting 30min from light to deep improves positive affect by +0.38 regardless of total duration (PMC12208346)
+
+### The new architecture: continuous weighted function
+
+**Current flow:**
+```
+metrics → state classification (7 buckets) → static profile → modifiers → playlist
+```
+
+**New flow:**
+```
+metrics → continuous scoring function → neuro profile → playlist
+         ↘ state label (for display/description only)
+```
+
+The state classifier still runs for the human-readable label ("Rest & Repair" vs "Fuel Up"). But the playlist profile is computed directly from the weighted metrics, not derived from the state label.
+
+### Input signals
+
+Every metric becomes a z-score against the user's personal 30-day baseline:
+
+| Signal | What it measures | z = -2 means | z = +2 means |
+|--------|-----------------|--------------|--------------|
+| recovery_z | Today's recovery vs personal mean | Very bad day | Great day |
+| recovery_delta_z | Today - yesterday recovery, vs personal delta SD | Big drop from yesterday | Big jump |
+| hrv_z | Today's ln_rmssd vs 30-day mean | HRV crashed | HRV elevated |
+| hrv_delta_z | Today - yesterday HRV, vs personal delta SD | HRV declining | HRV rising |
+| rhr_z | Today's RHR vs 30-day mean (inverted: high RHR = negative) | RHR very elevated (bad) | RHR low (good) |
+| rhr_delta_z | Today - yesterday RHR (inverted) | RHR rising (bad) | RHR dropping (good) |
+| deep_sleep_z | Deep sleep ms vs personal mean | Very low deep | Excellent deep |
+| deep_ratio_z | Deep/total vs personal ratio mean | Low ratio (long sleep, little deep) | High ratio (body prioritized deep) |
+| rem_sleep_z | REM ms vs personal mean | Very low REM | Excellent REM |
+| sleep_efficiency_z | Last night's efficiency vs personal mean | Poor efficiency | Excellent efficiency |
+| sleep_debt_z | 7-day debt vs personal debt mean (inverted) | Debt very high | Low debt |
+| hrv_trend_z | 7-day HRV slope, normalized | Declining trend | Rising trend |
+
+### The weighting table
+
+Each z-score pushes the neuro profile toward parasympathetic (calming), sympathetic (energy), or grounding (stability). The weight determines how much push per unit of z.
+
+| Signal | Para weight | Symp weight | Grnd weight | Rationale |
+|--------|-------------|-------------|-------------|-----------|
+| recovery_z | -0.15 | +0.15 | 0 | Low recovery → more calming; high → more energy. Largest weight because it's the most integrated signal. |
+| recovery_delta_z | -0.10 | +0.10 | 0 | Yesterday-to-today change. A 10pp drop should move the dial more than a steady 44%. |
+| hrv_z | -0.12 | +0.12 | 0 | Second strongest predictor (r=0.68). Low HRV = autonomic nervous system needs support. |
+| hrv_delta_z | -0.05 | +0.05 | 0 | Direction of HRV change. Smaller than absolute because trends > single-day (Plews 2012). |
+| rhr_z (inverted) | -0.08 | +0.08 | 0 | Elevated RHR = sympathetic overdrive. Calm it down. Only meaningful combined with HRV. |
+| deep_sleep_z | -0.08 | +0.05 | -0.03 | Low deep → physical recovery need (parasympathetic + grounding). |
+| deep_ratio_z | 0 | 0 | ±0.05 | High ratio with short total = sleep pressure (grounding). High ratio with long total = great night (neutral). |
+| rem_sleep_z | -0.03 | 0 | -0.07 | Low REM → emotional processing need → grounding, not parasympathetic. This is why grounding weight is higher. |
+| sleep_efficiency_z | -0.08 | +0.08 | 0 | Strongest single subjective correlate. Poor efficiency = body didn't rest despite time in bed. |
+| sleep_debt_z (inverted) | -0.05 | +0.03 | -0.02 | High accumulated debt → calming + grounding. Accumulated, so grounding is part of the response. |
+| hrv_trend_z | -0.05 | +0.05 | 0 | Multi-day HRV direction. Declining for days is worse than one bad reading. |
+
+**Negative weight for para/grnd = bad z-score increases that component.** E.g., recovery_z = -1.0 (bad day) × para weight -0.15 = +0.15 added to parasympathetic. The double negative produces the intuitive result: bad metrics push toward calming.
+
+### How the function works
+
+1. Compute all 12 z-scores from today's metrics + 30-day baselines
+2. Start from neutral: `{para: 0.33, symp: 0.34, grnd: 0.33}`
+3. For each signal: add `z * weight` to each component
+4. Check interaction terms:
+   - If `hrv_z` AND `rhr_z` both < -1.0 → additional +0.05 to para (both metrics bad = multiplicative stress signal)
+   - If `deep_sleep_z` AND `rem_sleep_z` both < -1.0 → additional +0.05 to para (complete sleep failure)
+5. Clamp each component to [0.0, 1.0]
+6. Normalize so para + symp + grnd = 1.0
+
+### Worked example: today (Mar 27) vs yesterday (Mar 26)
+
+**Yesterday (Mar 26):** Recovery 54%, HRV 42.5ms, RHR 55, deep 2.3h, REM 1.9h
+- recovery_z ≈ -0.3, hrv_z ≈ -0.1, rhr_z ≈ 0.0, deep_z ≈ +0.8, rem_z ≈ +0.1
+- recovery_delta_z ≈ -1.2 (dropped from 83% two days ago)
+- Result: ~{para: 0.22, symp: 0.42, grnd: 0.36} — baseline, leaning slightly calmer
+- Playlist: Hawayein, Pani Da Rang — gentle romantic Bollywood
+
+**Today (Mar 27):** Recovery 44%, HRV 39.4ms, RHR 57, deep 1.3h, REM 1.7h
+- recovery_z ≈ -0.7, hrv_z ≈ -1.0, rhr_z ≈ -0.4, deep_z ≈ -0.5, rem_z ≈ 0.0
+- recovery_delta_z ≈ -0.5 (dropped 10pp from yesterday)
+- Interaction: hrv_z (-1.0) × rhr_z (-0.4) — HRV bad but RHR not quite at -1.0, so interaction doesn't trigger
+- Result: ~{para: 0.38, symp: 0.30, grnd: 0.32} — noticeably calmer, more grounded
+- Expected playlist: slower, more acoustic, more grounding than yesterday. Not as extreme as accumulated fatigue (para 0.95) but a clear shift.
+
+**The difference is visible:** yesterday para=0.22, today para=0.38. That's a 73% increase in parasympathetic weight driven by HRV decline (-1.0 z), RHR increase, and worse deep sleep. Every metric that got worse moved the dial.
+
+### What this means for the product
+
+The playlist becomes a continuous response to the body's state, not a bucketed reaction. Small changes in metrics produce small changes in playlist character. Large changes produce large shifts. No cliffs, no gates, no "you're either baseline or fatigue with nothing in between."
+
+The state label still exists for the user ("Rest & Repair" vs "Fuel Up") but the actual music selection is driven by the continuous profile. Two "baseline" days can have meaningfully different playlists if the underlying metrics differ.
+
+### Status
+
+Architecture designed. Weights are research-informed starting points — will be tuned after implementation and historical validation. Implementation will follow this document as spec. Before/after comparison will be added once the new system generates playlists.
+
