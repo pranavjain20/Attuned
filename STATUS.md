@@ -2,22 +2,27 @@
 
 ## Current Phase
 
-Day 11. 1,044 tests passing. Spotify rate limit architecture rebuilt. Blocked on daily rate limit clearing (~Mar 26 afternoon), then second user's full pipeline runs.
+Day 11-12. 1,048 tests passing. Playlist rotation and quality significantly improved. Spotify rate limit architecture rebuilt. Komal's pipeline partially complete — blocked on Spotify rate limit for metadata backfill (837 songs).
 
-## Last Session (Mar 25, 2026)
+## Last Session (Mar 26, 2026)
 
-Removed all batch `sp.tracks()` calls (never worked in dev mode). Disabled Spotipy's hidden double-retry layer. Added circuit breaker: Retry-After > 60s aborts immediately instead of sleeping for hours. Added pagination throttle. Root cause of three consecutive 24-hour lockouts identified and fixed.
+Fixed circuit breaker bug (Spotipy strips Retry-After header through MaxRetryError path — missing header now triggers immediate abort). Komal's sync-spotify ran: liked songs (752) + top tracks (3,823) succeeded, but pagination burned the rate limit before metadata fetch started. Audio download completed (7 new clips, rest already cached from shared library).
+
+Playlist rotation overhauled: replaced consecutive-streak counter with days-since-last-appearance (39 songs blocked per playlist, much better rotation). Fixed freshness to use only latest playlist per date (iteration drafts no longer pollute history). Added Bollywood motivational filter (16 songs excluded from non-peak playlists — scene-tied context doesn't fit morning recovery). Manual override for songs the LLM missed tagging.
+
+Generated today's playlist: "Mar 26 — Fuel Up" pushed to Spotify. Cleaned 6 stale playlists from Spotify.
 
 ## Blockers
 
-- **Spotify daily rate limit** — clears ~Mar 26 afternoon. Caused by running broken sync code against live API.
+- **Spotify rate limit** — Komal's pagination burned the quota. 837 songs need metadata (2+ listens, playlist candidates). Rate limit clears ~10 PM tonight.
 
 ## Next Steps
 
-1. When rate limit clears: `python main.py sync-spotify` (primary user metadata backfill)
-2. `python main.py --profile komal sync-spotify` (2,643 songs, ~2.2 hours)
-3. Second user audio pipeline: `download-audio` → `analyze-audio` → `recompute-scores` → `generate`
-4. HRV CV modifier in state_mapper.py (~1 hour)
+1. When rate limit clears: targeted metadata fetch for Komal's 837 songs (need `--metadata-only` flag or direct call to avoid re-running pagination)
+2. Komal: `analyze-audio` → `recompute-scores` → `generate`
+3. Primary user: `sync-spotify` for remaining metadata gaps
+4. Automated daily playlist generation (cron or scheduled agent)
+5. Motivational song detection improvement (LLM prompt context for Bollywood sports anthems)
 
 ## Project Timeline
 
@@ -32,3 +37,4 @@ Removed all batch `sp.tracks()` calls (never worked in dev mode). Disabled Spoti
 - **Day 9** — Second user: Komal onboarding, restorative sleep gate, global rate limit handler
 - **Day 10** — Refinement: continuous baseline scaling, sleep dampener, mood affinity, vibe hard cap
 - **Day 11** — Rate limit fix: batch removal, circuit breaker, double-retry disabled, pagination throttle
+- **Day 12** — Rotation overhaul: days-since-last-appearance, latest-per-day freshness, Bollywood motivational filter, project restructure to playbook spec
