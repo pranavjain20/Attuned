@@ -92,7 +92,11 @@ def compute_neuro_match(
     song_grnd: float | None,
     state_profile: dict[str, float],
 ) -> float:
-    """Compute normalized dot product between song neuro scores and state profile.
+    """Cosine similarity between song neuro scores and target profile.
+
+    Measures directional alignment: a song that points in the same direction
+    as the target scores high regardless of magnitude. A song that's "too much"
+    in one dimension gets penalized — it's pointing slightly off-axis.
 
     Returns 0.0-1.0. None scores are treated as 0.0 (no signal = no match).
     """
@@ -106,11 +110,13 @@ def compute_neuro_match(
 
     dot = para * w_para + symp * w_symp + grnd * w_grnd
 
-    magnitude = math.sqrt(w_para ** 2 + w_symp ** 2 + w_grnd ** 2)
-    if magnitude == 0:
+    mag_song = math.sqrt(para ** 2 + symp ** 2 + grnd ** 2)
+    mag_profile = math.sqrt(w_para ** 2 + w_symp ** 2 + w_grnd ** 2)
+
+    if mag_song == 0 or mag_profile == 0:
         return 0.0
 
-    return min(dot / magnitude, 1.0)
+    return min(dot / (mag_song * mag_profile), 1.0)
 
 
 # ---------------------------------------------------------------------------
