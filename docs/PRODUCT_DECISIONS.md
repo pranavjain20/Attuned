@@ -843,3 +843,53 @@ The sensitivity knob keeps the weight table readable (relative importance visibl
 
 Mix of devotional anchors (recently listened: Shiv Kailash, Hanuman Chalisa), gentle English (Let Her Go), and romantic Bollywood (Hawayein, Bheegi Si Bhaagi Si, Channa Mereya). 13 songs overlap with the old state-machine playlist, but the overall character is calmer — proportional to the metric decline, not a genre flip.
 
+---
+
+## Day 12: Cosine Similarity Replaces One-Sided Normalization
+
+### The observation
+
+After tuning the continuous profile to Para 0.40/Symp 0.26/Grnd 0.34, 10 of 20 songs scored exactly 1.000. No discrimination — the scoring couldn't tell Shiv Kailash (para=0.77) from Hawayein (para=0.56).
+
+### Root cause
+
+`compute_neuro_match` normalized by profile magnitude only: `dot(song, profile) / |profile|`. The continuous profile has moderate values (|profile| = 0.59), and most songs' vectors exceed that magnitude. The dot product / 0.59 > 1.0 for almost everything → clamped to 1.0.
+
+The old static profiles (e.g., accumulated_fatigue at para=0.95, |profile| = 0.95) didn't have this problem because their magnitude was large enough that songs rarely exceeded it.
+
+### The fix
+
+Proper cosine similarity: `dot(song, profile) / (|song| × |profile|)`. Measures directional alignment — a song that points in the same proportional direction as the target scores highest, regardless of magnitude. A song that's "too parasympathetic" for a balanced target gets penalized.
+
+### Effect
+
+Scores now range 0.982-0.999 with clear discrimination. Let Her Go (para=0.65, symp=0.28, grnd=0.60) scores highest against {0.40, 0.26, 0.34} because its proportions best match the target. Hanuman Chalisa (para=0.82, symp=0.10) scores lower — it's more parasympathetic than the target wants.
+
+---
+
+## Day 12: User Blocklist for Unrecognized Songs
+
+### The observation
+
+"Yeh Dil Deewana (Cover) — Gurnazar" appeared in the playlist with 18 plays and 0.65 engagement. User's reaction: "I don't remember this song." Likely autoplay/background listening that passed the engagement threshold.
+
+### The decision
+
+Added `_USER_BLOCKLIST` in query_engine.py — a set of URIs excluded from all playlists. Different from the motivational override (that's about context). This is about "I don't recognize this as mine."
+
+Simple, precise, zero false positives. Songs are added as the user spots them during playlist review.
+
+---
+
+## Day 12: Komal's First Live Playlist
+
+### What happened
+
+First non-Pranav user fully onboarded and generating live playlists. Komal's pipeline: 9,857 songs ingested, 3,953 classified (2+ listens), 3,521 with Essentia (89%), 486 WHOOP recovery days.
+
+Her Mar 27 playlist (poor_recovery, 47%): the old state machine produced heavily parasympathetic music (Kun Faya Kun, The Night We Met, Marlboro Nights — full rest mode). The new continuous profile saw her HRV was actually above average (+0.31 z) and debt was low (+0.46 z), producing a more balanced Para 0.35/Symp 0.31/Grnd 0.34 — romantic and warm (Tum Se Hi, Shayad, Earned It), not meditation.
+
+### Why this matters
+
+Same recovery score (47%), completely different playlist based on the underlying signals. The continuous function read the contradiction: recovery is low, but HRV is fine and she's not sleep-deprived. The old system would have given her a one-size-fits-poor-recovery playlist. The new system gave her music matched to HER specific physiological state.
+
