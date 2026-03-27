@@ -749,9 +749,11 @@ def _cmd_generate(db_path: Path) -> None:
 
             # Auto-sync recently-played before generation
             from spotify.sync import sync_recently_played
+            from spotify.dedup import consolidate_duplicate_songs
             from spotify.engagement import compute_engagement_scores
             recent = sync_recently_played(conn, sp)
-            if recent["plays_added"] > 0:
+            if recent["plays_added"] > 0 or recent["new_songs"] > 0:
+                consolidate_duplicate_songs(conn)
                 compute_engagement_scores(conn)
                 print(f"  Synced {recent['plays_added']} recent plays, {recent['new_songs']} new songs")
 

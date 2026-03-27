@@ -294,7 +294,7 @@ def sync_recently_played(
             "reason_end": None,
             "skipped": 0,
             "shuffle": None,
-            "platform": None,
+            "platform": "spotify_api",
         })
 
     plays_added = queries.insert_listening_history_batch(conn, history_records)

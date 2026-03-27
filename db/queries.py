@@ -595,7 +595,8 @@ def get_all_classified_songs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                       OR LOWER(lh.platform) LIKE '%android%'
                       OR LOWER(lh.platform) LIKE '%mac%'
                       OR LOWER(lh.platform) LIKE '%windows%'
-                      OR LOWER(lh.platform) LIKE '%web%')
+                      OR LOWER(lh.platform) LIKE '%web%'
+                      OR LOWER(lh.platform) = 'spotify_api')
            )
            ORDER BY s.engagement_score DESC"""
     ).fetchall()
