@@ -58,6 +58,14 @@ NEUTRAL_PROFILE = {"para": 0.33, "symp": 0.34, "grnd": 0.33}
 # z-score clamp: prevent extreme outliers from dominating
 Z_CLAMP = 2.5
 
+# Global sensitivity: scales all weights. 1.0 = full sensitivity (too aggressive
+# when many signals align). 0.2 = moderate sensitivity, tested across scenarios:
+# - Great day (85% recovery): Para 0.21, Symp 0.46 (energetic)
+# - Okay day (54%): Para 0.36, Symp 0.32 (balanced, slightly calm)
+# - Bad day (44%): Para 0.40, Symp 0.26 (noticeably calmer, not rest mode)
+# - Terrible day (15%): Para 0.59, Symp 0.06 (deep rest)
+WEIGHT_SENSITIVITY = 0.20
+
 
 def _safe_z(value: float | None, mean: float, sd: float) -> float | None:
     """Compute z-score, returning None if inputs are missing or sd is zero."""
@@ -253,7 +261,7 @@ def compute_continuous_profile(
             continue
         signals_used += 1
         for component in ("para", "symp", "grnd"):
-            profile[component] += z * weights[component]
+            profile[component] += z * weights[component] * WEIGHT_SENSITIVITY
 
     # Interaction terms: multiplicative stress signals
     hrv_z = z_scores.get("hrv_z")

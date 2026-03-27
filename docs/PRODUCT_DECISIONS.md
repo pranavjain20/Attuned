@@ -818,5 +818,28 @@ Deeply calming. Opens with devotional (Krishna Das, Hanuman Chalisa, Kun Faya Ku
 
 The user described today as "baseline but worse than yesterday" — not "I need to lie down." Para 0.64 / Symp 0.00 is closer to accumulated fatigue (Para 0.95) than baseline (Para 0.15). The previous Para 0.22 was arguably too energetic (ignoring 10 signals). The truth might be Para 0.35-0.45.
 
-If the weights are too aggressive, the fix is simple: scale down the weight magnitudes. The architecture is correct — every signal contributes, profiles move smoothly, no cliffs. The weights are the tuning knob. Pending user feedback on whether Para 0.64 matches subjective experience.
+### Weight sensitivity calibration
+
+Initial run produced Para 0.64 — accumulated-fatigue territory for a 44% day. Too extreme. Root cause: the weights were designed per-signal ("recovery pushes para by 0.15 per z-unit") but with 12 correlated signals, the maximum combined para push is `sum(all para weights) × max_z = 0.83 × 2.5 = 2.075` — 6x the entire profile range. Weights were calibrated for a 1-2 signal system, not 12.
+
+The fix separates two independent concepts:
+1. **Relative importance** (the weight table): recovery matters more than RHR delta. Research-backed, unchanged.
+2. **Absolute magnitude** (`WEIGHT_SENSITIVITY`): how much should the worst day differ from the best? Depends on signal count and correlation.
+
+Working backwards: worst day (all z = -2.0) should produce Para ~0.65. Math: `sensitivity = 0.35 / (0.83 × 2.0) ≈ 0.21`. Set to 0.20.
+
+**Tuned profile range:**
+
+| Day | Recovery | Para | Symp | Grnd |
+|-----|----------|------|------|------|
+| Great | 85% | 0.21 | 0.46 | 0.32 |
+| Okay (yesterday) | 54% | 0.36 | 0.32 | 0.33 |
+| Bad (today) | 44% | 0.40 | 0.26 | 0.34 |
+| Terrible | 15% | 0.59 | 0.06 | 0.35 |
+
+The sensitivity knob keeps the weight table readable (relative importance visible) while calibrating the output range to the system's dimensionality. 12 correlated signals need ~5x smaller individual impact than 2-3 independent signals.
+
+### Final playlist (tuned — Para 0.40 / Symp 0.26 / Grnd 0.34)
+
+Mix of devotional anchors (recently listened: Shiv Kailash, Hanuman Chalisa), gentle English (Let Her Go), and romantic Bollywood (Hawayein, Bheegi Si Bhaagi Si, Channa Mereya). 13 songs overlap with the old state-machine playlist, but the overall character is calmer — proportional to the metric decline, not a genre flip.
 
