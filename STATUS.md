@@ -2,27 +2,28 @@
 
 ## Current Phase
 
-Day 11-12. 1,048 tests passing. Playlist rotation and quality significantly improved. Spotify rate limit architecture rebuilt. Komal's pipeline partially complete — blocked on Spotify rate limit for metadata backfill (837 songs).
+Day 12. 1,048 tests passing. Continuous intelligence architecture shipped — playlist profiles now driven by 12 weighted physiological signals instead of 7 discrete states. Cosine similarity scoring. Komal's first live playlist delivered.
 
-## Last Session (Mar 26, 2026)
+## Last Session (Mar 27, 2026)
 
-Fixed circuit breaker bug (Spotipy strips Retry-After header through MaxRetryError path — missing header now triggers immediate abort). Komal's sync-spotify ran: liked songs (752) + top tracks (3,823) succeeded, but pagination burned the rate limit before metadata fetch started. Audio download completed (7 new clips, rest already cached from shared library).
+Major architecture change: replaced state machine (7 buckets → static profile → modifiers) with continuous weighted function. 12 z-score signals (recovery, HRV, RHR, deep sleep, REM, efficiency, debt, trends, deltas) feed directly into neuro profile. State classifier demoted to display labels only.
 
-Playlist rotation overhauled: replaced consecutive-streak counter with days-since-last-appearance (39 songs blocked per playlist, much better rotation). Fixed freshness to use only latest playlist per date (iteration drafts no longer pollute history). Added Bollywood motivational filter (16 songs excluded from non-peak playlists — scene-tied context doesn't fit morning recovery). Manual override for songs the LLM missed tagging.
+Tuned weight sensitivity to 0.20 (calibrated for 12-signal system — 1.0 was too aggressive when signals correlate). Fixed neuro scoring from one-sided normalization to proper cosine similarity (eliminated 1.000 score ties). Added user blocklist for unrecognized songs.
 
-Generated today's playlist: "Mar 26 — Fuel Up" pushed to Spotify. Cleaned 6 stale playlists from Spotify.
+Komal's first live playlist pushed to Spotify (Rest & Repair, poor_recovery state). Pranav's playlist pushed (Rest & Repair, baseline with declining metrics — continuous profile correctly produced calmer playlist than yesterday).
+
+Spotify rate limit fixes from Day 11 validated: metadata fetch completed (837 songs, 42 min, no rate limit hit). Audio download + Essentia analysis completed for Komal's full pipeline.
 
 ## Blockers
 
-- **Spotify rate limit** — Komal's pagination burned the quota. 837 songs need metadata (2+ listens, playlist candidates). Rate limit clears ~10 PM tonight.
+- None active. Spotify rate limit architecture is stable.
 
 ## Next Steps
 
-1. When rate limit clears: targeted metadata fetch for Komal's 837 songs (need `--metadata-only` flag or direct call to avoid re-running pagination)
-2. Komal: `analyze-audio` → `recompute-scores` → `generate`
-3. Primary user: `sync-spotify` for remaining metadata gaps
-4. Automated daily playlist generation (cron or scheduled agent)
-5. Motivational song detection improvement (LLM prompt context for Bollywood sports anthems)
+1. `/onboard` skill — build after Komal's playlist is approved by her
+2. Continuous profile weight tuning based on user feedback
+3. HRV CV modifier (may be absorbed into continuous profile)
+4. Automated daily playlist generation (cron/scheduled agent)
 
 ## Project Timeline
 
@@ -37,4 +38,4 @@ Generated today's playlist: "Mar 26 — Fuel Up" pushed to Spotify. Cleaned 6 st
 - **Day 9** — Second user: Komal onboarding, restorative sleep gate, global rate limit handler
 - **Day 10** — Refinement: continuous baseline scaling, sleep dampener, mood affinity, vibe hard cap
 - **Day 11** — Rate limit fix: batch removal, circuit breaker, double-retry disabled, pagination throttle
-- **Day 12** — Rotation overhaul: days-since-last-appearance, latest-per-day freshness, Bollywood motivational filter, project restructure to playbook spec
+- **Day 12** — Continuous intelligence: 12-signal weighted profile, cosine similarity, playlist rotation overhaul, Bollywood motivational filter, Komal's first live playlist
