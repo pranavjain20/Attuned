@@ -155,10 +155,11 @@ Attuned does something fundamentally different:
 
 ## Current Numbers
 
-- **3,953** classified songs per user (2+ meaningful listens)
-- **3,521** with Essentia audio analysis (89% coverage)
-- **825** days of WHOOP recovery data
-- **33,427** listening history records
+- **5,313** classified songs across 2 users (2+ meaningful listens each)
+- **4,871** with Essentia audio analysis (92% coverage)
+- **1,319** days of WHOOP recovery data (combined)
+- **138,569** listening history records (combined)
+- **15,345** unique songs ingested from extended Spotify history
 - **12** physiological z-score signals driving continuous profiles
 - **64** mood tags with research-backed neurological weights
 - **22** cited research papers
