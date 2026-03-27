@@ -168,10 +168,20 @@ def get_songs_missing_duration(conn: sqlite3.Connection) -> list[str]:
     return [r["spotify_uri"] for r in rows]
 
 
-def get_songs_missing_metadata(conn: sqlite3.Connection) -> list[dict]:
-    """Return songs missing duration_ms or release_year."""
+def get_songs_missing_metadata(
+    conn: sqlite3.Connection,
+    min_listens: int = 0,
+) -> list[dict]:
+    """Return songs missing duration_ms or release_year.
+
+    Args:
+        min_listens: Only return songs with at least this many plays.
+            Default 0 returns all. Use MIN_CLASSIFICATION_LISTENS (2)
+            for playlist-relevant songs only.
+    """
     rows = conn.execute(
-        "SELECT spotify_uri FROM songs WHERE duration_ms IS NULL OR release_year IS NULL"
+        "SELECT spotify_uri FROM songs WHERE (duration_ms IS NULL OR release_year IS NULL) AND play_count >= ?",
+        (min_listens,),
     ).fetchall()
     return [dict(r) for r in rows]
 

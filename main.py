@@ -77,7 +77,8 @@ def main() -> None:
     elif command == "sync-whoop":
         _cmd_sync_whoop(db_path)
     elif command == "sync-spotify":
-        _cmd_sync_spotify(db_path)
+        metadata_only = "--metadata-only" in sys.argv
+        _cmd_sync_spotify(db_path, metadata_only=metadata_only)
     elif command == "sync-all":
         _cmd_sync_whoop(db_path)
         _cmd_sync_spotify(db_path)
@@ -386,7 +387,7 @@ def _cmd_sync_whoop(db_path: Path) -> None:
         conn.close()
 
 
-def _cmd_sync_spotify(db_path: Path) -> None:
+def _cmd_sync_spotify(db_path: Path, metadata_only: bool = False) -> None:
     from spotify.auth import get_spotify_client
     from spotify.sync import sync_liked_songs, sync_top_tracks, fetch_track_metadata
     from spotify.dedup import consolidate_duplicate_songs
@@ -395,20 +396,26 @@ def _cmd_sync_spotify(db_path: Path) -> None:
     conn = get_connection(db_path)
     try:
         sp = get_spotify_client(conn)
-        liked = sync_liked_songs(conn, sp)
-        top = sync_top_tracks(conn, sp)
-        metadata = fetch_track_metadata(conn, sp)
-        print(f"\nSpotify sync complete:")
-        print(f"  Liked songs:   {liked:,}")
-        print(f"  Top tracks:    {top:,}")
-        print(f"  Metadata fetched: {metadata:,}")
 
-        result = consolidate_duplicate_songs(conn)
-        if result["groups"] > 0:
-            print(f"  Duplicates consolidated: {result['groups']} groups ({result['songs_merged']} merged)")
+        if metadata_only:
+            print("Metadata-only mode: skipping liked songs + top tracks pagination")
+            metadata = fetch_track_metadata(conn, sp)
+            print(f"\nMetadata fetched: {metadata:,}")
+        else:
+            liked = sync_liked_songs(conn, sp)
+            top = sync_top_tracks(conn, sp)
+            metadata = fetch_track_metadata(conn, sp)
+            print(f"\nSpotify sync complete:")
+            print(f"  Liked songs:   {liked:,}")
+            print(f"  Top tracks:    {top:,}")
+            print(f"  Metadata fetched: {metadata:,}")
 
-        scored = compute_engagement_scores(conn)
-        print(f"  Engagement scored: {scored:,}")
+            result = consolidate_duplicate_songs(conn)
+            if result["groups"] > 0:
+                print(f"  Duplicates consolidated: {result['groups']} groups ({result['songs_merged']} merged)")
+
+            scored = compute_engagement_scores(conn)
+            print(f"  Engagement scored: {scored:,}")
     finally:
         conn.close()
 

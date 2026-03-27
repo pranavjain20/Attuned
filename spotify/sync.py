@@ -190,18 +190,18 @@ def sync_top_tracks(conn: sqlite3.Connection, sp: Any) -> int:
     return len(seen_uris)
 
 
-def fetch_track_metadata(conn: sqlite3.Connection, sp: Any) -> int:
-    """Fetch duration_ms and release_year for all songs missing either field.
+def fetch_track_metadata(conn: sqlite3.Connection, sp: Any, min_listens: int = 2) -> int:
+    """Fetch duration_ms and release_year for songs missing either field.
 
-    Fetches metadata for every song in the songs table that is missing
-    duration_ms or release_year, regardless of play count. Uses individual
-    sp.track() calls with throttling (batch endpoint returns 403 in dev mode).
+    Only fetches songs with at least min_listens plays (default 2 = playlist
+    candidates). Songs with 0-1 listens aren't classified and won't be in
+    playlists, so fetching their metadata wastes API calls.
 
     Returns count of songs updated.
     """
     from spotify.client import get_tracks_metadata
 
-    missing_rows = queries.get_songs_missing_metadata(conn)
+    missing_rows = queries.get_songs_missing_metadata(conn, min_listens=min_listens)
     raw_uris = [r["spotify_uri"] for r in missing_rows]
 
     _SPOTIFY_URI_RE = re.compile(r"^spotify:track:[A-Za-z0-9]+$")

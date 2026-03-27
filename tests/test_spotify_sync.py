@@ -170,6 +170,10 @@ class TestFetchTrackMetadata:
         sp.track.side_effect = track_responses
         return sp
 
+    def _set_play_count(self, db_conn, uri: str, count: int = 5) -> None:
+        db_conn.execute("UPDATE songs SET play_count = ? WHERE spotify_uri = ?", (count, uri))
+        db_conn.commit()
+
     def _spotify_track(self, uri: str, duration_ms: int = 200000, release_year: int = 2020) -> dict:
         """Build a Spotify API track response object."""
         return {
@@ -184,6 +188,7 @@ class TestFetchTrackMetadata:
         """Songs with duration_ms but no release_year should still be fetched."""
         queries.upsert_song(db_conn, "spotify:track:a1", "Song A", "Artist A",
                             duration_ms=180000)
+        self._set_play_count(db_conn, "spotify:track:a1")
         sp = self._make_sp_mock([self._spotify_track("spotify:track:a1", duration_ms=180000, release_year=2019)])
 
         updated = fetch_track_metadata(db_conn, sp)
@@ -204,23 +209,21 @@ class TestFetchTrackMetadata:
         assert updated == 0
         sp.track.assert_not_called()
 
-    def test_fetches_songs_regardless_of_play_count(self, mock_sleep, db_conn):
-        """Songs with zero play_count should still get metadata fetched."""
+    def test_skips_songs_below_min_listens(self, mock_sleep, db_conn):
+        """Songs with play_count below threshold should not be fetched."""
         queries.upsert_song(db_conn, "spotify:track:low", "Low Plays", "Artist")
-        song_before = queries.get_song(db_conn, "spotify:track:low")
-        assert song_before["play_count"] == 0
+        # play_count defaults to 0, below min_listens=2
 
-        sp = self._make_sp_mock([self._spotify_track("spotify:track:low")])
+        sp = MagicMock()
         updated = fetch_track_metadata(db_conn, sp)
 
-        assert updated == 1
-        song = queries.get_song(db_conn, "spotify:track:low")
-        assert song["duration_ms"] == 200000
-        assert song["release_year"] == 2020
+        assert updated == 0
+        sp.track.assert_not_called()
 
     def test_updates_both_duration_and_release_year(self, mock_sleep, db_conn):
         """Both duration_ms and release_year should be set from metadata."""
         queries.upsert_song(db_conn, "spotify:track:bare", "Bare", "Artist")
+        self._set_play_count(db_conn, "spotify:track:bare")
         sp = self._make_sp_mock([self._spotify_track("spotify:track:bare", 250000, 2018)])
 
         fetch_track_metadata(db_conn, sp)
@@ -233,6 +236,7 @@ class TestFetchTrackMetadata:
         """COALESCE logic: existing values should not be overwritten with NULL."""
         queries.upsert_song(db_conn, "spotify:track:partial", "Partial", "Artist",
                             duration_ms=180000)
+        self._set_play_count(db_conn, "spotify:track:partial")
         track_resp = {
             "uri": "spotify:track:partial",
             "name": "Partial",
@@ -261,6 +265,7 @@ class TestFetchTrackMetadata:
         """Multiple songs missing metadata should all be processed."""
         for i in range(3):
             queries.upsert_song(db_conn, f"spotify:track:m{i}", f"Song {i}", "Artist")
+            self._set_play_count(db_conn, f"spotify:track:m{i}")
 
         tracks = [self._spotify_track(f"spotify:track:m{i}", 200000 + i * 1000, 2015 + i)
                   for i in range(3)]
@@ -278,6 +283,7 @@ class TestFetchTrackMetadata:
         """Songs with release_year but missing duration_ms should be fetched."""
         queries.upsert_song(db_conn, "spotify:track:nodur", "No Duration", "Artist",
                             release_year=2022)
+        self._set_play_count(db_conn, "spotify:track:nodur")
         sp = self._make_sp_mock([self._spotify_track("spotify:track:nodur", 195000, 2022)])
 
         updated = fetch_track_metadata(db_conn, sp)
