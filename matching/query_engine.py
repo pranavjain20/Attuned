@@ -307,6 +307,12 @@ _MOTIVATIONAL_OVERRIDES = frozenset({
     "spotify:track:3E0D36S3MKA9e3f8yCOFR3",  # Chak Lein De — Kailash Kher
 })
 
+# Songs that passed engagement thresholds but the user doesn't recognize
+# as part of their library (background/autoplay). Excluded from all playlists.
+_USER_BLOCKLIST = frozenset({
+    "spotify:track:7le3d8qTpRB5Lfwr79ARx4",  # Yeh Dil Deewana (Cover) — Gurnazar
+})
+
 
 def identify_anchors(
     scored: list[tuple[dict, float, dict]],
@@ -476,6 +482,9 @@ def select_songs(
             "match_stats": {"total_candidates": 0, "selected": 0,
                             "cohesion_stats": {}},
         }
+
+    # Exclude user-blocklisted songs
+    all_songs = [s for s in all_songs if s.get("spotify_uri") not in _USER_BLOCKLIST]
 
     # Exclude Bollywood motivational songs from all states except peak_readiness
     if state != "peak_readiness":
