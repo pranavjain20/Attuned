@@ -757,6 +757,16 @@ def _cmd_generate(db_path: Path) -> None:
                 compute_engagement_scores(conn)
                 print(f"  Synced {recent['plays_added']} recent plays, {recent['new_songs']} new songs")
 
+            # Auto-classify songs that crossed 2+ listens but aren't classified
+            from db.queries import get_songs_needing_llm
+            needs_llm = get_songs_needing_llm(conn)
+            if needs_llm:
+                from classification.llm_classifier import classify_songs
+                print(f"  Classifying {len(needs_llm)} new song(s)...")
+                stats = classify_songs(conn, provider="openai")
+                if stats["classified"] > 0:
+                    print(f"  Classified {stats['classified']} new songs")
+
         try:
             result = generate_playlist(conn, sp, date_str=target_date, dry_run=dry_run)
         except GenerationError as e:
