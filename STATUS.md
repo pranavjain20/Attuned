@@ -2,28 +2,25 @@
 
 ## Current Phase
 
-Day 12. 1,048 tests passing. Continuous intelligence architecture shipped — playlist profiles now driven by 12 weighted physiological signals instead of 7 discrete states. Cosine similarity scoring. Komal's first live playlist delivered.
+Day 13. 1,048 tests passing. System is feature-complete for daily use. Continuous intelligence, dynamic library sync, auto-classify, `/onboard` skill. Two active users generating daily playlists. Repo is public-ready.
 
-## Last Session (Mar 27, 2026)
+## Last Session (Mar 28, 2026)
 
-Major architecture change: replaced state machine (7 buckets → static profile → modifiers) with continuous weighted function. 12 z-score signals (recovery, HRV, RHR, deep sleep, REM, efficiency, debt, trends, deltas) feed directly into neuro profile. State classifier demoted to display labels only.
+Generated playlists for both users — Pranav (27% recovery, accumulated fatigue, Rest & Repair) and Komal (83% recovery, peak readiness, Stay Sharp). Same system, opposite body states, opposite playlists.
 
-Tuned weight sensitivity to 0.20 (calibrated for 12-signal system — 1.0 was too aggressive when signals correlate). Fixed neuro scoring from one-sided normalization to proper cosine similarity (eliminated 1.000 score ties). Added user blocklist for unrecognized songs.
+Built auto-classify: new songs discovered via recently-played sync get LLM-classified automatically before playlist generation. Tested with real data — Be the One (Dua Lipa) went from undiscovered → synced → classified → playlist-ready in one flow. Cost: $0.002.
 
-Komal's first live playlist pushed to Spotify (Rest & Repair, poor_recovery state). Pranav's playlist pushed (Rest & Repair, baseline with declining metrics — continuous profile correctly produced calmer playlist than yesterday).
-
-Spotify rate limit fixes from Day 11 validated: metadata fetch completed (837 songs, 42 min, no rate limit hit). Audio download + Essentia analysis completed for Komal's full pipeline.
+Created `/onboard` skill for Claude Code. Built dynamic library sync with dedup and engagement recompute. Added MIT license. Repo audited for public release — clean.
 
 ## Blockers
 
-- None active. Spotify rate limit architecture is stable.
+- None.
 
 ## Next Steps
 
-1. `/onboard` skill — build after Komal's playlist is approved by her
-2. Continuous profile weight tuning based on user feedback
-3. HRV CV modifier (may be absorbed into continuous profile)
-4. Automated daily playlist generation (cron/scheduled agent)
+1. Automated daily generation (cron/scheduled agent — playlists without running a command)
+2. Weight tuning from daily feedback
+3. Quality testing framework (automated before/after comparison)
 
 ## Project Timeline
 
@@ -39,3 +36,4 @@ Spotify rate limit fixes from Day 11 validated: metadata fetch completed (837 so
 - **Day 10** — Refinement: continuous baseline scaling, sleep dampener, mood affinity, vibe hard cap
 - **Day 11** — Rate limit fix: batch removal, circuit breaker, double-retry disabled, pagination throttle
 - **Day 12** — Continuous intelligence: 12-signal weighted profile, cosine similarity, playlist rotation overhaul, Bollywood motivational filter, Komal's first live playlist
+- **Day 13** — Polish: auto-classify new songs, dynamic library sync, `/onboard` skill, public-ready audit, MIT license
