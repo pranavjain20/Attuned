@@ -575,6 +575,68 @@ Bollywood music is written for a movie scene. A motivational Bollywood song = so
 
 ---
 
+## Day 14: IDF-Weighted Genre Similarity
+
+### The observation
+
+Komal's Mar 28 playlist mixed reggaeton (Si Antes), house (Impatient), country-pop (Speak Now), and Bollywood in one playlist. Mean pairwise cohesion was 0.264. 7 of 19 adjacent transitions had zero genre overlap.
+
+### Root cause
+
+"Pop" appeared in 60% of Komal's library. Jaccard similarity treated sharing "pop" (common, uninformative) the same as sharing "reggaeton" (rare, very informative). Two songs sharing only "pop" scored 0.33 — identical to two songs sharing a genuinely specific genre.
+
+### The decision
+
+Replaced Jaccard with IDF-weighted similarity. Each tag's contribution is weighted by `log(total_songs / songs_with_tag)`. Rare tags carry more weight. "Pop" at 60% gets IDF 0.51 (almost noise). "Reggaeton" at 2% gets IDF 4.37 (8x more informative).
+
+This is the same principle search engines use (TF-IDF) — common words don't help find relevant documents, rare words do. Applied to genre tags, common genres don't help build cohesive playlists, rare genres do.
+
+IDF is computed per-user from their own library. For Pranav (74% Bollywood), "bollywood" gets low weight. For Komal (60% pop), "pop" gets low weight. No hardcoded rules — the data defines what's noise.
+
+### Effect
+
+Cohesion: 0.264 → 0.431. Genre weight raised from 0.20 to 0.30 (genre is #1 signal per Spotify research). Si Antes (reggaeton), Impatient (house), Speak Now (country) all excluded from the pop/indie/r&b cluster. BPM range tightened from 90-149 to 102-138.
+
+---
+
+## Day 14: BPM Hard Cap
+
+Added a BPM hard cap matching the existing era and vibe hard caps. If two songs' BPM similarity < 0.05 (gap > ~25 BPM), total similarity is capped at 0.30 regardless of genre/mood match. Prevents transitions like Pyaar Hota (121 BPM) → Hurts Me (149 BPM).
+
+---
+
+## Day 14: Original Release Year from LLM
+
+### The observation
+
+Jawani Jan-E-Man (Asha Bhosle, 1970s) had Spotify release_year 2021 — a re-release date. The era cohesion engine thought it belonged in a 2020s cluster.
+
+### The decision
+
+Added `original_release_year` to the LLM classification prompt. The LLM estimates the year the song was ORIGINALLY released. For Jawani Jan-E-Man, it correctly returned 1973. Era cohesion prefers this over Spotify's date when available.
+
+Tested: 3,902/3,955 of Komal's songs got original_release_year. 53 returned null (obscure tracks the LLM doesn't know).
+
+---
+
+## Day 14: LLM Middle-Value Bias on Bollywood Energy
+
+### The observation
+
+Ishq Di Baajiyaan (slow, soulful) and Kiya Kiya (full party) both got energy ~0.55 from the LLM. Maahi Ve (A.R. Rahman, Highway — melancholic) was classified as "uplifting, celebratory." The LLM compresses Bollywood songs toward the middle of the energy scale.
+
+### Why this happens
+
+The LLM doesn't know what these songs SOUND like — it guesses from title + artist + genre. "Bollywood" triggers a moderate-energy stereotype. Day 4 experiments confirmed this: LLM energy accuracy was 42% (worse than Essentia's 71%).
+
+### The fix
+
+Essentia audio analysis measures actual energy from the audio file. But 70% of Komal's clips were 30-second Spotify previews (from the chorus, not representative). Re-downloading as full YouTube tracks so Essentia can measure the real audio. After re-download: re-run Essentia, validate on 5 problem songs, recompute scores.
+
+This is a systematic fix, not per-song — every song with a full audio clip gets objective energy measurement that overrides the LLM's middle-value bias.
+
+---
+
 ## Day 12: From State Machine to Continuous Intelligence
 
 ### The observation that triggered this

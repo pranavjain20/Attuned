@@ -2,25 +2,26 @@
 
 ## Current Phase
 
-Day 13. 1,048 tests passing. System is feature-complete for daily use. Continuous intelligence, dynamic library sync, auto-classify, `/onboard` skill. Two active users generating daily playlists. Repo is public-ready.
+Day 14. 1,048 tests passing. Fixed playlist cohesion for diverse libraries (IDF genre similarity, BPM hard cap, original_release_year from LLM). Both libraries reclassified. Clip re-download running overnight for Essentia opening energy + LLM error correction.
 
-## Last Session (Mar 28, 2026)
+## Last Session (Mar 29, 2026)
 
-Generated playlists for both users — Pranav (27% recovery, accumulated fatigue, Rest & Repair) and Komal (83% recovery, peak readiness, Stay Sharp). Same system, opposite body states, opposite playlists.
+Komal's feedback surfaced 4 cohesion issues: genre soup (reggaeton next to Bollywood), house track in pop playlist, 1973 song in modern cluster, calm openings next to upbeat openings. Root cause: "pop" in 60% of library made Jaccard similarity meaningless.
 
-Built auto-classify: new songs discovered via recently-played sync get LLM-classified automatically before playlist generation. Tested with real data — Be the One (Dua Lipa) went from undiscovered → synced → classified → playlist-ready in one flow. Cost: $0.002.
+Fixed with IDF-weighted genre similarity (rare tags matter more), BPM hard cap, original_release_year from LLM (Jawani Jan-E-Man correctly identified as 1973). Cohesion improved 0.264 → 0.431.
 
-Created `/onboard` skill for Claude Code. Built dynamic library sync with dedup and engagement recompute. Added MIT license. Repo audited for public release — clean.
+Also discovered LLM systematic middle-value bias on Bollywood energy (Ishq Di Baajiyaan, Kiya Kiya, Maahi Ve all classified ~0.60 despite being completely different). Essentia cross-validation is the fix — clip re-download running to replace 2,893 Spotify previews with full YouTube downloads.
 
 ## Blockers
 
-- None.
+- Clip re-download running (~24 hrs). After: re-run Essentia, validate on 5 test songs, recompute.
 
 ## Next Steps
 
-1. Automated daily generation (cron/scheduled agent — playlists without running a command)
-2. Weight tuning from daily feedback
-3. Quality testing framework (automated before/after comparison)
+1. When re-download completes: validate Essentia on 5 problem songs (Ishq Di Baajiyaan, Kiya Kiya, Maahi Ve, Chori Kiya Re, Slow Motion Angreza)
+2. If validated: re-run Essentia + recompute for both libraries
+3. Listen to playlists, collect feedback, tune weights
+4. Automated daily generation (cron)
 
 ## Project Timeline
 
@@ -37,3 +38,4 @@ Created `/onboard` skill for Claude Code. Built dynamic library sync with dedup 
 - **Day 11** — Rate limit fix: batch removal, circuit breaker, double-retry disabled, pagination throttle
 - **Day 12** — Continuous intelligence: 12-signal weighted profile, cosine similarity, playlist rotation overhaul, Bollywood motivational filter, Komal's first live playlist
 - **Day 13** — Polish: auto-classify new songs, dynamic library sync, `/onboard` skill, public-ready audit, MIT license
+- **Day 14** — Cohesion fix: IDF genre similarity, BPM hard cap, original_release_year, opening energy. Clip re-download for Essentia correction of LLM middle-value bias.
