@@ -304,7 +304,7 @@ class TestAnalyzeAllSongs:
         mock_analyze.return_value = {
             "bpm": 120, "bpm_confidence": 2.5, "key": "A", "mode": "minor",
             "energy": 0.7, "acousticness": 0.3,
-            "instrumentalness": 0.2, "danceability": 0.6,
+            "instrumentalness": 0.2, "danceability": 0.6, "opening_energy": 0.7,
         }
 
         stats = analyze_all_songs(db_conn, tmp_path)
@@ -354,7 +354,7 @@ class TestAnalyzeAllSongs:
         mock_analyze.return_value = {
             "bpm": 128, "bpm_confidence": 3.0, "key": "C", "mode": "major",
             "energy": 0.5, "acousticness": 0.5,
-            "instrumentalness": 0.5, "danceability": 0.5,
+            "instrumentalness": 0.5, "danceability": 0.5, "opening_energy": 0.5,
         }
 
         stats = analyze_all_songs(db_conn, tmp_path)
@@ -370,7 +370,7 @@ class TestAnalyzeAllSongs:
         mock_analyze.return_value = {
             "bpm": 120, "bpm_confidence": 2.5, "key": "A", "mode": "minor",
             "energy": 0.7, "acousticness": 0.3,
-            "instrumentalness": 0.2, "danceability": 0.6,
+            "instrumentalness": 0.2, "danceability": 0.6, "opening_energy": 0.7,
         }
 
         analyze_all_songs(db_conn, tmp_path)
@@ -401,7 +401,7 @@ class TestAnalyzeAllSongs:
         mock_analyze.side_effect = [
             {"bpm": 120, "bpm_confidence": 2.5, "key": "A", "mode": "minor",
              "energy": 0.7, "acousticness": 0.3,
-             "instrumentalness": 0.2, "danceability": 0.6},
+             "instrumentalness": 0.2, "danceability": 0.6, "opening_energy": 0.6},
             None,
         ]
 
@@ -432,7 +432,7 @@ class TestAnalyzeAllSongs:
         mock_analyze.return_value = {
             "bpm": 120, "bpm_confidence": 2.5, "key": "A", "mode": "minor",
             "energy": 0.7, "acousticness": 0.3,
-            "instrumentalness": 0.2, "danceability": 0.6,
+            "instrumentalness": 0.2, "danceability": 0.6, "opening_energy": 0.7,
         }
         stats_force = analyze_all_songs(db_conn, tmp_path, force=True)
         assert stats_force["analyzed"] == 1
@@ -474,7 +474,7 @@ class TestAnalyzeAllSongs:
         mock_analyze.return_value = {
             "bpm": 122, "bpm_confidence": 2.5, "key": "C", "mode": "major",
             "energy": 0.80, "acousticness": 0.20,
-            "instrumentalness": 0.3, "danceability": 0.5,
+            "instrumentalness": 0.3, "danceability": 0.5, "opening_energy": 0.5,
         }
 
         stats = analyze_all_songs(db_conn, tmp_path, force=True)
@@ -505,7 +505,7 @@ class TestAnalyzeAllSongs:
         mock_analyze.return_value = {
             "bpm": 95, "bpm_confidence": 2.0, "key": "D", "mode": "minor",
             "energy": 0.35, "acousticness": 0.70,
-            "instrumentalness": 0.1, "danceability": 0.4,
+            "instrumentalness": 0.1, "danceability": 0.4, "opening_energy": 0.4,
         }
 
         stats = analyze_all_songs(db_conn, tmp_path)
@@ -540,7 +540,7 @@ class TestAnalyzeAllSongs:
         mock_analyze.return_value = {
             "bpm": 118, "bpm_confidence": 3.0, "key": "G", "mode": "major",
             "energy": 0.75, "acousticness": 0.25,
-            "instrumentalness": 0.2, "danceability": 0.5,
+            "instrumentalness": 0.2, "danceability": 0.5, "opening_energy": 0.5,
         }
 
         stats = analyze_all_songs(db_conn, tmp_path, force=True)

@@ -25,6 +25,8 @@ def create_tables(conn: sqlite3.Connection) -> None:
     _migrate_add_felt_tempo(conn)
     _migrate_add_release_year(conn)
     _migrate_add_essentia_columns(conn)
+    _migrate_add_original_release_year(conn)
+    _migrate_add_opening_energy(conn)
 
 
 def _migrate_add_recent_play_ratio(conn: sqlite3.Connection) -> None:
@@ -80,6 +82,26 @@ def _migrate_add_essentia_columns(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError as e:
             if "duplicate column" not in str(e).lower():
                 raise
+
+
+def _migrate_add_original_release_year(conn: sqlite3.Connection) -> None:
+    """Add original_release_year column to song_classifications for true release year."""
+    try:
+        conn.execute("ALTER TABLE song_classifications ADD COLUMN original_release_year INTEGER")
+        conn.commit()
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
+
+
+def _migrate_add_opening_energy(conn: sqlite3.Connection) -> None:
+    """Add opening_energy column to song_classifications for first-15-seconds energy."""
+    try:
+        conn.execute("ALTER TABLE song_classifications ADD COLUMN opening_energy REAL")
+        conn.commit()
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
 
 
 _SCHEMA_SQL = """

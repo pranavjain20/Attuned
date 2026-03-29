@@ -48,6 +48,14 @@ Return a JSON object with a "songs" array. Each element must have:
 - "para_score": float 0.0-1.0 (how calming/parasympathetic — slow, quiet, acoustic, gentle songs score high; fast, loud, electronic songs score low)
 - "symp_score": float 0.0-1.0 (how energizing/sympathetic — fast, loud, high-energy, driving songs score high; slow, quiet songs score low)
 - "grounding_score": float 0.0-1.0 (how emotionally grounding — moderate tempo ~80-90 BPM, warm, acoustic, reflective songs score high; extremes of fast/slow score low)
+- "original_release_year": integer or null — the year this song was ORIGINALLY released. If this is a re-release, compilation, or remaster, estimate the original year. Example: Asha Bhosle's "Jawani Jan-E-Man" was originally ~1973, even if Spotify shows 2021.
+- "opening_energy": float 0.0-1.0 — energy level of the FIRST 15 SECONDS only. Use the full range:
+  0.0-0.2 = opens with silence, whisper, or solo quiet instrument (e.g., Speak Now opens with quiet narration = 0.15)
+  0.2-0.4 = opens with soft acoustic or gentle melody (e.g., Photograph by Ed Sheeran = 0.25)
+  0.4-0.6 = opens with moderate energy, clear rhythm present (e.g., Shape of You = 0.55)
+  0.6-0.8 = opens with full energy, beat drops immediately (e.g., Si Antes Te Hubiera Conocido = 0.75)
+  0.8-1.0 = opens with maximum intensity, instant drop or heavy beat (e.g., Party Rock Anthem = 0.95)
+  This should often DIFFER from overall energy. A song that builds slowly has low opening_energy even if average energy is high.
 
 Valence calibration — valence measures EMOTIONAL positiveness, not melodic beauty:
 - Sad, nostalgic, or melancholy songs: 0.2-0.4 even if the melody sounds beautiful (e.g. Photograph, Channa Mereya)
@@ -212,6 +220,24 @@ def _validate_song_result(result: dict[str, Any]) -> dict[str, Any] | None:
             validated[tag_prop] = cleaned if cleaned else None
         else:
             validated[tag_prop] = None
+
+    # original_release_year
+    orig_year = result.get("original_release_year")
+    if orig_year is not None:
+        try:
+            orig_year = max(1920, min(2030, int(orig_year)))
+        except (ValueError, TypeError):
+            orig_year = None
+    validated["original_release_year"] = orig_year
+
+    # opening_energy
+    opening_energy = result.get("opening_energy")
+    if opening_energy is not None:
+        try:
+            opening_energy = max(0.0, min(1.0, float(opening_energy)))
+        except (ValueError, TypeError):
+            opening_energy = None
+    validated["opening_energy"] = opening_energy
 
     # Must have at least valence or BPM to be useful
     if validated.get("valence") is None and validated.get("bpm") is None:
@@ -408,6 +434,8 @@ def _merge_with_essentia(
     merged["instrumentalness"] = llm_result.get("instrumentalness")
     merged["valence"] = llm_result.get("valence")
     merged["felt_tempo"] = llm_result.get("felt_tempo")
+    merged["original_release_year"] = llm_result.get("original_release_year")
+    merged["opening_energy"] = llm_result.get("opening_energy")
     merged["mood_tags"] = llm_result.get("mood_tags")
     merged["genre_tags"] = genre_tags
     merged["confidence"] = _compute_confidence(llm_result, song)

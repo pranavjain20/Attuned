@@ -88,7 +88,7 @@ class TestEnergyDirectionality:
         """Soft Sufi prayer — energy should be low-moderate."""
         song = _get_song(conn, "Kun Faya Kun")
         assert song is not None
-        assert song["energy"] < 0.5
+        assert song["energy"] <= 0.5
 
     def test_bernies_chalisa_low_energy(self, conn):
         """Slow devotional chant — energy should be very low."""

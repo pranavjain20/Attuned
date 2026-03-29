@@ -118,6 +118,19 @@ def analyze_audio(audio_path: Path) -> dict[str, Any] | None:
         onset_rate = float(es.OnsetRate()(audio)[1])
         energy = max(0.0, min(1.0, (onset_rate - 2.0) / 4.0))
 
+        # Opening energy — RMS of first 15 seconds relative to overall RMS.
+        # RMS measures actual loudness. Using a RATIO (opening / overall) makes it
+        # immune to mastering differences — we're comparing within the same song.
+        # Low ratio = song builds slowly (quiet intro). High ratio = instant energy.
+        sample_rate = 44100
+        first_15s = audio[:15 * sample_rate]
+        import numpy as np
+        rms_overall = float(np.sqrt(np.mean(audio ** 2))) if len(audio) > 0 else 0
+        rms_opening = float(np.sqrt(np.mean(first_15s ** 2))) if len(first_15s) >= sample_rate else 0
+        opening_energy_ratio = rms_opening / rms_overall if rms_overall > 0 else 1.0
+        # Clamp to [0, 1] — ratio > 1 means opening is louder than average (front-loaded)
+        opening_energy = max(0.0, min(1.0, opening_energy_ratio))
+
         # Acousticness — spectral flatness (tonal vs noise-like)
         # Low flatness = clear harmonics (acoustic instruments)
         # High flatness = noise-like spectrum (electronic production)
@@ -158,6 +171,7 @@ def analyze_audio(audio_path: Path) -> dict[str, Any] | None:
             "key": key,
             "mode": mode,
             "energy": round(energy, 4),
+            "opening_energy": round(opening_energy, 4),
             "acousticness": round(acousticness, 4),
             "instrumentalness": round(instrumentalness, 4),
             "danceability": round(danceability, 4),
@@ -253,6 +267,7 @@ def analyze_all_songs(
                     """UPDATE song_classifications
                        SET bpm = ?, key = ?, mode = ?,
                            essentia_energy = ?, essentia_acousticness = ?,
+                           opening_energy = ?,
                            confidence = MAX(COALESCE(confidence, 0), ?),
                            classification_source = ?,
                            classified_at = ?
@@ -260,6 +275,7 @@ def analyze_all_songs(
                     (
                         features["bpm"], features["key"], features["mode"],
                         features["energy"], features["acousticness"],
+                        features["opening_energy"],
                         features["bpm_confidence"],
                         new_source, now, uri,
                     ),
@@ -269,6 +285,7 @@ def analyze_all_songs(
                     """UPDATE song_classifications
                        SET bpm = ?, key = ?, mode = ?, energy = ?, acousticness = ?,
                            essentia_energy = ?, essentia_acousticness = ?,
+                           opening_energy = ?,
                            confidence = MAX(COALESCE(confidence, 0), ?),
                            classification_source = ?,
                            classified_at = ?
@@ -277,6 +294,7 @@ def analyze_all_songs(
                         features["bpm"], features["key"], features["mode"],
                         features["energy"], features["acousticness"],
                         features["energy"], features["acousticness"],
+                        features["opening_energy"],
                         features["bpm_confidence"],
                         new_source, now, uri,
                     ),
@@ -292,6 +310,7 @@ def analyze_all_songs(
                 "acousticness": features["acousticness"],
                 "essentia_energy": features["energy"],
                 "essentia_acousticness": features["acousticness"],
+                "opening_energy": features["opening_energy"],
                 "instrumentalness": features["instrumentalness"],
                 "danceability": features["danceability"],
                 "confidence": features["bpm_confidence"],

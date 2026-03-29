@@ -210,9 +210,11 @@ class TestPairwiseSimilarity:
         song_a = {"bpm": 120.0, "energy": 0.7}
         song_b = {"bpm": 120.0, "energy": 0.7}
         sim = compute_pairwise_similarity(song_a, song_b)
-        # genre_tags=0, mood_tags=0, bpm=1.0, release_year=0.5(None), energy=1.0, rest=0.5
-        # 0*0.20 + 0*0.15 + 1.0*0.20 + 0.5*0.20 + 1.0*0.10 + 0.5*0.05*3 = 0.475
-        assert sim == pytest.approx(0.475, abs=0.01)
+        # genre_tags=0, mood_tags=0, bpm=1.0, release_year=0.5(None),
+        # energy=1.0 (0.5*energy_sim+0.5*opening_sim, both 1.0), acousticness=0.5, dance=0.5, valence=0.5
+        # 0*0.30 + 0*0.15 + 1.0*0.15 + 0.5*0.20 + 1.0*0.10 + 0.5*0.05 + 0.5*0.05 + 0.5*0.00
+        # = 0.15 + 0.10 + 0.10 + 0.025 + 0.025 = 0.40
+        assert sim == pytest.approx(0.40, abs=0.01)
 
 
 # ---------------------------------------------------------------------------

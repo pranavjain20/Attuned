@@ -460,7 +460,8 @@ def get_songs_needing_llm(
                       sc.mode AS essentia_mode,
                       sc.essentia_energy AS essentia_energy,
                       sc.essentia_acousticness AS essentia_acousticness,
-                      sc.classification_source
+                      sc.classification_source,
+                      sc.original_release_year, sc.opening_energy
                FROM songs s
                LEFT JOIN song_classifications sc ON s.spotify_uri = sc.spotify_uri
                WHERE s.play_count >= ?
@@ -475,7 +476,8 @@ def get_songs_needing_llm(
                       sc.mode AS essentia_mode,
                       sc.essentia_energy AS essentia_energy,
                       sc.essentia_acousticness AS essentia_acousticness,
-                      sc.classification_source
+                      sc.classification_source,
+                      sc.original_release_year, sc.opening_energy
                FROM songs s
                LEFT JOIN song_classifications sc ON s.spotify_uri = sc.spotify_uri
                WHERE s.play_count >= ?
@@ -501,8 +503,9 @@ def upsert_song_classification(conn: sqlite3.Connection, data: dict[str, Any]) -
                 danceability, instrumentalness, mood_tags, genre_tags,
                 confidence, parasympathetic, sympathetic, grounding,
                 classification_source, raw_response, classified_at, felt_tempo,
-                essentia_energy, essentia_acousticness)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                essentia_energy, essentia_acousticness,
+                original_release_year, opening_energy)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(spotify_uri) DO UPDATE SET
                bpm = excluded.bpm,
                key = excluded.key,
@@ -523,7 +526,9 @@ def upsert_song_classification(conn: sqlite3.Connection, data: dict[str, Any]) -
                classified_at = excluded.classified_at,
                felt_tempo = excluded.felt_tempo,
                essentia_energy = excluded.essentia_energy,
-               essentia_acousticness = excluded.essentia_acousticness""",
+               essentia_acousticness = excluded.essentia_acousticness,
+               original_release_year = excluded.original_release_year,
+               opening_energy = excluded.opening_energy""",
         (
             data["spotify_uri"],
             data.get("bpm"),
@@ -546,6 +551,8 @@ def upsert_song_classification(conn: sqlite3.Connection, data: dict[str, Any]) -
             data.get("felt_tempo"),
             data.get("essentia_energy"),
             data.get("essentia_acousticness"),
+            data.get("original_release_year"),
+            data.get("opening_energy"),
         ),
     )
     conn.commit()

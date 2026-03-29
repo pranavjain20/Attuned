@@ -28,7 +28,8 @@ COMMANDS = {
     "dedup-songs": "Consolidate duplicate songs (same name+artist, different URIs)",
     "compute-engagement": "Compute engagement scores for all eligible songs",
     "classify-state": "Classify today's physiological state from WHOOP data",
-    "download-audio": "Download 30-second audio clips (Spotify preview + yt-dlp)",
+    "download-audio": "Download audio clips (Spotify preview + yt-dlp)",
+    "redownload-short-clips": "Replace short preview clips with full YouTube downloads",
     "analyze-audio": "Run Essentia analysis on audio clips",
     "classify-songs": "Run LLM classification on unclassified songs",
     "validate-classifications": "Validate existing classifications and flag suspicious songs",
@@ -93,6 +94,8 @@ def main() -> None:
         _cmd_classify_state(db_path)
     elif command == "download-audio":
         _cmd_download_audio(db_path)
+    elif command == "redownload-short-clips":
+        _cmd_redownload_short_clips(db_path)
     elif command == "analyze-audio":
         _cmd_analyze_audio(db_path)
     elif command == "classify-songs":
@@ -808,6 +811,30 @@ def _cmd_generate(db_path: Path) -> None:
             name = (song["name"] or "")[:40]
             artist = (song["artist"] or "")[:25]
             print(f"  {i:2d}. {name} — {artist} ({song['selection_score']:.3f})")
+    finally:
+        conn.close()
+
+
+def _cmd_redownload_short_clips(db_path: Path) -> None:
+    from config import AUDIO_CLIPS_DIR
+    from classification.audio import redownload_short_clips
+    from db.queries import get_all_classified_songs
+
+    conn = get_connection(db_path)
+    try:
+        songs = get_all_classified_songs(conn)
+        if not songs:
+            print("No classified songs.")
+            return
+
+        print(f"Checking {len(songs)} songs for short clips to replace...")
+        stats = redownload_short_clips(songs, AUDIO_CLIPS_DIR)
+
+        print(f"\nRe-download complete:")
+        print(f"  Replaced:           {stats['replaced']:,}")
+        print(f"  Failed:             {stats['failed']:,}")
+        print(f"  Already full:       {stats['already_full']:,}")
+        print(f"  Skipped (no dur):   {stats['skipped_no_duration']:,}")
     finally:
         conn.close()
 

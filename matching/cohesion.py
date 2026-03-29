@@ -10,6 +10,8 @@ import math
 from typing import Any
 
 from config import (
+    BPM_HARD_CAP_SIMILARITY,
+    BPM_HARD_CAP_THRESHOLD,
     COHESION_BPM_SIGMA,
     COHESION_MIN_SIMILARITY,
     COHESION_POOL_SIZE,
@@ -34,9 +36,15 @@ logger = logging.getLogger(__name__)
 # Similarity primitives
 # ---------------------------------------------------------------------------
 
-def compute_tag_similarity(tags_a: list[str] | None, tags_b: list[str] | None) -> float:
-    """Jaccard similarity between two tag lists.
+def compute_tag_similarity(
+    tags_a: list[str] | None,
+    tags_b: list[str] | None,
+    idf: dict[str, float] | None = None,
+) -> float:
+    """IDF-weighted tag similarity (falls back to Jaccard when no IDF provided).
 
+    With IDF: sum(idf[shared]) / sum(idf[union]). Rare tags contribute more.
+    Without IDF: plain Jaccard (len(intersection) / len(union)).
     None or empty = 0.0 (no signal means we can't assume similar).
     """
     if not tags_a or not tags_b:
@@ -45,9 +53,15 @@ def compute_tag_similarity(tags_a: list[str] | None, tags_b: list[str] | None) -
     set_b = set(t.lower().strip() for t in tags_b)
     if not set_a or not set_b:
         return 0.0
-    intersection = len(set_a & set_b)
-    union = len(set_a | set_b)
-    return intersection / union
+    shared = set_a & set_b
+    union = set_a | set_b
+    if idf is None:
+        return len(shared) / len(union)
+    shared_weight = sum(idf.get(t, 1.0) for t in shared)
+    union_weight = sum(idf.get(t, 1.0) for t in union)
+    if union_weight == 0.0:
+        return 0.0
+    return shared_weight / union_weight
 
 
 def compute_bpm_similarity(bpm_a: float | None, bpm_b: float | None) -> float:
@@ -106,35 +120,50 @@ def compute_era_similarity(
     return math.exp(-(diff ** 2) / (2 * sigma ** 2))
 
 
-def compute_pairwise_similarity(song_a: dict[str, Any], song_b: dict[str, Any]) -> float:
+def compute_pairwise_similarity(
+    song_a: dict[str, Any],
+    song_b: dict[str, Any],
+    genre_idf: dict[str, float] | None = None,
+) -> float:
     """Weighted similarity between two songs across all cohesion dimensions.
 
     Returns 0.0-1.0. Uses COHESION_WEIGHTS for dimension weighting.
-    When era similarity is below ERA_SIM_FLOOR, caps total similarity at
-    ERA_HARD_CAP_SIMILARITY — production era gaps are more jarring than
-    any other dimension can compensate for.
+    Hard caps: era, vibe, and BPM gaps override all other similarity —
+    certain mismatches are too jarring for any other dimension to compensate.
     """
     w = COHESION_WEIGHTS
     score = 0.0
 
     score += w["genre_tags"] * compute_tag_similarity(
-        song_a.get("genre_tags"), song_b.get("genre_tags"))
+        song_a.get("genre_tags"), song_b.get("genre_tags"), idf=genre_idf)
     score += w["mood_tags"] * compute_tag_similarity(
         song_a.get("mood_tags"), song_b.get("mood_tags"))
-    score += w["bpm"] * compute_bpm_similarity(
-        song_a.get("bpm"), song_b.get("bpm"))
 
+    bpm_sim = compute_bpm_similarity(
+        song_a.get("bpm"), song_b.get("bpm"))
+    score += w["bpm"] * bpm_sim
+
+    year_a = song_a.get("original_release_year") or song_a.get("release_year")
+    year_b = song_b.get("original_release_year") or song_b.get("release_year")
     era_sim = compute_era_similarity(
-        song_a.get("release_year"), song_b.get("release_year"),
+        year_a, year_b,
         song_a.get("genre_tags"), song_b.get("genre_tags"))
     score += w["release_year"] * era_sim
 
-    score += w["energy"] * compute_property_similarity(
+    # Energy: blend overall energy with opening energy (intro feel matters for transitions)
+    energy_sim = compute_property_similarity(
         song_a.get("energy"), song_b.get("energy"))
-    score += w["acousticness"] * compute_property_similarity(
+    opening_sim = compute_property_similarity(
+        song_a.get("opening_energy") or song_a.get("energy"),
+        song_b.get("opening_energy") or song_b.get("energy"))
+    score += w["energy"] * (0.5 * energy_sim + 0.5 * opening_sim)
+
+    acoustic_sim = compute_property_similarity(
         song_a.get("acousticness"), song_b.get("acousticness"))
-    score += w["danceability"] * compute_property_similarity(
+    score += w["acousticness"] * acoustic_sim
+    dance_sim = compute_property_similarity(
         song_a.get("danceability"), song_b.get("danceability"))
+    score += w["danceability"] * dance_sim
     score += w["valence"] * compute_property_similarity(
         song_a.get("valence"), song_b.get("valence"))
 
@@ -142,14 +171,15 @@ def compute_pairwise_similarity(song_a: dict[str, Any], song_b: dict[str, Any]) 
     if era_sim < ERA_SIM_FLOOR:
         score = min(score, ERA_HARD_CAP_SIMILARITY)
 
-    # Hard cap: vibe gaps (energy + acousticness + danceability) override similarity.
+    # Hard cap: vibe gaps (energy + opening + acousticness + danceability) override similarity.
     # A party banger next to an acoustic ballad is jarring regardless of BPM/genre match.
-    energy_sim = compute_property_similarity(song_a.get("energy"), song_b.get("energy"))
-    acoustic_sim = compute_property_similarity(song_a.get("acousticness"), song_b.get("acousticness"))
-    dance_sim = compute_property_similarity(song_a.get("danceability"), song_b.get("danceability"))
-    avg_vibe_sim = (energy_sim + acoustic_sim + dance_sim) / 3.0
+    avg_vibe_sim = (energy_sim + opening_sim + acoustic_sim + dance_sim) / 4.0
     if avg_vibe_sim < VIBE_SIM_FLOOR:
         score = min(score, VIBE_HARD_CAP_SIMILARITY)
+
+    # Hard cap: BPM gaps — wildly different tempos don't belong together
+    if bpm_sim < BPM_HARD_CAP_THRESHOLD:
+        score = min(score, BPM_HARD_CAP_SIMILARITY)
 
     return score
 
@@ -295,11 +325,22 @@ def select_cohesive_songs(
     songs = [entry[0] for entry in pool]
     neuro_scores = [entry[1] for entry in pool]
 
+    # Compute genre tag IDF across all candidate songs in the pool.
+    # Rare genres get higher weight — "qawwali" shared is more meaningful than "pop" shared.
+    genre_tag_counts: dict[str, int] = {}
+    for song in songs:
+        for tag in (song.get("genre_tags") or []):
+            t = tag.lower().strip()
+            genre_tag_counts[t] = genre_tag_counts.get(t, 0) + 1
+    genre_idf: dict[str, float] = {
+        tag: math.log(n / count) for tag, count in genre_tag_counts.items()
+    } if genre_tag_counts else {}
+
     sim_matrix = [[0.0] * n for _ in range(n)]
     for i in range(n):
         sim_matrix[i][i] = 1.0
         for j in range(i + 1, n):
-            sim = compute_pairwise_similarity(songs[i], songs[j])
+            sim = compute_pairwise_similarity(songs[i], songs[j], genre_idf=genre_idf)
             sim_matrix[i][j] = sim
             sim_matrix[j][i] = sim
 

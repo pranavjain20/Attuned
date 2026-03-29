@@ -139,10 +139,14 @@ ANCHOR_RECENCY_DAYS = 90       # "recently played" = last_played within this man
 ANCHOR_MAX_COUNT = 5           # max guaranteed anchor slots
 COHESION_RELAXATION_MAX = 3
 COHESION_WEIGHTS = {
-    "genre_tags": 0.20, "mood_tags": 0.15, "bpm": 0.20,
+    "genre_tags": 0.30, "mood_tags": 0.15, "bpm": 0.15,
     "release_year": 0.20,
-    "energy": 0.10, "acousticness": 0.05, "danceability": 0.05, "valence": 0.05,
+    "energy": 0.10, "acousticness": 0.05, "danceability": 0.05, "valence": 0.00,
 }
+# BPM hard cap — songs with wildly different tempos shouldn't cluster regardless
+# of genre/mood/era match. Same pattern as era and vibe hard caps.
+BPM_HARD_CAP_THRESHOLD = 0.05
+BPM_HARD_CAP_SIMILARITY = 0.30
 COHESION_BPM_SIGMA = 10.0
 COHESION_PROPERTY_SIGMA = 0.15
 

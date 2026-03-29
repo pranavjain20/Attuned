@@ -431,3 +431,86 @@ def acquire_audio_clips(
         logger.warning("Failed both sources: %s — %s", song["name"], song["artist"])
 
     return stats
+
+
+# Minimum file size for a "full song" clip. Anything below this is likely
+# a 30-second Spotify preview, not a full YouTube download. At ~128kbps MP3,
+# 60 seconds ≈ 960KB. 1MB is a safe threshold.
+_FULL_CLIP_MIN_BYTES = 1_000_000
+
+
+def redownload_short_clips(
+    songs: list[dict[str, Any]],
+    output_dir: Path,
+) -> dict[str, int]:
+    """Replace short preview clips with full YouTube downloads.
+
+    Finds clips smaller than _FULL_CLIP_MIN_BYTES (likely Spotify 30-second
+    previews) and re-downloads them via yt-dlp with duration verification.
+    Full-length clips are skipped.
+
+    Args:
+        songs: List of song dicts with spotify_uri, name, artist, duration_ms, album.
+        output_dir: Directory containing audio clips.
+
+    Returns:
+        Summary stats: {replaced, failed, already_full, skipped_no_duration}
+    """
+    stats = {
+        "replaced": 0,
+        "failed": 0,
+        "already_full": 0,
+        "skipped_no_duration": 0,
+    }
+
+    short_songs: list[dict[str, Any]] = []
+    for song in songs:
+        clip_path = output_dir / uri_to_filename(song["spotify_uri"])
+        if not clip_path.exists():
+            continue
+        if clip_path.stat().st_size >= _FULL_CLIP_MIN_BYTES:
+            stats["already_full"] += 1
+            continue
+        if not song.get("duration_ms"):
+            stats["skipped_no_duration"] += 1
+            continue
+        short_songs.append(song)
+
+    if not short_songs:
+        logger.info("No short clips to re-download")
+        return stats
+
+    logger.info(
+        "Re-downloading %d short clips as full songs (~%d minutes)",
+        len(short_songs), len(short_songs) * 30 // 60,
+    )
+
+    for idx, song in enumerate(short_songs):
+        clip_path = output_dir / uri_to_filename(song["spotify_uri"])
+        expected_s = song["duration_ms"] / 1000.0
+
+        # Pace to avoid YouTube bot detection
+        if idx > 0 and idx % 5 == 0:
+            time.sleep(3)
+
+        # Delete the short clip before re-downloading
+        clip_path.unlink(missing_ok=True)
+
+        if download_from_youtube_verified(
+            song["name"], song["artist"], clip_path,
+            expected_duration_s=expected_s, album=song.get("album"),
+        ):
+            stats["replaced"] += 1
+            logger.info("Replaced: %s — %s", song["name"], song["artist"])
+        else:
+            stats["failed"] += 1
+            logger.warning("Failed to replace: %s — %s", song["name"], song["artist"])
+
+        if (idx + 1) % 50 == 0:
+            logger.info("Re-download progress: %d/%d", idx + 1, len(short_songs))
+
+    logger.info(
+        "Re-download complete: %d replaced, %d failed, %d already full",
+        stats["replaced"], stats["failed"], stats["already_full"],
+    )
+    return stats
