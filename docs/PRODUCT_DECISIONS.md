@@ -637,6 +637,28 @@ This is a systematic fix, not per-song — every song with a full audio clip get
 
 ---
 
+## Day 15: Dual-Source Classification Replaces Spotify's Deprecated Audio Features
+
+### Context
+
+Spotify deprecated their audio features API in late 2024 — the only free source of per-track energy, danceability, valence, acousticness, tempo. This removed the foundation that every music-tech project relied on.
+
+### Our approach
+
+Two independent sources instead of one:
+
+1. **Essentia** (open-source, from UPF Barcelona's Music Technology Group) — built on the same academic foundations as Spotify's analysis (spectral analysis, onset detection, MFCCs, beat tracking). Measures energy, key, mode, acousticness, opening energy objectively from audio.
+
+2. **LLM** (GPT-4o-mini) — provides cultural context that audio analysis can't capture. Knows that Kun Faya Kun is a Sufi prayer (mood, valence). Knows genre nuances. But compresses energy for non-Western music it hasn't heard.
+
+A confidence-aware ensemble merges them: Essentia for properties it measures well (energy, acousticness), LLM for properties it knows well (valence, mood, genre context). Where they agree, confidence is high.
+
+### Why this is stronger than Spotify's approach
+
+Spotify had one proprietary source. We have two independent sources that cross-validate. When Essentia says energy is 0.30 but the LLM says 0.60, we know someone is wrong — and we know which to trust for which property. Spotify's single source had no cross-check.
+
+---
+
 ## Day 12: From State Machine to Continuous Intelligence
 
 ### The observation that triggered this

@@ -81,9 +81,11 @@ Every song in your Spotify library (2+ meaningful listens) is classified using t
 
 **LLM classification (GPT-4o-mini):** Knows what a song sounds like from its training data. Classifies BPM, energy, valence, mood tags (64-tag weighted affinity table), genre tags. Excels at cultural context — knows that Kun Faya Kun is a Sufi devotional prayer, not just a slow song.
 
-**Audio analysis (Essentia):** Listens to the actual audio. Measures key, mode, energy (RMS), acousticness (spectral flatness) from 30-second clips. Excels at objective measurement — can't be fooled by song titles or genres.
+**Audio analysis (Essentia):** Listens to the actual audio. Essentia is the leading open-source audio analysis library, developed by the Music Technology Group at Universitat Pompeu Fabra (Barcelona) — built on the same academic foundations (spectral analysis, onset detection, MFCCs, beat tracking) as Spotify's now-deprecated audio features API. Measures key, mode, energy (onset rate), acousticness (spectral flatness), and opening energy (RMS ratio of first 15 seconds vs overall) from 60-second clips starting from the song's opening. Excels at objective measurement — can't be fooled by song titles or genres.
 
-A confidence-aware ensemble blends both sources, weighting each based on where they're known to fail. The LLM stereotypes obscure Indian music; Essentia can't measure valence or mood. Where they agree, confidence is high. Where they disagree, the more reliable source for that specific property wins.
+Spotify deprecated their audio features API in late 2024, removing the only free source of per-track audio properties. Attuned replaces it with a dual-source approach that's actually stronger: Essentia for objective audio measurement, LLM for cultural context that audio alone can't capture (mood, genre nuance, valence). Where Spotify had one proprietary source, we have two independent sources that cross-validate each other.
+
+A confidence-aware ensemble blends both sources, weighting each based on where they're known to fail. The LLM compresses energy to the middle for non-Western music it hasn't heard (a slow Bollywood romantic and an intense anthem both get ~0.60); Essentia measures the actual audio and corrects this. Essentia can't measure valence or mood; the LLM fills that gap. Where they agree, confidence is high. Where they disagree, the more reliable source for that specific property wins.
 
 Each song gets three neurological scores — parasympathetic, sympathetic, grounding — computed from a weighted profiler formula backed by published research (tempo 35%, energy 25%, acousticness 10%, instrumentalness 10%, valence 10%, mode 5%, danceability 5%).
 
