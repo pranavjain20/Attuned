@@ -87,6 +87,11 @@ def _build_search_query(
     return f"ytsearch1:{base}"
 
 
+# YouTube requires browser cookies and JS challenge solving to avoid bot detection.
+# Without these, yt-dlp gets blocked after ~800 requests.
+_YTDLP_AUTH_ARGS = ["--cookies-from-browser", "chrome", "--remote-components", "ejs:github"]
+
+
 def _find_ytdlp_binary() -> str | None:
     """Locate yt-dlp, preferring the venv copy."""
     ytdlp_bin = shutil.which("yt-dlp", path=str(Path(sys.executable).parent))
@@ -128,6 +133,7 @@ def download_from_youtube(
             [
                 ytdlp_bin,
                 query,
+                *_YTDLP_AUTH_ARGS,
                 "--extract-audio",
                 "--audio-format", "mp3",
                 "--audio-quality", "5",
@@ -195,6 +201,7 @@ def download_from_youtube_verified(
             [
                 ytdlp_bin,
                 search_query,
+                *_YTDLP_AUTH_ARGS,
                 "--dump-json",
                 "--ignore-errors",
                 "--no-playlist",
@@ -263,6 +270,7 @@ def download_from_youtube_verified(
             [
                 ytdlp_bin,
                 best["url"] or f"https://www.youtube.com/watch?v={best['id']}",
+                *_YTDLP_AUTH_ARGS,
                 "--extract-audio",
                 "--audio-format", "mp3",
                 "--audio-quality", "5",
