@@ -11,6 +11,29 @@ captured_code = None
 expected_state = None
 
 
+def _parse_remote() -> bool:
+    """Check if --remote flag is present in argv."""
+    return "--remote" in sys.argv
+
+
+def _extract_code_from_url(callback_url: str) -> str:
+    """Extract the authorization code from a callback URL.
+
+    Accepts either a full URL or just the code string.
+    """
+    callback_url = callback_url.strip()
+    if "code=" in callback_url:
+        parsed = urlparse(callback_url)
+        query = parse_qs(parsed.query)
+        code = query.get("code", [None])[0]
+        if not code:
+            print("Error: no 'code' parameter found in URL.")
+            sys.exit(1)
+        return code
+    # Assume they pasted just the code
+    return callback_url
+
+
 class CallbackHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         global captured_code
@@ -71,24 +94,35 @@ def run_whoop():
         "state": expected_state,
     }
     auth_url = f"{WHOOP_AUTH_URL}?{urlencode(params)}"
+    remote = _parse_remote()
 
-    server = HTTPServer(("localhost", 8080), CallbackHandler)
-    server.timeout = 300
+    if remote:
+        print(f"\n--- REMOTE OAUTH ---")
+        print(f"Send this URL to the user:\n")
+        print(auth_url)
+        print(f"\nAfter they authorize, they'll see an error page.")
+        print(f"Ask them to copy the URL from their address bar and send it to you.")
+        callback_url = input("\nPaste the callback URL here: ")
+        code = _extract_code_from_url(callback_url)
+    else:
+        server = HTTPServer(("localhost", 8080), CallbackHandler)
+        server.timeout = 300
 
-    print(f"\nOpen this URL in your browser:\n")
-    print(auth_url)
-    print(f"\nWaiting for authorization...\n")
-    try:
-        webbrowser.open(auth_url)
-    except Exception:
-        pass
+        print(f"\nOpen this URL in your browser:\n")
+        print(auth_url)
+        print(f"\nWaiting for authorization...\n")
+        try:
+            webbrowser.open(auth_url)
+        except Exception:
+            pass
 
-    server.handle_request()
+        server.handle_request()
+        code = captured_code
 
-    if captured_code:
+    if code:
         print("Got authorization code. Exchanging for tokens...")
         conn = get_connection(db_path)
-        exchange_code_for_tokens(captured_code, conn)
+        exchange_code_for_tokens(code, conn)
         print("\nWHOOP authorization complete! Tokens stored.")
         conn.close()
     else:
@@ -126,21 +160,32 @@ def run_spotify():
         "state": state,
     }
     auth_url = f"https://accounts.spotify.com/authorize?{urlencode(params)}"
+    remote = _parse_remote()
 
-    server = HTTPServer(("127.0.0.1", 8080), CallbackHandler)
-    server.timeout = 300
+    if remote:
+        print(f"\n--- REMOTE OAUTH ---")
+        print(f"Send this URL to the user:\n")
+        print(auth_url)
+        print(f"\nAfter they authorize, they'll see an error page.")
+        print(f"Ask them to copy the URL from their address bar and send it to you.")
+        callback_url = input("\nPaste the callback URL here: ")
+        code = _extract_code_from_url(callback_url)
+    else:
+        server = HTTPServer(("127.0.0.1", 8080), CallbackHandler)
+        server.timeout = 300
 
-    print(f"\nOpen this URL in your browser:\n")
-    print(auth_url)
-    print(f"\nWaiting for authorization...\n")
-    try:
-        webbrowser.open(auth_url)
-    except Exception:
-        pass
+        print(f"\nOpen this URL in your browser:\n")
+        print(auth_url)
+        print(f"\nWaiting for authorization...\n")
+        try:
+            webbrowser.open(auth_url)
+        except Exception:
+            pass
 
-    server.handle_request()
+        server.handle_request()
+        code = captured_code
 
-    if not captured_code:
+    if not code:
         print("No authorization code received.")
         sys.exit(1)
 
@@ -153,7 +198,7 @@ def run_spotify():
         "https://accounts.spotify.com/api/token",
         data={
             "grant_type": "authorization_code",
-            "code": captured_code,
+            "code": code,
             "redirect_uri": redirect_uri,
             "client_id": client_id,
             "client_secret": get_spotify_client_secret(),
@@ -183,15 +228,18 @@ def run_spotify():
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python oauth_server.py [--profile <name>] <whoop|spotify>")
+        print("Usage: python oauth_server.py [--profile <name>] [--remote] <whoop|spotify>")
         sys.exit(1)
 
-    # Find the provider arg (not --profile or its value)
+    # Find the provider arg (not --profile, its value, or --remote)
     provider = None
     i = 1
     while i < len(sys.argv):
         if sys.argv[i] == "--profile":
             i += 2  # skip flag + value
+            continue
+        if sys.argv[i] == "--remote":
+            i += 1
             continue
         if sys.argv[i] in ("whoop", "spotify"):
             provider = sys.argv[i]
@@ -199,7 +247,7 @@ if __name__ == "__main__":
         i += 1
 
     if provider is None:
-        print("Usage: python oauth_server.py [--profile <name>] <whoop|spotify>")
+        print("Usage: python oauth_server.py [--profile <name>] [--remote] <whoop|spotify>")
         sys.exit(1)
 
     if provider == "whoop":
