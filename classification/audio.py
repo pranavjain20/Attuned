@@ -406,9 +406,10 @@ def acquire_audio_clips(
         uri = song["spotify_uri"]
         clip_path = output_dir / uri_to_filename(uri)
 
-        # Pace requests to avoid YouTube bot detection (every 5 downloads)
-        if idx > 0 and idx % 5 == 0:
-            time.sleep(3)
+        # Pace requests to avoid YouTube bot detection
+        # 15 seconds between every download — YouTube blocks after ~800 rapid requests
+        if idx > 0:
+            time.sleep(15)
 
         # Try Spotify preview first (if not skipped)
         preview_url = preview_urls.get(uri)
