@@ -978,3 +978,55 @@ A confidence-aware ensemble merges them: Essentia for properties it measures wel
 
 Spotify had one proprietary source. We have two independent sources that cross-validate. When Essentia says energy is 0.30 but the LLM says 0.60, we know someone is wrong — and we know which to trust for which property. Spotify's single source had no cross-check.
 
+---
+
+## Day 15: Opening Energy Uses 7% of Duration, Not Fixed 15 Seconds
+
+### The question
+
+How long is a song's intro? We were using a fixed 15-second window to measure opening energy. But a 6-minute ghazal has a different intro length than a 2-minute pop track.
+
+### Research findings
+
+Billboard Hot 100 analysis shows average intro length is 14.1 seconds — approximately **7% of total song duration**. This holds across eras (10.9s in 1971, 14.1s now) and roughly across genres, though EDM intros run longer (15-120s) and pop shorter (5-10s).
+
+### The decision
+
+Replaced fixed 15-second window with 7% of clip duration. For a 4-minute Bollywood song, that's ~17 seconds. For a 3-minute pop track, ~13 seconds. Minimum 1 second.
+
+### Why percentage over fixed
+
+A fixed window either over-captures short songs (15 seconds of a 2-minute track is 12.5% — past the intro into the verse) or under-captures long songs (15 seconds of a 7-minute track is 3.6% — only half the intro). Percentage adapts to the song's own structure.
+
+---
+
+## Day 15: Audio Clips Changed from 30s-from-Middle to 60s-from-Start
+
+### The problem
+
+Audio clips were 30 seconds extracted starting at the 30-second mark — literally skipping the song's opening. This was designed for Essentia analysis of the "representative" middle section. But opening energy measurement needs the actual opening, which was being thrown away.
+
+### The decision
+
+Changed clip extraction to 60 seconds starting from second 0. Higher sample rate (44100 Hz vs 22050) and better quality (q:a 2 vs 5). All existing clips re-downloaded.
+
+### Impact
+
+- Opening energy can now be measured from actual audio
+- Essentia overall energy still works (60 seconds is more than enough)
+- File size: ~0.7 MB per clip (was ~0.2 MB). Total library ~2 GB for 3,000 songs.
+
+---
+
+## Day 15: YouTube Auth Required for Bulk Downloads
+
+### The problem
+
+YouTube blocks yt-dlp after ~800 requests with "Sign in to confirm you're not a bot." The first bulk download attempt lost 812 audio clips (delete-before-download bug, now fixed). The second attempt produced 0.2 MB files (quality degradation without auth).
+
+### The decision
+
+Added `--cookies-from-browser chrome --remote-components ejs:github` to all yt-dlp calls. Browser cookies authenticate as a real user. The JS challenge solver (via Deno runtime) handles YouTube's bot detection challenges.
+
+Also slowed pacing from 3 seconds every 5th download to 15 seconds between every download. 2,700 clips × 15s = ~11 hours. Slow but reliable — YouTube doesn't block.
+

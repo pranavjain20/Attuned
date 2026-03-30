@@ -118,15 +118,20 @@ def analyze_audio(audio_path: Path) -> dict[str, Any] | None:
         onset_rate = float(es.OnsetRate()(audio)[1])
         energy = max(0.0, min(1.0, (onset_rate - 2.0) / 4.0))
 
-        # Opening energy — RMS of first 15 seconds relative to overall RMS.
-        # RMS measures actual loudness. Using a RATIO (opening / overall) makes it
-        # immune to mastering differences — we're comparing within the same song.
+        # Opening energy — RMS of intro relative to overall RMS.
+        # Intro = first 7% of song duration (industry standard: intros average ~7%
+        # of total song length, per Billboard Hot 100 analysis). This adapts to
+        # song length: ~17s for a 4-min Bollywood song, ~13s for a 3-min pop track.
+        # RMS measures actual loudness. Ratio is immune to mastering differences.
         # Low ratio = song builds slowly (quiet intro). High ratio = instant energy.
         sample_rate = 44100
-        first_15s = audio[:15 * sample_rate]
+        intro_fraction = 0.07
+        intro_samples = int(len(audio) * intro_fraction)
+        intro_samples = max(intro_samples, sample_rate)  # at least 1 second
+        opening_audio = audio[:intro_samples]
         import numpy as np
         rms_overall = float(np.sqrt(np.mean(audio ** 2))) if len(audio) > 0 else 0
-        rms_opening = float(np.sqrt(np.mean(first_15s ** 2))) if len(first_15s) >= sample_rate else 0
+        rms_opening = float(np.sqrt(np.mean(opening_audio ** 2))) if len(opening_audio) >= sample_rate else 0
         opening_energy_ratio = rms_opening / rms_overall if rms_overall > 0 else 1.0
         # Clamp to [0, 1] — ratio > 1 means opening is louder than average (front-loaded)
         opening_energy = max(0.0, min(1.0, opening_energy_ratio))
