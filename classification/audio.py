@@ -493,18 +493,20 @@ def redownload_short_clips(
         if idx > 0 and idx % 5 == 0:
             time.sleep(3)
 
-        # Delete the short clip before re-downloading
-        clip_path.unlink(missing_ok=True)
-
+        # Download to temp file first, only replace on success
+        temp_path = clip_path.with_suffix(".tmp.mp3")
         if download_from_youtube_verified(
-            song["name"], song["artist"], clip_path,
+            song["name"], song["artist"], temp_path,
             expected_duration_s=expected_s, album=song.get("album"),
         ):
+            clip_path.unlink(missing_ok=True)
+            temp_path.rename(clip_path)
             stats["replaced"] += 1
             logger.info("Replaced: %s — %s", song["name"], song["artist"])
         else:
+            temp_path.unlink(missing_ok=True)
             stats["failed"] += 1
-            logger.warning("Failed to replace: %s — %s", song["name"], song["artist"])
+            logger.warning("Failed to replace: %s — %s (keeping original)", song["name"], song["artist"])
 
         if (idx + 1) % 50 == 0:
             logger.info("Re-download progress: %d/%d", idx + 1, len(short_songs))
