@@ -303,28 +303,18 @@ def download_from_youtube_verified(
 
 
 def _trim_to_30s(input_path: Path, output_path: Path) -> bool:
-    """Trim an audio file to 30 seconds using ffmpeg.
+    """Trim an audio file to 60 seconds from the start using ffmpeg.
 
-    Starts at 30 seconds in (skip intro) and takes 30 seconds.
-    Falls back to start if file is shorter than 60 seconds.
+    Keeps the opening (needed for opening_energy measurement) plus enough
+    for overall Essentia analysis. Previous version skipped to 30s in,
+    which literally threw away the opening we need to measure.
     """
     try:
-        # Probe duration first
-        probe = subprocess.run(
-            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
-             "-of", "csv=p=0", str(input_path)],
-            capture_output=True, text=True, timeout=10,
-        )
-        duration = float(probe.stdout.strip()) if probe.stdout.strip() else 0
-
-        # Start 30s in to skip intros, unless file is short
-        start = 30 if duration > 60 else 0
-
         result = subprocess.run(
             ["ffmpeg", "-y", "-i", str(input_path),
-             "-ss", str(start), "-t", "30",
-             "-ac", "1", "-ar", "22050",
-             "-q:a", "5", str(output_path)],
+             "-ss", "0", "-t", "60",
+             "-ac", "1", "-ar", "44100",
+             "-q:a", "2", str(output_path)],
             capture_output=True, text=True, timeout=30,
         )
         if result.returncode == 0 and output_path.exists():
