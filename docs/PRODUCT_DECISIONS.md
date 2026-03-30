@@ -360,7 +360,7 @@ Replaces the 1.5 SD dead zone threshold. Non-baseline states keep their threshol
 
 ---
 
-## Crosscutting Lessons
+## Day 10: Crosscutting Lessons
 
 ### Measure the product metric, not a proxy
 Bucket accuracy (66%) looked broken. Product accuracy (83%) showed the system worked. Hours wasted optimizing the wrong metric. Always ask: what does the user experience?
@@ -385,13 +385,13 @@ Tuned on 25 songs (72%). Fresh 34-song set: 56%. The tuning set was blind to a f
 
 ---
 
-## WHOOP Insights
+## Day 10: WHOOP Insights
 
 WHOOP research and analysis moved to a dedicated repository: [whoop-2.0](https://github.com/pranavjain20/whoop-2.0) (private).
 
 ---
 
-## Sleep Quality Dampener — Recovery Delta Is Not Enough
+## Day 10: Sleep Quality Dampener — Recovery Delta Is Not Enough
 
 ### The observation
 
@@ -439,7 +439,7 @@ This is the most significant insight from building Attuned: **WHOOP's recovery s
 
 ---
 
-## Anchor Vibe Outlier Detection — When a Song Doesn't Belong Despite Matching on Paper
+## Day 10: Anchor Vibe Outlier Detection — When a Song Doesn't Belong Despite Matching on Paper
 
 ### The observation
 
@@ -574,89 +574,6 @@ Bollywood music is written for a movie scene. A motivational Bollywood song = so
 16 Bollywood motivational songs excluded from non-peak playlists. English motivational songs still available. Manual override catches the LLM's blind spots without needing reclassification.
 
 ---
-
-## Day 14: IDF-Weighted Genre Similarity
-
-### The observation
-
-Komal's Mar 28 playlist mixed reggaeton (Si Antes), house (Impatient), country-pop (Speak Now), and Bollywood in one playlist. Mean pairwise cohesion was 0.264. 7 of 19 adjacent transitions had zero genre overlap.
-
-### Root cause
-
-"Pop" appeared in 60% of Komal's library. Jaccard similarity treated sharing "pop" (common, uninformative) the same as sharing "reggaeton" (rare, very informative). Two songs sharing only "pop" scored 0.33 — identical to two songs sharing a genuinely specific genre.
-
-### The decision
-
-Replaced Jaccard with IDF-weighted similarity. Each tag's contribution is weighted by `log(total_songs / songs_with_tag)`. Rare tags carry more weight. "Pop" at 60% gets IDF 0.51 (almost noise). "Reggaeton" at 2% gets IDF 4.37 (8x more informative).
-
-This is the same principle search engines use (TF-IDF) — common words don't help find relevant documents, rare words do. Applied to genre tags, common genres don't help build cohesive playlists, rare genres do.
-
-IDF is computed per-user from their own library. For Pranav (74% Bollywood), "bollywood" gets low weight. For Komal (60% pop), "pop" gets low weight. No hardcoded rules — the data defines what's noise.
-
-### Effect
-
-Cohesion: 0.264 → 0.431. Genre weight raised from 0.20 to 0.30 (genre is #1 signal per Spotify research). Si Antes (reggaeton), Impatient (house), Speak Now (country) all excluded from the pop/indie/r&b cluster. BPM range tightened from 90-149 to 102-138.
-
----
-
-## Day 14: BPM Hard Cap
-
-Added a BPM hard cap matching the existing era and vibe hard caps. If two songs' BPM similarity < 0.05 (gap > ~25 BPM), total similarity is capped at 0.30 regardless of genre/mood match. Prevents transitions like Pyaar Hota (121 BPM) → Hurts Me (149 BPM).
-
----
-
-## Day 14: Original Release Year from LLM
-
-### The observation
-
-Jawani Jan-E-Man (Asha Bhosle, 1970s) had Spotify release_year 2021 — a re-release date. The era cohesion engine thought it belonged in a 2020s cluster.
-
-### The decision
-
-Added `original_release_year` to the LLM classification prompt. The LLM estimates the year the song was ORIGINALLY released. For Jawani Jan-E-Man, it correctly returned 1973. Era cohesion prefers this over Spotify's date when available.
-
-Tested: 3,902/3,955 of Komal's songs got original_release_year. 53 returned null (obscure tracks the LLM doesn't know).
-
----
-
-## Day 14: LLM Middle-Value Bias on Bollywood Energy
-
-### The observation
-
-Ishq Di Baajiyaan (slow, soulful) and Kiya Kiya (full party) both got energy ~0.55 from the LLM. Maahi Ve (A.R. Rahman, Highway — melancholic) was classified as "uplifting, celebratory." The LLM compresses Bollywood songs toward the middle of the energy scale.
-
-### Why this happens
-
-The LLM doesn't know what these songs SOUND like — it guesses from title + artist + genre. "Bollywood" triggers a moderate-energy stereotype. Day 4 experiments confirmed this: LLM energy accuracy was 42% (worse than Essentia's 71%).
-
-### The fix
-
-Essentia audio analysis measures actual energy from the audio file. But 70% of Komal's clips were 30-second Spotify previews (from the chorus, not representative). Re-downloading as full YouTube tracks so Essentia can measure the real audio. After re-download: re-run Essentia, validate on 5 problem songs, recompute scores.
-
-This is a systematic fix, not per-song — every song with a full audio clip gets objective energy measurement that overrides the LLM's middle-value bias.
-
----
-
-## Day 15: Dual-Source Classification Replaces Spotify's Deprecated Audio Features
-
-### Context
-
-Spotify deprecated their audio features API in late 2024 — the only free source of per-track energy, danceability, valence, acousticness, tempo. This removed the foundation that every music-tech project relied on.
-
-### Our approach
-
-Two independent sources instead of one:
-
-1. **Essentia** (open-source, from UPF Barcelona's Music Technology Group) — built on the same academic foundations as Spotify's analysis (spectral analysis, onset detection, MFCCs, beat tracking). Measures energy, key, mode, acousticness, opening energy objectively from audio.
-
-2. **LLM** (GPT-4o-mini) — provides cultural context that audio analysis can't capture. Knows that Kun Faya Kun is a Sufi prayer (mood, valence). Knows genre nuances. But compresses energy for non-Western music it hasn't heard.
-
-A confidence-aware ensemble merges them: Essentia for properties it measures well (energy, acousticness), LLM for properties it knows well (valence, mood, genre context). Where they agree, confidence is high.
-
-### Why this is stronger than Spotify's approach
-
-Spotify had one proprietary source. We have two independent sources that cross-validate. When Essentia says energy is 0.30 but the LLM says 0.60, we know someone is wrong — and we know which to trust for which property. Spotify's single source had no cross-check.
-
 ---
 
 ## Day 12: From State Machine to Continuous Intelligence
@@ -976,4 +893,88 @@ Her Mar 27 playlist (poor_recovery, 47%): the old state machine produced heavily
 ### Why this matters
 
 Same recovery score (47%), completely different playlist based on the underlying signals. The continuous function read the contradiction: recovery is low, but HRV is fine and she's not sleep-deprived. The old system would have given her a one-size-fits-poor-recovery playlist. The new system gave her music matched to HER specific physiological state.
+
+
+
+## Day 14: IDF-Weighted Genre Similarity
+
+### The observation
+
+Komal's Mar 28 playlist mixed reggaeton (Si Antes), house (Impatient), country-pop (Speak Now), and Bollywood in one playlist. Mean pairwise cohesion was 0.264. 7 of 19 adjacent transitions had zero genre overlap.
+
+### Root cause
+
+"Pop" appeared in 60% of Komal's library. Jaccard similarity treated sharing "pop" (common, uninformative) the same as sharing "reggaeton" (rare, very informative). Two songs sharing only "pop" scored 0.33 — identical to two songs sharing a genuinely specific genre.
+
+### The decision
+
+Replaced Jaccard with IDF-weighted similarity. Each tag's contribution is weighted by `log(total_songs / songs_with_tag)`. Rare tags carry more weight. "Pop" at 60% gets IDF 0.51 (almost noise). "Reggaeton" at 2% gets IDF 4.37 (8x more informative).
+
+This is the same principle search engines use (TF-IDF) — common words don't help find relevant documents, rare words do. Applied to genre tags, common genres don't help build cohesive playlists, rare genres do.
+
+IDF is computed per-user from their own library. For Pranav (74% Bollywood), "bollywood" gets low weight. For Komal (60% pop), "pop" gets low weight. No hardcoded rules — the data defines what's noise.
+
+### Effect
+
+Cohesion: 0.264 → 0.431. Genre weight raised from 0.20 to 0.30 (genre is #1 signal per Spotify research). Si Antes (reggaeton), Impatient (house), Speak Now (country) all excluded from the pop/indie/r&b cluster. BPM range tightened from 90-149 to 102-138.
+
+---
+
+## Day 14: BPM Hard Cap
+
+Added a BPM hard cap matching the existing era and vibe hard caps. If two songs' BPM similarity < 0.05 (gap > ~25 BPM), total similarity is capped at 0.30 regardless of genre/mood match. Prevents transitions like Pyaar Hota (121 BPM) → Hurts Me (149 BPM).
+
+---
+
+## Day 14: Original Release Year from LLM
+
+### The observation
+
+Jawani Jan-E-Man (Asha Bhosle, 1970s) had Spotify release_year 2021 — a re-release date. The era cohesion engine thought it belonged in a 2020s cluster.
+
+### The decision
+
+Added `original_release_year` to the LLM classification prompt. The LLM estimates the year the song was ORIGINALLY released. For Jawani Jan-E-Man, it correctly returned 1973. Era cohesion prefers this over Spotify's date when available.
+
+Tested: 3,902/3,955 of Komal's songs got original_release_year. 53 returned null (obscure tracks the LLM doesn't know).
+
+---
+
+## Day 14: LLM Middle-Value Bias on Bollywood Energy
+
+### The observation
+
+Ishq Di Baajiyaan (slow, soulful) and Kiya Kiya (full party) both got energy ~0.55 from the LLM. Maahi Ve (A.R. Rahman, Highway — melancholic) was classified as "uplifting, celebratory." The LLM compresses Bollywood songs toward the middle of the energy scale.
+
+### Why this happens
+
+The LLM doesn't know what these songs SOUND like — it guesses from title + artist + genre. "Bollywood" triggers a moderate-energy stereotype. Day 4 experiments confirmed this: LLM energy accuracy was 42% (worse than Essentia's 71%).
+
+### The fix
+
+Essentia audio analysis measures actual energy from the audio file. But 70% of Komal's clips were 30-second Spotify previews (from the chorus, not representative). Re-downloading as full YouTube tracks so Essentia can measure the real audio. After re-download: re-run Essentia, validate on 5 problem songs, recompute scores.
+
+This is a systematic fix, not per-song — every song with a full audio clip gets objective energy measurement that overrides the LLM's middle-value bias.
+
+---
+
+## Day 15: Dual-Source Classification Replaces Spotify's Deprecated Audio Features
+
+### Context
+
+Spotify deprecated their audio features API in late 2024 — the only free source of per-track energy, danceability, valence, acousticness, tempo. This removed the foundation that every music-tech project relied on.
+
+### Our approach
+
+Two independent sources instead of one:
+
+1. **Essentia** (open-source, from UPF Barcelona's Music Technology Group) — built on the same academic foundations as Spotify's analysis (spectral analysis, onset detection, MFCCs, beat tracking). Measures energy, key, mode, acousticness, opening energy objectively from audio.
+
+2. **LLM** (GPT-4o-mini) — provides cultural context that audio analysis can't capture. Knows that Kun Faya Kun is a Sufi prayer (mood, valence). Knows genre nuances. But compresses energy for non-Western music it hasn't heard.
+
+A confidence-aware ensemble merges them: Essentia for properties it measures well (energy, acousticness), LLM for properties it knows well (valence, mood, genre context). Where they agree, confidence is high.
+
+### Why this is stronger than Spotify's approach
+
+Spotify had one proprietary source. We have two independent sources that cross-validate. When Essentia says energy is 0.30 but the LLM says 0.60, we know someone is wrong — and we know which to trust for which property. Spotify's single source had no cross-check.
 
