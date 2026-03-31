@@ -78,10 +78,10 @@ class TestEnvVarGetters:
                 config.get_spotify_client_secret()
 
     def test_whoop_redirect_uri_has_default(self):
-        assert "localhost" in config.get_whoop_redirect_uri()
+        assert "localhost" in config.get_whoop_redirect_uri(local=True)
 
     def test_spotify_redirect_uri_has_default(self):
-        assert "127.0.0.1" in config.get_spotify_redirect_uri()
+        assert "127.0.0.1" in config.get_spotify_redirect_uri(local=True)
 
     def test_openai_api_key_raises_when_missing(self):
         with patch("config.os.getenv", return_value=None):

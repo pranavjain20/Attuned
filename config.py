@@ -319,7 +319,9 @@ def get_whoop_client_secret() -> str:
     return val
 
 
-def get_whoop_redirect_uri() -> str:
+def get_whoop_redirect_uri(local: bool = False) -> str:
+    if local:
+        return os.getenv("WHOOP_REDIRECT_URI_LOCAL", "http://localhost:8080/callback")
     return os.getenv("WHOOP_REDIRECT_URI", "http://localhost:8080/callback")
 
 
@@ -337,7 +339,9 @@ def get_spotify_client_secret() -> str:
     return val
 
 
-def get_spotify_redirect_uri() -> str:
+def get_spotify_redirect_uri(local: bool = False) -> str:
+    if local:
+        return os.getenv("SPOTIFY_REDIRECT_URI_LOCAL", "http://127.0.0.1:8080/spotify/callback")
     return os.getenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8080/spotify/callback")
 
 

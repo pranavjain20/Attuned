@@ -1030,3 +1030,32 @@ Added `--cookies-from-browser chrome --remote-components ejs:github` to all yt-d
 
 Also slowed pacing from 3 seconds every 5th download to 15 seconds between every download. 2,700 clips × 15s = ~11 hours. Slow but reliable — YouTube doesn't block.
 
+---
+
+## Day 16: Essentia Validation — 60% Ceiling on Bollywood Energy
+
+### What we tested
+
+5 known problem songs after full audio pipeline rebuild (3,421 clips re-downloaded as 60s-from-start, Essentia re-analyzed with opening energy):
+
+| Song | LLM energy | Essentia energy | Expected | Correct? |
+|------|-----------|----------------|----------|----------|
+| Slow Motion Angreza (party) | 0.60 | 0.77 | HIGH | Yes |
+| Jadoo (soft romantic) | 0.70 | 0.13 | LOW | Yes |
+| Maahi Ve (melancholic) | 0.60 | 0.50 | LOW | Partial |
+| Chori Kiya Re Jiya (slow romantic) | 0.60 | 0.49 | LOW | Partial |
+
+### The finding
+
+Essentia's OnsetRate corrects extreme cases but hits a 60% accuracy ceiling for Bollywood. Root cause: even slow romantic Bollywood songs have consistent percussion (tabla, dhol patterns) that register as rhythmic onsets. OnsetRate measures "are there beats?" not "is this intense?"
+
+All heuristic blends (LUFS + OnsetRate + spectral centroid) also hit 60%. This is documented in Day 4 experiments and confirmed by MIR literature: no published work on Bollywood energy detection exists. Western-trained algorithms don't capture the nuance.
+
+### The path forward
+
+Train a simple ML model (logistic regression) on 50-100 Bollywood songs manually labeled by the user as low/mid/high energy. The user's ears are the only ground truth — not any LLM, not OnsetRate.
+
+### Key insight
+
+An LLM (Claude) agreed a song was "upbeat, celebratory" because the user said so — not because it independently knows. LLMs can't validate LLMs. User feedback is the only reliable signal for subjective properties like perceived energy in non-Western music.
+

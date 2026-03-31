@@ -85,24 +85,25 @@ def run_whoop():
     if profile:
         print(f"[profile: {profile}] → {db_path}")
 
+    remote = _parse_remote()
+    redirect_uri = get_whoop_redirect_uri(local=not remote)
+
     expected_state = secrets.token_urlsafe(32)
     params = {
         "client_id": get_whoop_client_id(),
-        "redirect_uri": get_whoop_redirect_uri(),
+        "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": " ".join(WHOOP_SCOPES),
         "state": expected_state,
     }
     auth_url = f"{WHOOP_AUTH_URL}?{urlencode(params)}"
-    remote = _parse_remote()
 
     if remote:
         print(f"\n--- REMOTE OAUTH ---")
         print(f"Send this URL to the user:\n")
         print(auth_url)
-        print(f"\nAfter they authorize, they'll see an error page.")
-        print(f"Ask them to copy the URL from their address bar and send it to you.")
-        callback_url = input("\nPaste the callback URL here: ")
+        print(f"\nThey'll log in and see a page with a code to send back to you.")
+        callback_url = input("\nPaste the code here: ")
         code = _extract_code_from_url(callback_url)
     else:
         server = HTTPServer(("localhost", 8080), CallbackHandler)
@@ -122,7 +123,7 @@ def run_whoop():
     if code:
         print("Got authorization code. Exchanging for tokens...")
         conn = get_connection(db_path)
-        exchange_code_for_tokens(code, conn)
+        exchange_code_for_tokens(code, conn, redirect_uri=redirect_uri)
         print("\nWHOOP authorization complete! Tokens stored.")
         conn.close()
     else:
@@ -148,8 +149,9 @@ def run_spotify():
     if profile:
         print(f"[profile: {profile}] → {db_path}")
 
+    remote = _parse_remote()
     client_id = get_spotify_client_id()
-    redirect_uri = get_spotify_redirect_uri()
+    redirect_uri = get_spotify_redirect_uri(local=not remote)
     state = secrets.token_urlsafe(32)
 
     params = {
@@ -160,15 +162,13 @@ def run_spotify():
         "state": state,
     }
     auth_url = f"https://accounts.spotify.com/authorize?{urlencode(params)}"
-    remote = _parse_remote()
 
     if remote:
         print(f"\n--- REMOTE OAUTH ---")
         print(f"Send this URL to the user:\n")
         print(auth_url)
-        print(f"\nAfter they authorize, they'll see an error page.")
-        print(f"Ask them to copy the URL from their address bar and send it to you.")
-        callback_url = input("\nPaste the callback URL here: ")
+        print(f"\nThey'll log in and see a page with a code to send back to you.")
+        callback_url = input("\nPaste the code here: ")
         code = _extract_code_from_url(callback_url)
     else:
         server = HTTPServer(("127.0.0.1", 8080), CallbackHandler)

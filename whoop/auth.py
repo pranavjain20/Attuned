@@ -32,14 +32,16 @@ def get_authorization_url() -> str:
     return f"{WHOOP_AUTH_URL}?{urlencode(params)}"
 
 
-def exchange_code_for_tokens(code: str, conn: sqlite3.Connection) -> dict:
+def exchange_code_for_tokens(
+    code: str, conn: sqlite3.Connection, redirect_uri: str | None = None,
+) -> dict:
     """Exchange an authorization code for access + refresh tokens. Stores in DB."""
     response = httpx.post(
         WHOOP_TOKEN_URL,
         data={
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": get_whoop_redirect_uri(),
+            "redirect_uri": redirect_uri or get_whoop_redirect_uri(),
             "client_id": get_whoop_client_id(),
             "client_secret": get_whoop_client_secret(),
         },

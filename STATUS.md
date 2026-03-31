@@ -2,27 +2,22 @@
 
 ## Current Phase
 
-Day 15. 1,048 tests passing. Audio pipeline rebuild: all clips being re-downloaded as 60s-from-start with YouTube auth. 5 parallel processes running, ~7 hours to completion. IDF genre similarity, BPM hard cap, original_release_year all shipped. Essentia energy correction pending clip re-download.
+Day 16. 1,048 tests passing. Audio pipeline complete: 3,421 clips re-downloaded as 60s-from-start, Essentia re-analyzed with opening energy for both libraries. Essentia corrects extreme energy misclassifications but hits 60% ceiling for Bollywood mid-range. Next: ML model on user-labeled data.
 
-## Last Session (Mar 30, 2026)
+## Last Session (Mar 31, 2026)
 
-Generated playlists for both users (Pranav 81% Stay Sharp, Komal 64% Fuel Up). Confirmed LLM middle-value bias still affects Bollywood energy (Chori Kiya Re = Do Dhaari Talwaar in LLM's eyes). Validated Essentia corrects this — Slow Motion Angreza measured 0.77 energy vs LLM's 0.60. Jadoo measured 0.13 vs LLM's 0.70.
-
-Rebuilt audio clip pipeline: 60s from start (was 30s from middle — literally threw away the opening). Opening energy uses 7% of song duration (industry standard for intro length). YouTube auth (cookies + JS challenge solver) + 15s pacing + 5 parallel processes for bulk downloads.
-
-Stored Saumya's extended Spotify history for future onboarding. Documented dual-source classification as Spotify audio features replacement.
+Validated Essentia on test songs: Slow Motion Angreza correctly 0.77 (was 0.60), Jadoo correctly 0.13 (was 0.70). But Maahi Ve only 0.50 (should be 0.30) — OnsetRate can't distinguish gentle tabla from intense dhol. Generated playlists for both users with corrected energy. Playlist quality improved (energy range 0.14-0.73 vs yesterday's 0.60-0.70 compression).
 
 ## Blockers
 
-- Audio clip re-download: 879/3,717 done, 5 parallel processes running. ~7 hours to completion.
+- None. System is operational.
 
 ## Next Steps
 
-1. When re-download completes: validate Essentia on 5 test songs (Ishq Di Baajiyaan, Kiya Kiya, Maahi Ve, Chori Kiya Re, Slow Motion Angreza)
-2. If validated: re-run Essentia + recompute for both libraries
-3. Regenerate playlists and compare before/after
-4. Onboard Saumya
-5. Listen to playlists, collect feedback, tune weights
+1. **Bollywood energy ML model** — label 50-100 songs, train logistic regression on Essentia features. Expected: 70-75% accuracy (vs 60% ceiling with heuristics).
+2. Onboard Saumya (history stored, awaiting OAuth)
+3. Automated daily generation (cron)
+4. Weight tuning from daily feedback
 
 ## Project Timeline
 
@@ -41,3 +36,4 @@ Stored Saumya's extended Spotify history for future onboarding. Documented dual-
 - **Day 13** — Polish: auto-classify new songs, dynamic library sync, `/onboard` skill, public-ready audit, MIT license
 - **Day 14** — Cohesion fix: IDF genre similarity, BPM hard cap, original_release_year, opening energy
 - **Day 15** — Audio pipeline rebuild: 60s-from-start clips, YouTube auth, parallel downloads, 7% intro measurement, dual-source classification documented
+- **Day 16** — Essentia validation: 60% ceiling confirmed for Bollywood, ML model identified as next step, playlists generated with corrected energy
