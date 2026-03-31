@@ -2,26 +2,27 @@
 
 ## Current Phase
 
-Day 14. 1,048 tests passing. Fixed playlist cohesion for diverse libraries (IDF genre similarity, BPM hard cap, original_release_year from LLM). Both libraries reclassified. Clip re-download running overnight for Essentia opening energy + LLM error correction.
+Day 15. 1,048 tests passing. Audio pipeline rebuild: all clips being re-downloaded as 60s-from-start with YouTube auth. 5 parallel processes running, ~7 hours to completion. IDF genre similarity, BPM hard cap, original_release_year all shipped. Essentia energy correction pending clip re-download.
 
-## Last Session (Mar 29, 2026)
+## Last Session (Mar 30, 2026)
 
-Komal's feedback surfaced 4 cohesion issues: genre soup (reggaeton next to Bollywood), house track in pop playlist, 1973 song in modern cluster, calm openings next to upbeat openings. Root cause: "pop" in 60% of library made Jaccard similarity meaningless.
+Generated playlists for both users (Pranav 81% Stay Sharp, Komal 64% Fuel Up). Confirmed LLM middle-value bias still affects Bollywood energy (Chori Kiya Re = Do Dhaari Talwaar in LLM's eyes). Validated Essentia corrects this — Slow Motion Angreza measured 0.77 energy vs LLM's 0.60. Jadoo measured 0.13 vs LLM's 0.70.
 
-Fixed with IDF-weighted genre similarity (rare tags matter more), BPM hard cap, original_release_year from LLM (Jawani Jan-E-Man correctly identified as 1973). Cohesion improved 0.264 → 0.431.
+Rebuilt audio clip pipeline: 60s from start (was 30s from middle — literally threw away the opening). Opening energy uses 7% of song duration (industry standard for intro length). YouTube auth (cookies + JS challenge solver) + 15s pacing + 5 parallel processes for bulk downloads.
 
-Also discovered LLM systematic middle-value bias on Bollywood energy (Ishq Di Baajiyaan, Kiya Kiya, Maahi Ve all classified ~0.60 despite being completely different). Essentia cross-validation is the fix — clip re-download running to replace 2,893 Spotify previews with full YouTube downloads.
+Stored Saumya's extended Spotify history for future onboarding. Documented dual-source classification as Spotify audio features replacement.
 
 ## Blockers
 
-- Clip re-download running (~24 hrs). After: re-run Essentia, validate on 5 test songs, recompute.
+- Audio clip re-download: 879/3,717 done, 5 parallel processes running. ~7 hours to completion.
 
 ## Next Steps
 
-1. When re-download completes: validate Essentia on 5 problem songs (Ishq Di Baajiyaan, Kiya Kiya, Maahi Ve, Chori Kiya Re, Slow Motion Angreza)
+1. When re-download completes: validate Essentia on 5 test songs (Ishq Di Baajiyaan, Kiya Kiya, Maahi Ve, Chori Kiya Re, Slow Motion Angreza)
 2. If validated: re-run Essentia + recompute for both libraries
-3. Listen to playlists, collect feedback, tune weights
-4. Automated daily generation (cron)
+3. Regenerate playlists and compare before/after
+4. Onboard Saumya
+5. Listen to playlists, collect feedback, tune weights
 
 ## Project Timeline
 
@@ -38,4 +39,5 @@ Also discovered LLM systematic middle-value bias on Bollywood energy (Ishq Di Ba
 - **Day 11** — Rate limit fix: batch removal, circuit breaker, double-retry disabled, pagination throttle
 - **Day 12** — Continuous intelligence: 12-signal weighted profile, cosine similarity, playlist rotation overhaul, Bollywood motivational filter, Komal's first live playlist
 - **Day 13** — Polish: auto-classify new songs, dynamic library sync, `/onboard` skill, public-ready audit, MIT license
-- **Day 14** — Cohesion fix: IDF genre similarity, BPM hard cap, original_release_year, opening energy. Clip re-download for Essentia correction of LLM middle-value bias.
+- **Day 14** — Cohesion fix: IDF genre similarity, BPM hard cap, original_release_year, opening energy
+- **Day 15** — Audio pipeline rebuild: 60s-from-start clips, YouTube auth, parallel downloads, 7% intro measurement, dual-source classification documented
