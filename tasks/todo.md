@@ -315,6 +315,7 @@
 ### Code changes — not yet built
 - [ ] `/onboard` skill — bulletproof end-to-end onboarding. Encodes every rate limit lesson, correct step ordering, idempotent resume, filtered metadata fetch, dry-run table at end.
 - [ ] Dynamic library sync — daily `recently-played` pull before playlist generation. Update engagement scores, classify new songs, keep database fresh as listening evolves. Part of automated daily generation.
+- [ ] **Bollywood energy ML model** — OnsetRate + all heuristic blends hit 60% accuracy ceiling for Bollywood. MIR literature confirms no published work on Bollywood energy detection. Next step: manually label 50-100 Bollywood songs as low/mid/high energy, train logistic regression on Essentia features (onset rate, LUFS, spectral centroid, dynamic complexity, BPM). Expected: 70-75% accuracy. This is the path to breaking the Bollywood mid-compression problem.
 - [ ] HRV CV modifier in `state_mapper.py` — adjusts neuro profile when day-to-day HRV variability is high. Same pattern as recovery delta modifier. Research done, design in SYSTEM_LOGIC.md. ~1 hour.
 - [ ] Quality testing framework — automated before/after comparison for classifier changes. ~2 hours.
 - [ ] Era cohesion sigma tuning — tune Gaussian decay values based on real playlist output
