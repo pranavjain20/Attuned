@@ -181,7 +181,7 @@ python main.py generate --dry-run  # Preview without pushing to Spotify
 python main.py classify-state      # See today's physiological classification
 ```
 
-New user setup: [docs/ONBOARDING.md](docs/ONBOARDING.md)
+**[Get onboarded →](https://github.com/pranavjain20/Attuned-Auth)**
 
 ---
 
