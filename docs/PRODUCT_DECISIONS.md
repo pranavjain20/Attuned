@@ -1059,3 +1059,30 @@ Train a simple ML model (logistic regression) on 50-100 Bollywood songs manually
 
 An LLM (Claude) agreed a song was "upbeat, celebratory" because the user said so — not because it independently knows. LLMs can't validate LLMs. User feedback is the only reliable signal for subjective properties like perceived energy in non-Western music.
 
+---
+
+## Future: Natural Language Playlist Requests (v2 Direction)
+
+### The problem: WHOOP is a morning snapshot, not a day-long signal
+**What we noticed:** WHOOP recovery is computed from overnight data — it's a great default for the first playlist of the day. But by the afternoon, your state has changed. You've showered, eaten, worked, walked — your energy is different from what your HRV said at 7am. The current system generates one playlist per day from morning data. Users need a way to request music that matches their *current* state, not just their morning state.
+
+### The idea: natural language + WHOOP as calibration
+**Concept:** Users describe what they want in natural language — "I'm walking to campus, want something upbeat" or "need to focus for the next hour" or "feeling low, want something calming." An LLM translates that into a target neuro profile + context filters, and the existing matching engine pulls songs from their classified library.
+
+**Key insight — WHOOP becomes the scale, not the signal:** "Energetic" means something different at 30% recovery vs 90% recovery. At 30%, your body's version of energetic is a 110 BPM uplifting track — pushing it gently. At 90%, energetic is 140 BPM full throttle. The WHOOP data doesn't get replaced by natural language — it *calibrates* what the natural language means. It defines the range within which "energetic" or "calm" operates for your body today.
+
+So it's not WHOOP *or* natural language. It's:
+- **WHOOP** = the rails (what your body can handle today, what it needs)
+- **Natural language** = the override (what you want right now, given your current context)
+
+### Why the architecture supports this
+The expensive work (song classification, Essentia analysis, engagement scoring) is already done. The matching engine already takes a neuro profile and returns songs. The only new piece is a **natural language → neuro profile translation** layer — one LLM call that maps user intent to target para/symp/grnd values and filter constraints (BPM range, mood tags, energy level), calibrated by today's WHOOP data.
+
+### What this changes about the product
+- Attuned goes from "one playlist per morning" to "on-demand playlists throughout the day"
+- The WHOOP integration becomes more valuable, not less — it's the personalization layer that makes generic requests ("play something energetic") into body-aware responses
+- Opens the door to conversational refinement: "more upbeat" / "less intense" / "something like what you gave me yesterday"
+
+### Status
+Idea stage. Architecture is ready. Needs: natural language → neuro profile mapping, WHOOP-based calibration logic, and a conversational interface (CLI first, then potentially a lightweight app).
+
