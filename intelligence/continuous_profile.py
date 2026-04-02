@@ -291,14 +291,24 @@ def compute_continuous_profile(
     else:
         profile = dict(NEUTRAL_PROFILE)
 
+    # Compute target valence — what emotional tone fits this body state.
+    # Weighted sum: each neuro dimension targets a different valence.
+    from config import VALENCE_TARGET_PARA, VALENCE_TARGET_SYMP, VALENCE_TARGET_GRND
+    target_valence = (
+        profile["para"] * VALENCE_TARGET_PARA
+        + profile["symp"] * VALENCE_TARGET_SYMP
+        + profile["grnd"] * VALENCE_TARGET_GRND
+    )
+
     logger.info(
-        "Continuous profile: para=%.2f symp=%.2f grnd=%.2f (%d signals, %d interactions)",
+        "Continuous profile: para=%.2f symp=%.2f grnd=%.2f (target_valence=%.2f, %d signals, %d interactions)",
         profile["para"], profile["symp"], profile["grnd"],
-        signals_used, len(interactions),
+        target_valence, signals_used, len(interactions),
     )
 
     return {
         "profile": profile,
+        "target_valence": target_valence,
         "z_scores": z_scores,
         "signals_used": signals_used,
         "interactions": interactions,

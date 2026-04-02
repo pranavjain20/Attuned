@@ -107,9 +107,9 @@ def compute_parasympathetic(
     energy_score = (1.0 - energy) * 0.25 * aw
     acoustic_score = acousticness * 0.10 * aw
     instrum_score = instrumentalness * 0.10 * aw
-    valence_score = gaussian(valence, center=0.35, sigma=0.2) * 0.10 * aw
+    valence_score = gaussian(valence, center=0.55, sigma=0.2) * 0.12 * aw
     mode_score = (1.0 if mode == "major" else 0.5) * 0.05 * aw
-    dance_score = gaussian(danceability, center=0.3, sigma=0.2) * 0.05 * aw
+    dance_score = gaussian(danceability, center=0.3, sigma=0.2) * 0.03 * aw
 
     mood_score = compute_mood_score(mood_tags, "para") * MOOD_TAG_WEIGHT
 
@@ -172,7 +172,7 @@ def compute_grounding(
     - Higher energy center (0.40 vs para's inverse) — engaged, not silent
     - Moderate acousticness (gaussian, not raw) — warmth, not pure quiet
     - Inverted instrumentalness — vocals/lyrics for emotional connection
-    - Warmer valence center (0.55 vs para's 0.35) — emotionally present
+    - Same valence center (0.55) — emotionally present, warm
     - Mood tags: reflective, introspective, nostalgic, romantic
     """
     aw = 1.0 - MOOD_TAG_WEIGHT

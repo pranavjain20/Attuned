@@ -204,6 +204,17 @@ STATE_NEURO_PROFILES: dict[str, dict[str, float]] = {
     "peak_readiness":       {"para": 0.00, "symp": 0.90, "grnd": 0.10},
 }
 
+# Target valence per dimension — what emotional tone each neuro state needs.
+# Para (calming) → warm/serene (0.60), not sad. Symp (energizing) → uplifting (0.75).
+# Grnd (emotional processing) → reflective/melancholy OK (0.40).
+# Russell's Circumplex: calming = low arousal + positive valence.
+VALENCE_TARGET_PARA = 0.60
+VALENCE_TARGET_SYMP = 0.75
+VALENCE_TARGET_GRND = 0.40
+
+# How much target valence affects song selection (0.0 = ignored, 1.0 = only valence).
+VALENCE_MATCH_WEIGHT = 0.15
+
 # ---------------------------------------------------------------------------
 # Mood tag affinity (used in profiler)
 # ---------------------------------------------------------------------------
@@ -257,12 +268,12 @@ MOOD_AFFINITY: dict[str, tuple[float, float, float]] = {
     "chill":          (0.75, 0.00, 0.15),
     "gentle":         (0.70, 0.00, 0.30),
     "ethereal":       (0.70, 0.00, 0.35),
-    "melancholy":     (0.70, 0.00, 0.50),
-    "melancholic":    (0.70, 0.00, 0.50),
+    "melancholy":     (0.45, 0.00, 0.70),
+    "melancholic":    (0.45, 0.00, 0.70),
     "laid-back":      (0.70, 0.05, 0.20),
     "spiritual":      (0.65, 0.00, 0.55),
     "devotional":     (0.70, 0.00, 0.55),
-    "sad":            (0.60, 0.00, 0.55),
+    "sad":            (0.35, 0.00, 0.75),
     "smooth":         (0.45, 0.15, 0.40),
     # --- High grounding ---
     "introspective":  (0.30, 0.05, 0.90),

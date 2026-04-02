@@ -267,6 +267,7 @@ def generate_playlist(
     from intelligence.continuous_profile import compute_continuous_profile
     continuous = compute_continuous_profile(conn, date_str)
     neuro_profile_override = continuous["profile"]
+    target_valence = continuous.get("target_valence")
 
     z_summary = {k: round(v, 2) for k, v in continuous["z_scores"].items() if v is not None}
     logger.info(
@@ -278,7 +279,7 @@ def generate_playlist(
             logger.info("Interaction: %s", interaction)
 
     # 2. Match songs
-    match_result = select_songs(conn, state, date_str, neuro_profile_override=neuro_profile_override)
+    match_result = select_songs(conn, state, date_str, neuro_profile_override=neuro_profile_override, target_valence=target_valence)
     songs = match_result["songs"]
 
     if not songs:

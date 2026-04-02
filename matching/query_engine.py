@@ -18,6 +18,7 @@ from config import (
     ANCHOR_RECENCY_DAYS,
     MAX_PLAYLIST_SIZE,
     MIN_MATCH_FLOOR,
+    VALENCE_MATCH_WEIGHT,
 )
 from db.queries import (
     get_all_classified_songs,
@@ -210,14 +211,28 @@ def compute_engagement_p75(songs: list[dict[str, Any]]) -> float:
     return scores[idx]
 
 
+def compute_valence_match(song_valence: float | None, target_valence: float | None) -> float:
+    """Gaussian similarity between song's valence and target valence.
+
+    Returns 1.0 when perfectly matched, decays with distance (sigma=0.20).
+    Returns 1.0 (neutral) if either value is missing.
+    """
+    if song_valence is None or target_valence is None:
+        return 1.0
+    diff = abs(song_valence - target_valence)
+    return math.exp(-0.5 * (diff / 0.20) ** 2)
+
+
 def score_song(
     song: dict[str, Any],
     state_profile: dict[str, float],
     recent_playlist_uris: dict[str, int] | None = None,
+    target_valence: float | None = None,
 ) -> tuple[float, dict[str, float]]:
     """Score a single song. Returns (score, breakdown).
 
-    Formula: neuro_match * confidence_mult * familiarity_mult - freshness_nudge
+    Formula: (neuro_blend * confidence_mult * familiarity_mult) - freshness_nudge
+    where neuro_blend = (1 - VALENCE_MATCH_WEIGHT) * neuro_match + VALENCE_MATCH_WEIGHT * valence_match
     """
     neuro_match = compute_neuro_match(
         song.get("parasympathetic"),
@@ -226,12 +241,20 @@ def score_song(
         state_profile,
     )
 
+    valence_match = compute_valence_match(song.get("valence"), target_valence)
+
+    # Blend neuro and valence signals
+    if target_valence is not None:
+        neuro_blend = (1 - VALENCE_MATCH_WEIGHT) * neuro_match + VALENCE_MATCH_WEIGHT * valence_match
+    else:
+        neuro_blend = neuro_match
+
     confidence_mult = compute_confidence_multiplier(song.get("confidence"))
 
     # Familiarity: penalize songs with < 5 plays (no engagement data)
     familiarity_mult = 1.0 if song.get("engagement_score") is not None else UNFAMILIAR_PENALTY
 
-    base_score = neuro_match * confidence_mult * familiarity_mult
+    base_score = neuro_blend * confidence_mult * familiarity_mult
 
     # Freshness nudge: tiny subtraction for recent playlist songs
     nudge = 0.0
@@ -245,6 +268,7 @@ def score_song(
 
     breakdown = {
         "neuro_match": round(neuro_match, 4),
+        "valence_match": round(valence_match, 4),
         "confidence_mult": confidence_mult,
         "familiarity_mult": familiarity_mult,
         "freshness_nudge": round(nudge, 4),
@@ -257,11 +281,12 @@ def compute_selection_scores(
     songs: list[dict[str, Any]],
     state_profile: dict[str, float],
     recent_playlist_uris: dict[str, int] | None = None,
+    target_valence: float | None = None,
 ) -> list[tuple[dict[str, Any], float, dict[str, float]]]:
     """Score all songs and return sorted list of (song, score, breakdown)."""
     scored = []
     for song in songs:
-        selection_score, breakdown = score_song(song, state_profile, recent_playlist_uris)
+        selection_score, breakdown = score_song(song, state_profile, recent_playlist_uris, target_valence=target_valence)
         scored.append((song, selection_score, breakdown))
     scored.sort(key=lambda x: x[1], reverse=True)
     return scored
@@ -448,11 +473,12 @@ def select_songs(
     state: str,
     date: str,
     neuro_profile_override: dict[str, float] | None = None,
+    target_valence: float | None = None,
 ) -> dict[str, Any]:
     """Select 15-20 songs matching the given physiological state.
 
     Algorithm:
-    1. Score ALL songs by neuro_match × confidence.
+    1. Score ALL songs by neuro_match × confidence, blended with valence match.
     2. Take the top 60 candidates (all neurologically correct).
     3. Run seed-and-expand cohesion to pick a sonically coherent subset of 20.
     4. Progressive relaxation if <15 songs pass the similarity threshold.
@@ -466,6 +492,7 @@ def select_songs(
         state: Detected physiological state (from classifier).
         date: Date string (YYYY-MM-DD) for freshness check.
         neuro_profile_override: If provided, use instead of state's default profile.
+        target_valence: Target valence from continuous profile (0.0-1.0).
 
     Returns:
         Dict with keys: songs, state, neuro_profile, match_stats.
@@ -517,7 +544,7 @@ def select_songs(
             )
 
     # Score and rank all songs (unified ranking, with freshness nudge)
-    scored = compute_selection_scores(all_songs, neuro_profile, recent_playlist_uris)
+    scored = compute_selection_scores(all_songs, neuro_profile, recent_playlist_uris, target_valence=target_valence)
 
     # Identify recent anchors — songs played within ANCHOR_RECENCY_DAYS
     anchor_indices = identify_anchors(

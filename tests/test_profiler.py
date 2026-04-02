@@ -159,13 +159,13 @@ class TestComputeParasympathetic:
             bpm=140, energy=0.95, acousticness=0.05,
             instrumentalness=0.1, valence=0.8, mode="minor", danceability=0.9,
         )
-        assert score < 0.15
+        assert score < 0.20
 
     def test_weights_sum_to_one(self):
         """Maximum possible score should be ~1.0 when all components + mood are at max."""
         score = compute_parasympathetic(
             bpm=40, energy=0.0, acousticness=1.0,
-            instrumentalness=1.0, valence=0.35, mode="major", danceability=0.3,
+            instrumentalness=1.0, valence=0.55, mode="major", danceability=0.3,
             mood_tags=["calm", "serene", "peaceful"],
         )
         assert 0.95 < score <= 1.0
@@ -560,11 +560,11 @@ class TestComputeMoodScore:
         assert score == pytest.approx(0.95)
 
     def test_mood_score_cross_dimensional(self):
-        """sad → para=0.60, grnd=0.55 (not just para=1.0)."""
+        """sad → para=0.35, grnd=0.75 (melancholy is grounding, not calming)."""
         para = compute_mood_score(["sad"], "para")
         grnd = compute_mood_score(["sad"], "grnd")
-        assert para == pytest.approx(0.60)
-        assert grnd == pytest.approx(0.55)
+        assert para == pytest.approx(0.35)
+        assert grnd == pytest.approx(0.75)
 
     def test_mood_score_mixed_tags(self):
         """energetic + romantic → symp avg(0.95, 0.25)=0.60, grnd avg(0.05, 0.80)=0.425."""
