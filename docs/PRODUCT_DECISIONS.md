@@ -1107,6 +1107,52 @@ Saumya Mehta onboarded as the third Attuned user. 51,328 listening history recor
 
 ---
 
+## Day 17: Patriotic Songs Excluded Like Motivational
+
+### The problem
+Kandhon Se Milte Hain Kandhe (patriotic/army song from Lakshya) appeared in Pranav's recovery playlist. Same issue as motivational songs — tied to a specific emotional context (national pride, army scenes) that doesn't fit calming/recovery playlists.
+
+### The fix
+Added "patriotic" to `CONTEXT_EXCLUDE_TAGS` alongside "motivational". Both are now excluded from all states except peak_readiness (where pump-up context fits). Renamed `is_bollywood_motivational()` to `is_context_specific_bollywood()` to reflect broader scope.
+
+### Effect
+Patriotic Bollywood songs no longer appear in recovery/calming playlists. Peak readiness still gets them.
+
+---
+
+## Day 17: Era Cohesion Tightened — Anchors Respect Era
+
+### The problem
+Ek Ladki Bheegi Bhagi Si (1958) and Main Koi Aisa Geet Gaoon (1999) appeared in Komal's 2020s-dominated playlist. They were anchors (recently played) — anchors bypass cohesion filtering, so era didn't matter.
+
+### Root cause
+Anchors were pre-selected into the cohesion cluster with guaranteed slots. No era check. A 1958 song in a 2020s playlist breaks the sonic feel regardless of why it was selected.
+
+### The fix
+Two changes:
+1. **ERA_HARD_CAP_SIMILARITY 0.30 → 0.15** — non-anchor cross-era songs get a much lower similarity ceiling. Nearly impossible to enter the cohesion pool.
+2. **Anchor era filter** — anchors whose release year is 15+ years from the playlist's median era are skipped. 15 years = 2.5× Bollywood sigma (6 years). A different recent song becomes the anchor instead.
+
+Why 15 years and not cohesion-based filtering: making anchors go through the full cohesion similarity matrix would be over-engineering — the similarity matrix uses the same era gaussian, so it would arrive at the same answer with more complexity and more risk to the well-tested expand_cluster algorithm.
+
+### Effect
+1958 and 1999 songs dropped from Komal's 2020s playlist. Replaced by era-appropriate anchors (Belong Together, Speak Now).
+
+---
+
+## Day 17: Ab To Forever Misclassification Fix
+
+### The problem
+Ab To Forever (Vishal-Shekhar, from Ta Ra Rum Pum) is a party song. The LLM classified it as "romantic, nostalgic" with energy 0.60. It appeared in a recovery playlist where party songs don't belong.
+
+### The fix
+Direct DB update across all 3 profiles: mood_tags changed to ["party", "energetic"], energy to 0.80, valence to 0.75, danceability to 0.85. Neuro scores recomputed. The song now correctly scores as sympathetic-dominant and won't appear in calming playlists.
+
+### Key insight
+LLM misclassifications of individual songs are inevitable. The fix is a DB override — simple, fast, permanent. No need for a structural solution when it's one song. If a pattern emerges (party songs systematically misclassified), then we revisit the prompt.
+
+---
+
 ## Future: Natural Language Playlist Requests (v2 Direction)
 
 ### The problem: WHOOP is a morning snapshot, not a day-long signal

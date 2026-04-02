@@ -2,23 +2,23 @@
 
 ## Current Phase
 
-Day 17. 1,048 tests passing. Third user (Saumya) onboarded. Fixed calming ≠ sad: target valence in continuous profile prevents depressing songs in parasympathetic playlists. Remote OAuth flow live via GitHub Pages callback.
+Day 17. 1,048 tests passing. 3 active users (Pranav, Komal, Saumya). Fixed calming ≠ sad (target valence), patriotic exclusion, era cohesion tightening, anchor era filter. Remote OAuth live.
 
 ## Last Session (Apr 1-2, 2026)
 
-Onboarded Saumya via remote OAuth (GitHub Pages callback page). Full pipeline: 51K history records, 2,289 songs classified (LLM + Essentia for 1,678, LLM-only for 611). Generated first playlist. Fixed critical bug: parasympathetic playlists included depressing songs (Surrender, Tired, Moral of the Story made Komal sadder). Root cause: profiler peaked at sad valence + matching engine was blind to valence. Fix: profiler center 0.35→0.55, intelligence layer computes target valence per profile, matching engine uses it (15% weight). Created /generate-playlists skill for daily multi-user generation.
+Onboarded Saumya via remote OAuth. Fixed calming playlists including depressing songs (profiler valence center + target valence in matching). Fixed patriotic songs leaking into recovery playlists. Tightened era cohesion (hard cap 0.30→0.15) and added 15-year anchor era filter so 1958/1999 songs don't appear in 2020s playlists. Fixed Ab To Forever misclassification. Created /generate-playlists skill. Generated playlists for all 3 users.
 
 ## Blockers
 
 - 495 of Saumya's songs missing audio clips (YouTube rate limited). Retry when unblocked.
-- Spotify dev mode: 5-user cap per app. Friends must register their own dev app (2 min). Documented in Attuned-Auth repo.
+- Spotify dev mode: 5-user cap per app. Friends register own dev app (2 min). Documented in Attuned-Auth repo.
 
 ## Next Steps
 
-1. Download remaining 495 audio clips for Saumya (retry YouTube)
+1. Download remaining 495 audio clips for Saumya
 2. Bollywood energy ML model — label 50-100 songs, train on Essentia features
 3. Automated daily generation (cron)
-4. Natural language playlist requests (v2 — product direction captured)
+4. Natural language playlist requests (v2 direction captured)
 5. Weight tuning from daily feedback
 
 ## Project Timeline
@@ -39,4 +39,4 @@ Onboarded Saumya via remote OAuth (GitHub Pages callback page). Full pipeline: 5
 - **Day 14** — Cohesion fix: IDF genre similarity, BPM hard cap, original_release_year, opening energy
 - **Day 15** — Audio pipeline rebuild: 60s-from-start clips, YouTube auth, parallel downloads, 7% intro measurement, dual-source classification documented
 - **Day 16** — Essentia validation: 60% ceiling confirmed for Bollywood, ML model identified as next step, playlists generated with corrected energy
-- **Day 17** — Third user (Saumya) onboarded, remote OAuth via GitHub Pages, calming ≠ sad fix (target valence in matching), /generate-playlists skill
+- **Day 17** — Third user (Saumya), remote OAuth, calming ≠ sad (target valence), patriotic exclusion, era cohesion tightening, anchor era filter, /generate-playlists skill
