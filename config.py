@@ -177,7 +177,7 @@ ERA_SIGMA_DEFAULT = 5
 # A 1999 song matching perfectly on mood/BPM/genre shouldn't survive in a 2010s cluster.
 # Research: production era changes are "more jarring than cultural differences."
 ERA_SIM_FLOOR = 0.05          # Below this = effectively different eras
-ERA_HARD_CAP_SIMILARITY = 0.30  # Max total similarity when era_sim < floor
+ERA_HARD_CAP_SIMILARITY = 0.15  # Max total similarity when era_sim < floor
 
 # Vibe hard cap — energy + acousticness + danceability define how music FEELS.
 # A high-energy party banger next to a quiet acoustic ballad is jarring regardless

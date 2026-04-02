@@ -296,7 +296,7 @@ def compute_selection_scores(
 # Recent anchors
 # ---------------------------------------------------------------------------
 
-CONTEXT_EXCLUDE_TAGS = frozenset({"motivational"})
+CONTEXT_EXCLUDE_TAGS = frozenset({"motivational", "patriotic"})
 
 # Bollywood motivational songs are tied to specific movie scenes (training
 # montages, sports anthems). Hearing them evokes the scene, not the mood.
@@ -308,21 +308,24 @@ BOLLYWOOD_GENRE_TAGS = frozenset({
 })
 
 
-def is_bollywood_motivational(song: dict) -> bool:
-    """Check if a song is a Bollywood motivational (scene-tied, context-specific).
+def is_context_specific_bollywood(song: dict) -> bool:
+    """Check if a song is context-specific Bollywood (motivational, patriotic).
+
+    These songs are tied to specific emotional contexts (training montages,
+    army/national pride) that don't fit recovery/calming playlists.
 
     Two detection paths:
-    1. Tag-based: mood includes "motivational" AND genre is Bollywood/Punjabi
-    2. Manual override: songs the LLM missed tagging but are known motivational
+    1. Tag-based: mood includes motivational/patriotic AND genre is Bollywood/Punjabi
+    2. Manual override: songs the LLM missed tagging but are known context-specific
     """
     uri = song.get("spotify_uri", "")
     if uri in _MOTIVATIONAL_OVERRIDES:
         return True
     mood_tags = song.get("mood_tags") or []
     genre_tags = song.get("genre_tags") or []
-    has_motivational = any(t.lower() == "motivational" for t in mood_tags)
+    has_context_tag = any(t.lower() in CONTEXT_EXCLUDE_TAGS for t in mood_tags)
     has_bollywood_genre = any(t.lower() in BOLLYWOOD_GENRE_TAGS for t in genre_tags)
-    return has_motivational and has_bollywood_genre
+    return has_context_tag and has_bollywood_genre
 
 
 # Songs the LLM didn't tag as motivational but are context-specific
@@ -347,17 +350,28 @@ def identify_anchors(
 ) -> list[int]:
     """Identify anchor candidates: top-scored songs played within recency_days.
 
-    Skips songs tagged with context-specific moods (e.g., "motivational") that
-    are tied to a specific listening context (gym) rather than general listening.
+    Skips songs that don't fit the playlist:
+    - Context-specific moods (motivational, patriotic)
+    - Era outliers: songs whose release year is too far from the top candidates'
+      median era. Anchors must be coherent with the playlist, not just recent.
 
     Returns list of indices into the scored list (already sorted by score descending).
     """
     from datetime import datetime as dt, timedelta
+    from statistics import median
 
     try:
         ref_date = dt.strptime(date, "%Y-%m-%d").date()
     except (ValueError, TypeError):
         return []
+
+    # Compute median era of top 20 candidates (the likely playlist core)
+    top_years = [
+        s.get("original_release_year")
+        for s, _, _ in scored[:20]
+        if s.get("original_release_year")
+    ]
+    median_year = median(top_years) if top_years else None
 
     cutoff = ref_date - timedelta(days=recency_days)
     anchors: list[int] = []
@@ -377,6 +391,10 @@ def identify_anchors(
         # Skip context-specific songs (gym/workout) from anchor slots
         mood_tags = song.get("mood_tags") or []
         if any(t.lower() in CONTEXT_EXCLUDE_TAGS for t in mood_tags):
+            continue
+        # Skip era outliers — anchor must fit the playlist's era
+        song_year = song.get("original_release_year")
+        if median_year and song_year and abs(song_year - median_year) > 15:
             continue
         anchors.append(idx)
 
@@ -516,7 +534,7 @@ def select_songs(
     # Exclude Bollywood motivational songs from all states except peak_readiness
     if state != "peak_readiness":
         before_count = len(all_songs)
-        all_songs = [s for s in all_songs if not is_bollywood_motivational(s)]
+        all_songs = [s for s in all_songs if not is_context_specific_bollywood(s)]
         excluded = before_count - len(all_songs)
         if excluded:
             logger.info("Excluded %d Bollywood motivational song(s) (state=%s)", excluded, state)
