@@ -2,22 +2,24 @@
 
 ## Current Phase
 
-Day 16. 1,048 tests passing. Audio pipeline complete: 3,421 clips re-downloaded as 60s-from-start, Essentia re-analyzed with opening energy for both libraries. Essentia corrects extreme energy misclassifications but hits 60% ceiling for Bollywood mid-range. Next: ML model on user-labeled data.
+Day 17. 1,048 tests passing. Third user (Saumya) onboarded. Fixed calming ≠ sad: target valence in continuous profile prevents depressing songs in parasympathetic playlists. Remote OAuth flow live via GitHub Pages callback.
 
-## Last Session (Mar 31, 2026)
+## Last Session (Apr 1-2, 2026)
 
-Validated Essentia on test songs: Slow Motion Angreza correctly 0.77 (was 0.60), Jadoo correctly 0.13 (was 0.70). But Maahi Ve only 0.50 (should be 0.30) — OnsetRate can't distinguish gentle tabla from intense dhol. Generated playlists for both users with corrected energy. Playlist quality improved (energy range 0.14-0.73 vs yesterday's 0.60-0.70 compression).
+Onboarded Saumya via remote OAuth (GitHub Pages callback page). Full pipeline: 51K history records, 2,289 songs classified (LLM + Essentia for 1,678, LLM-only for 611). Generated first playlist. Fixed critical bug: parasympathetic playlists included depressing songs (Surrender, Tired, Moral of the Story made Komal sadder). Root cause: profiler peaked at sad valence + matching engine was blind to valence. Fix: profiler center 0.35→0.55, intelligence layer computes target valence per profile, matching engine uses it (15% weight). Created /generate-playlists skill for daily multi-user generation.
 
 ## Blockers
 
-- None. System is operational.
+- 495 of Saumya's songs missing audio clips (YouTube rate limited). Retry when unblocked.
+- Spotify dev mode: 5-user cap per app. Friends must register their own dev app (2 min). Documented in Attuned-Auth repo.
 
 ## Next Steps
 
-1. **Bollywood energy ML model** — label 50-100 songs, train logistic regression on Essentia features. Expected: 70-75% accuracy (vs 60% ceiling with heuristics).
-2. Onboard Saumya (history stored, awaiting OAuth)
+1. Download remaining 495 audio clips for Saumya (retry YouTube)
+2. Bollywood energy ML model — label 50-100 songs, train on Essentia features
 3. Automated daily generation (cron)
-4. Weight tuning from daily feedback
+4. Natural language playlist requests (v2 — product direction captured)
+5. Weight tuning from daily feedback
 
 ## Project Timeline
 
@@ -37,3 +39,4 @@ Validated Essentia on test songs: Slow Motion Angreza correctly 0.77 (was 0.60),
 - **Day 14** — Cohesion fix: IDF genre similarity, BPM hard cap, original_release_year, opening energy
 - **Day 15** — Audio pipeline rebuild: 60s-from-start clips, YouTube auth, parallel downloads, 7% intro measurement, dual-source classification documented
 - **Day 16** — Essentia validation: 60% ceiling confirmed for Bollywood, ML model identified as next step, playlists generated with corrected energy
+- **Day 17** — Third user (Saumya) onboarded, remote OAuth via GitHub Pages, calming ≠ sad fix (target valence in matching), /generate-playlists skill

@@ -1061,6 +1061,52 @@ An LLM (Claude) agreed a song was "upbeat, celebratory" because the user said so
 
 ---
 
+## Day 17: Calming ≠ Sad — Target Valence in Matching
+
+### The problem
+Komal's 46% recovery playlist included Surrender (Natalie Taylor), Tired (Gavin James), Moral of the Story (Ashe). She said these songs made her sadder and more depressed. The rest of the playlist was fine — warm, feel-good. These three were gut-wrenching sad.
+
+### Root cause
+Two layers:
+
+**Layer 1 — Profiler.** The parasympathetic valence gaussian peaked at 0.35 (sad/melancholy). The system actively rewarded low-valence songs as "calming." But Russell's Circumplex (the most cited music emotion framework) says calming = low arousal + **positive** valence (serene, peaceful). Low arousal + **negative** valence = sad/melancholic — that's emotional processing (grounding), not calming.
+
+**Layer 2 — Matching blindness.** Even after fixing the profiler (sad songs correctly shifted to GRND-dominant), the matching engine still selected them. Komal's profile was balanced (para 0.36, symp 0.30, grnd 0.34) — cosine similarity across 3 dimensions can't distinguish between a PARA-matching and GRND-matching song when the profile is this balanced. Valence information was dissolved into 3 neuro scores and then lost.
+
+### The fix
+**Profiler:** Para valence gaussian center moved from 0.35 → 0.55 (warm, not sad). Weight 0.10 → 0.12 (budget from danceability 0.05 → 0.03). Mood tags melancholy/sad shifted from para toward grounding. Research-backed: Taruffi et al. 2017 found sad music activates the Default Mode Network for self-referential processing — that's the grounding function, not parasympathetic rest.
+
+**Target valence:** The intelligence layer (continuous_profile.py) now computes a target valence alongside the neuro profile: `target_valence = para × 0.60 + symp × 0.75 + grnd × 0.40`. Each dimension targets a different emotional tone — para wants warm (0.60), symp wants uplifting (0.75), grnd allows melancholy (0.40). The matching engine blends this into scoring: 85% neuro match + 15% valence match (gaussian, sigma=0.20).
+
+### Effect
+Surrender (valence 0.30) targeting 0.58: valence match = 0.38 → strongly penalized.
+Aashiyan (valence 0.60) targeting 0.58: valence match = 0.99 → perfect.
+Komal's regenerated playlist: SZA (Good Days), Ariana Grande, Harry Styles, Kishore Kumar, Khalid. Warm, feel-good. The three depressing songs are gone.
+
+### Key insight
+The intelligence layer should decide the full target — not just what neuro dimensions to emphasize, but what emotional tone fits that emphasis. "You need calming" isn't enough information for the matching engine. "You need calming, and calming means warm" is.
+
+---
+
+## Day 17: Remote OAuth for Friend Onboarding
+
+### The problem
+Onboarding friends required them to be physically present at Pranav's machine or to "copy the URL from an error page's address bar" — which is confusing for non-technical users. Saumya's first onboarding attempt failed because the instruction was too unclear.
+
+### The fix
+A static callback page hosted on GitHub Pages (`pranavjain20.github.io/Attuned-Auth/`). After OAuth authorization, Spotify/WHOOP redirects to this page, which shows a friendly "Send this code to Pranav" message with a Copy button. No error pages, no address bar inspection. The oauth_server.py `--remote` flag generates auth URLs with the GitHub Pages redirect URI; codes are exchanged manually.
+
+### Effect
+Saumya onboarded in under 2 minutes on the second attempt. The flow is: send link → friend clicks, logs in, copies code → paste code → done.
+
+---
+
+## Day 17: Saumya Onboarded — Third User
+
+Saumya Mehta onboarded as the third Attuned user. 51,328 listening history records, 10,293 unique songs, 2,289 with 2+ listens classified. 1,678 songs with Essentia audio analysis (495 pending — YouTube rate limited during bulk download). 1,052 WHOOP recovery days synced. First playlist generated: "Mar 31 — Stay Sharp" (Peak Readiness, 20 tracks, Bollywood-dominant).
+
+---
+
 ## Future: Natural Language Playlist Requests (v2 Direction)
 
 ### The problem: WHOOP is a morning snapshot, not a day-long signal
