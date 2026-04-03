@@ -492,6 +492,7 @@ def select_songs(
     date: str,
     neuro_profile_override: dict[str, float] | None = None,
     target_valence: float | None = None,
+    allow_motivational: bool = False,
 ) -> dict[str, Any]:
     """Select 15-20 songs matching the given physiological state.
 
@@ -531,8 +532,8 @@ def select_songs(
     # Exclude user-blocklisted songs
     all_songs = [s for s in all_songs if s.get("spotify_uri") not in _USER_BLOCKLIST]
 
-    # Exclude Bollywood motivational songs from all states except peak_readiness
-    if state != "peak_readiness":
+    # Exclude Bollywood motivational songs unless peak_readiness or explicitly allowed
+    if state != "peak_readiness" and not allow_motivational:
         before_count = len(all_songs)
         all_songs = [s for s in all_songs if not is_context_specific_bollywood(s)]
         excluded = before_count - len(all_songs)

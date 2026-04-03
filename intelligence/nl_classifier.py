@@ -38,6 +38,12 @@ You may also suggest filters to narrow the song selection:
 
 {whoop_context}
 
+Also decide:
+- allow_motivational: true ONLY if the context is physical exertion (gym, workout, running,
+  training, sports). Bollywood motivational songs (Chak De India, Bhaag Milkha Bhaag) are
+  tied to sports/training scenes — they fit gym playlists but NOT date nights, parties,
+  commutes, or emotional contexts. When in doubt, set false.
+
 Respond with JSON only:
 {{
   "para": float,
@@ -48,7 +54,8 @@ Respond with JSON only:
   "reasoning": "one sentence explaining the playlist direction",
   "genre_filter": ["tag1", "tag2"] or null,
   "era_filter": "1990s" or null,
-  "mood_filter": ["tag1", "tag2"] or null
+  "mood_filter": ["tag1", "tag2"] or null,
+  "allow_motivational": boolean
 }}"""
 
 _WHOOP_CONTEXT = """IMPORTANT — The user's WHOOP recovery today: {recovery}% (HRV: {hrv}ms, state: {state}).
@@ -153,4 +160,5 @@ def classify_nl_request(
         "genre_filter": data.get("genre_filter"),
         "era_filter": data.get("era_filter"),
         "mood_filter": data.get("mood_filter"),
+        "allow_motivational": bool(data.get("allow_motivational", False)),
     }

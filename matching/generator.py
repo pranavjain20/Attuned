@@ -415,6 +415,7 @@ def generate_nl_playlist(
         date=date_str,
         neuro_profile_override=neuro_profile,
         target_valence=target_valence,
+        allow_motivational=nl_result.get("allow_motivational", False),
     )
     songs = match_result["songs"]
 
