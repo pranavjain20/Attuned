@@ -515,8 +515,9 @@ def select_songs(
     neuro_profile_override: dict[str, float] | None = None,
     target_valence: float | None = None,
     allow_motivational: bool = False,
+    target_size: int | None = None,
 ) -> dict[str, Any]:
-    """Select 15-20 songs matching the given physiological state.
+    """Select songs matching the given physiological state.
 
     Algorithm:
     1. Score ALL songs by neuro_match × confidence, blended with valence match.
@@ -598,8 +599,10 @@ def select_songs(
         logger.info("Anchors (%d): %s", len(anchor_indices), ", ".join(anchor_names))
 
     # Cohesion: seed-and-expand from top candidates
+    effective_size = target_size if target_size is not None else MAX_PLAYLIST_SIZE
     cohesion_indices, cohesion_stats = select_cohesive_songs(
         scored, anchor_indices=anchor_indices if anchor_indices else None,
+        target_size=effective_size,
     )
 
     # Check match floor on the best candidate
@@ -634,7 +637,7 @@ def select_songs(
         }
         already_selected = set(cohesion_indices)
         for idx in range(len(scored)):
-            if len(selected_songs) >= MAX_PLAYLIST_SIZE:
+            if len(selected_songs) >= effective_size:
                 break
             if idx in already_selected:
                 continue

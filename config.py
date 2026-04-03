@@ -127,6 +127,8 @@ LLM_RETRY_BASE_SECONDS = 2
 # ---------------------------------------------------------------------------
 MIN_PLAYLIST_SIZE = 15
 MAX_PLAYLIST_SIZE = 20
+AVAILABILITY_BUFFER_SIZE = 5   # Over-select by this many to absorb unavailable drops
+AVAILABILITY_CACHE_DAYS = 7    # Skip re-checking songs verified within this window
 MIN_MATCH_FLOOR = 0.25  # Below this, log warning about insufficient coverage
 
 # Cohesion: seed-and-expand selection

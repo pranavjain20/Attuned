@@ -210,6 +210,43 @@ def update_song_metadata_batch(
     conn.commit()
 
 
+def update_song_availability(
+    conn: sqlite3.Connection,
+    uri: str,
+    is_available: bool,
+) -> None:
+    """Mark a song as available (True) or unavailable (False).
+
+    Sets is_available (1/0) and availability_checked_at to now (UTC ISO 8601).
+    """
+    from datetime import datetime, timezone
+
+    conn.execute(
+        "UPDATE songs SET is_available = ?, availability_checked_at = ? WHERE spotify_uri = ?",
+        (1 if is_available else 0, datetime.now(timezone.utc).isoformat(), uri),
+    )
+    conn.commit()
+
+
+def update_song_availability_batch(
+    conn: sqlite3.Connection,
+    results: list[tuple[str, bool]],
+) -> None:
+    """Batch-update availability for multiple songs.
+
+    Args:
+        results: List of (spotify_uri, is_available) tuples.
+    """
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat()
+    conn.executemany(
+        "UPDATE songs SET is_available = ?, availability_checked_at = ? WHERE spotify_uri = ?",
+        [(1 if avail else 0, now, uri) for uri, avail in results],
+    )
+    conn.commit()
+
+
 # ---------------------------------------------------------------------------
 # WHOOP recovery
 # ---------------------------------------------------------------------------
@@ -587,14 +624,17 @@ def get_all_classified_songs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
     Excludes songs that were only ever played on smart speakers (Alexa autoplay).
     A song must have at least one play >30s from a personal device (phone/desktop/web).
+    Excludes songs marked as unavailable on Spotify (is_available = 0).
+    Songs never checked (is_available IS NULL) are included.
     """
     rows = conn.execute(
         """SELECT sc.*, s.name, s.artist, s.album, s.duration_ms,
                   s.play_count, s.engagement_score, s.last_played,
-                  s.release_year
+                  s.release_year, s.is_available, s.availability_checked_at
            FROM song_classifications sc
            JOIN songs s ON sc.spotify_uri = s.spotify_uri
-           WHERE EXISTS (
+           WHERE (s.is_available IS NULL OR s.is_available = 1)
+             AND EXISTS (
                SELECT 1 FROM listening_history lh
                WHERE lh.spotify_uri = sc.spotify_uri
                  AND lh.ms_played > 30000

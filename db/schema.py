@@ -27,6 +27,7 @@ def create_tables(conn: sqlite3.Connection) -> None:
     _migrate_add_essentia_columns(conn)
     _migrate_add_original_release_year(conn)
     _migrate_add_opening_energy(conn)
+    _migrate_add_availability(conn)
 
 
 def _migrate_add_recent_play_ratio(conn: sqlite3.Connection) -> None:
@@ -102,6 +103,24 @@ def _migrate_add_opening_energy(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError as e:
         if "duplicate column" not in str(e).lower():
             raise
+
+
+def _migrate_add_availability(conn: sqlite3.Connection) -> None:
+    """Add is_available and availability_checked_at to songs table.
+
+    is_available: NULL = never checked, 1 = available, 0 = unavailable.
+    availability_checked_at: ISO 8601 timestamp of last check.
+    """
+    for col, col_type in (
+        ("is_available", "INTEGER"),
+        ("availability_checked_at", "TEXT"),
+    ):
+        try:
+            conn.execute(f"ALTER TABLE songs ADD COLUMN {col} {col_type}")
+            conn.commit()
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
 
 
 _SCHEMA_SQL = """

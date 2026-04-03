@@ -691,6 +691,75 @@ class TestGetAllClassifiedSongs:
         assert "uri:1" in uris
         assert "uri:2" not in uris
 
+    def test_excludes_unavailable_songs(self, db_conn):
+        """Songs marked is_available=0 are excluded from matching."""
+        queries.upsert_song(db_conn, "uri:avail", "Available", "Artist")
+        queries.upsert_song(db_conn, "uri:unavail", "Unavailable", "Artist")
+        queries.upsert_song(db_conn, "uri:unchecked", "Unchecked", "Artist")
+        for uri in ["uri:avail", "uri:unavail", "uri:unchecked"]:
+            queries.upsert_song_classification(db_conn, {
+                "spotify_uri": uri, "bpm": 100, "classification_source": "essentia",
+            })
+            self._add_personal_play(db_conn, uri)
+        # Mark one available, one unavailable, one unchecked (NULL)
+        db_conn.execute("UPDATE songs SET is_available = 1 WHERE spotify_uri = 'uri:avail'")
+        db_conn.execute("UPDATE songs SET is_available = 0 WHERE spotify_uri = 'uri:unavail'")
+        db_conn.commit()
+        results = queries.get_all_classified_songs(db_conn)
+        uris = [r["spotify_uri"] for r in results]
+        assert "uri:avail" in uris
+        assert "uri:unchecked" in uris  # NULL passes through
+        assert "uri:unavail" not in uris
+
+    def test_includes_availability_fields(self, db_conn):
+        """Result includes is_available and availability_checked_at for cache logic."""
+        queries.upsert_song(db_conn, "uri:1", "Song", "Artist")
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1", "bpm": 100, "classification_source": "essentia",
+        })
+        self._add_personal_play(db_conn, "uri:1")
+        queries.update_song_availability(db_conn, "uri:1", True)
+        results = queries.get_all_classified_songs(db_conn)
+        assert len(results) == 1
+        assert results[0]["is_available"] == 1
+        assert results[0]["availability_checked_at"] is not None
+
+
+class TestUpdateSongAvailability:
+    def test_marks_song_available(self, db_conn):
+        queries.upsert_song(db_conn, "uri:1", "Song", "Artist")
+        queries.update_song_availability(db_conn, "uri:1", True)
+        row = db_conn.execute("SELECT is_available, availability_checked_at FROM songs WHERE spotify_uri = 'uri:1'").fetchone()
+        assert row["is_available"] == 1
+        assert row["availability_checked_at"] is not None
+
+    def test_marks_song_unavailable(self, db_conn):
+        queries.upsert_song(db_conn, "uri:1", "Song", "Artist")
+        queries.update_song_availability(db_conn, "uri:1", False)
+        row = db_conn.execute("SELECT is_available FROM songs WHERE spotify_uri = 'uri:1'").fetchone()
+        assert row["is_available"] == 0
+
+    def test_batch_update(self, db_conn):
+        queries.upsert_song(db_conn, "uri:a", "A", "Artist")
+        queries.upsert_song(db_conn, "uri:b", "B", "Artist")
+        queries.upsert_song(db_conn, "uri:c", "C", "Artist")
+        queries.update_song_availability_batch(db_conn, [
+            ("uri:a", True), ("uri:b", False), ("uri:c", True),
+        ])
+        rows = {r["spotify_uri"]: r["is_available"] for r in db_conn.execute("SELECT spotify_uri, is_available FROM songs").fetchall()}
+        assert rows["uri:a"] == 1
+        assert rows["uri:b"] == 0
+        assert rows["uri:c"] == 1
+
+    def test_updates_checked_at_timestamp(self, db_conn):
+        queries.upsert_song(db_conn, "uri:1", "Song", "Artist")
+        queries.update_song_availability(db_conn, "uri:1", True)
+        row = db_conn.execute("SELECT availability_checked_at FROM songs WHERE spotify_uri = 'uri:1'").fetchone()
+        # Should be a valid ISO 8601 timestamp
+        from datetime import datetime
+        dt = datetime.fromisoformat(row["availability_checked_at"])
+        assert dt.year >= 2026
+
 
 class TestCountRows:
     def test_empty_table(self, db_conn):

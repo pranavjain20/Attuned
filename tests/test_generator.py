@@ -390,6 +390,62 @@ class TestFilterUnavailableTracks:
         result = _filter_unavailable_tracks(sp, songs)
         assert len(result) == 1  # no crash, treated as available
 
+    def test_persists_availability_to_db(self, mock_sleep, tmp_path):
+        """Results are written to the DB when conn is provided."""
+        from db.schema import get_connection
+        from db import queries
+
+        conn = get_connection(tmp_path / "test.db")
+        queries.upsert_song(conn, "spotify:track:a", "A", "Artist")
+        queries.upsert_song(conn, "spotify:track:b", "B", "Artist")
+
+        sp = MagicMock(spec=spotipy.Spotify)
+        sp.track.side_effect = [
+            {"uri": "spotify:track:a", "name": "A", "artists": [{"name": "Art"}], "is_playable": True},
+            {"uri": "spotify:track:b", "name": "B", "artists": [{"name": "Art"}], "is_playable": False},
+        ]
+        songs = self._make_songs(["spotify:track:a", "spotify:track:b"])
+        _filter_unavailable_tracks(sp, songs, conn=conn)
+
+        row_a = conn.execute("SELECT is_available FROM songs WHERE spotify_uri = 'spotify:track:a'").fetchone()
+        row_b = conn.execute("SELECT is_available FROM songs WHERE spotify_uri = 'spotify:track:b'").fetchone()
+        assert row_a["is_available"] == 1
+        assert row_b["is_available"] == 0
+        conn.close()
+
+    def test_skips_recently_checked_available_songs(self, mock_sleep):
+        """Songs checked within AVAILABILITY_CACHE_DAYS skip the API call."""
+        from datetime import datetime, timezone
+
+        sp = MagicMock(spec=spotipy.Spotify)
+        sp.track.return_value = {"uri": "spotify:track:b", "name": "B", "artists": [{"name": "Art"}], "is_playable": True}
+
+        recent_ts = datetime.now(timezone.utc).isoformat()
+        songs = [
+            {"spotify_uri": "spotify:track:a", "name": "A", "is_available": 1, "availability_checked_at": recent_ts},
+            {"spotify_uri": "spotify:track:b", "name": "B", "is_available": None, "availability_checked_at": None},
+        ]
+        result = _filter_unavailable_tracks(sp, songs)
+        assert len(result) == 2
+        # Only track:b should have been checked via API (track:a was cached)
+        assert sp.track.call_count == 1
+        sp.track.assert_called_once_with("b")
+
+    def test_rechecks_stale_availability(self, mock_sleep):
+        """Songs checked more than AVAILABILITY_CACHE_DAYS ago are re-checked."""
+        from datetime import datetime, timezone, timedelta
+
+        sp = MagicMock(spec=spotipy.Spotify)
+        sp.track.return_value = {"uri": "spotify:track:a", "name": "A", "artists": [{"name": "Art"}], "is_playable": True}
+
+        old_ts = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        songs = [
+            {"spotify_uri": "spotify:track:a", "name": "A", "is_available": 1, "availability_checked_at": old_ts},
+        ]
+        result = _filter_unavailable_tracks(sp, songs)
+        assert len(result) == 1
+        assert sp.track.call_count == 1  # stale, so re-checked
+
 
 class TestGeneratePlaylist:
     @patch("matching.generator.select_songs")

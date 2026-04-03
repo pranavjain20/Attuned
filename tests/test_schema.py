@@ -78,3 +78,20 @@ class TestGetConnection:
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
         ).fetchone()[0]
         assert tables >= 7
+
+    def test_availability_columns_exist(self, db_conn):
+        """Migration adds is_available and availability_checked_at to songs."""
+        cols = {r[1] for r in db_conn.execute("PRAGMA table_info(songs)").fetchall()}
+        assert "is_available" in cols
+        assert "availability_checked_at" in cols
+
+    def test_availability_defaults_null(self, db_conn):
+        """New songs have NULL availability (never checked)."""
+        db_conn.execute(
+            "INSERT INTO songs (spotify_uri, name, artist) VALUES ('uri:new', 'New', 'Art')"
+        )
+        row = db_conn.execute(
+            "SELECT is_available, availability_checked_at FROM songs WHERE spotify_uri = 'uri:new'"
+        ).fetchone()
+        assert row["is_available"] is None
+        assert row["availability_checked_at"] is None

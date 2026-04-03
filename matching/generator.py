@@ -3,7 +3,7 @@
 import logging
 import sqlite3
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta as _timedelta
 
 import spotipy
 
@@ -22,26 +22,60 @@ logger = logging.getLogger(__name__)
 def _filter_unavailable_tracks(
     sp: spotipy.Spotify,
     songs: list[dict],
+    conn: sqlite3.Connection | None = None,
 ) -> list[dict]:
     """Remove songs that are no longer playable on Spotify.
 
     Checks each track individually via sp.track() with throttling (batch
     endpoint returns 403 in dev mode). Drops tracks where is_playable is False.
     On per-track errors, treats the track as available (graceful degradation).
+
+    Persists results to the DB so future runs skip known-unavailable songs
+    at query time. Songs checked within AVAILABILITY_CACHE_DAYS skip the API call.
     """
+    from config import AVAILABILITY_CACHE_DAYS
+    from db.queries import update_song_availability_batch
     from spotify.client import SPOTIFY_TRACK_THROTTLE_SECONDS
 
     if not songs:
         return songs
 
-    unavailable_uris: set[str] = set()
+    # Determine which songs need a fresh check vs cached
+    now = datetime.now().astimezone()
+    cache_cutoff = now - _timedelta(days=AVAILABILITY_CACHE_DAYS)
+    needs_check: list[dict] = []
+    cached_available: list[dict] = []
 
-    for i, song in enumerate(songs):
+    for song in songs:
+        checked_at = song.get("availability_checked_at")
+        is_avail = song.get("is_available")
+        if checked_at and is_avail == 1:
+            try:
+                checked_dt = datetime.fromisoformat(checked_at)
+                if checked_dt > cache_cutoff:
+                    cached_available.append(song)
+                    continue
+            except (ValueError, TypeError):
+                pass
+        needs_check.append(song)
+
+    if cached_available:
+        logger.info(
+            "Availability cache: %d song(s) verified within %d days, skipping API check",
+            len(cached_available), AVAILABILITY_CACHE_DAYS,
+        )
+
+    unavailable_uris: set[str] = set()
+    availability_results: list[tuple[str, bool]] = []
+
+    for i, song in enumerate(needs_check):
         uri = song["spotify_uri"]
         track_id = uri.split(":")[-1]
         try:
             track = sp.track(track_id)
-            if track and not track.get("is_playable", True):
+            playable = track.get("is_playable", True) if track else True
+            availability_results.append((uri, playable))
+            if not playable:
                 unavailable_uris.add(uri)
                 logger.info(
                     "Dropping unavailable track: '%s' — %s (uri=%s)",
@@ -51,8 +85,12 @@ def _filter_unavailable_tracks(
                 )
         except Exception:
             logger.warning("Failed to check availability for %s — treating as available", uri)
-        if i < len(songs) - 1:
+        if i < len(needs_check) - 1:
             time.sleep(SPOTIFY_TRACK_THROTTLE_SECONDS)
+
+    # Persist availability results to DB
+    if conn is not None and availability_results:
+        update_song_availability_batch(conn, availability_results)
 
     if unavailable_uris:
         logger.info("Filtered %d unavailable track(s)", len(unavailable_uris))
@@ -278,8 +316,10 @@ def generate_playlist(
         for interaction in continuous["interactions"]:
             logger.info("Interaction: %s", interaction)
 
-    # 2. Match songs
-    match_result = select_songs(conn, state, date_str, neuro_profile_override=neuro_profile_override, target_valence=target_valence)
+    # 2. Match songs (over-select by buffer to absorb unavailable drops)
+    from config import AVAILABILITY_BUFFER_SIZE, MAX_PLAYLIST_SIZE
+    buffer_size = MAX_PLAYLIST_SIZE + AVAILABILITY_BUFFER_SIZE
+    match_result = select_songs(conn, state, date_str, neuro_profile_override=neuro_profile_override, target_valence=target_valence, target_size=buffer_size)
     songs = match_result["songs"]
 
     if not songs:
@@ -288,13 +328,14 @@ def generate_playlist(
             "Is the library classified? Run: python main.py classify-songs"
         )
 
-    # 2b. Filter unavailable tracks (Spotify may have removed them)
+    # 2b. Filter unavailable tracks (Spotify may have removed them), then trim to target
     if sp is not None:
-        songs = _filter_unavailable_tracks(sp, songs)
+        songs = _filter_unavailable_tracks(sp, songs, conn=conn)
         if not songs:
             raise GenerationError(
                 f"All matched songs for state '{state}' are unavailable on Spotify"
             )
+    songs = songs[:MAX_PLAYLIST_SIZE]
 
     # 3. Format outputs
     metrics = classification.get("metrics", {})
@@ -408,7 +449,9 @@ def generate_nl_playlist(
     neuro_profile = nl_result["profile"]
     target_valence = nl_result["target_valence"]
 
-    # 3. Match songs using existing engine
+    # 3. Match songs using existing engine (over-select for availability buffer)
+    from config import AVAILABILITY_BUFFER_SIZE, MAX_PLAYLIST_SIZE
+    buffer_size = MAX_PLAYLIST_SIZE + AVAILABILITY_BUFFER_SIZE
     match_result = select_songs(
         conn,
         state=state or "baseline",
@@ -416,6 +459,7 @@ def generate_nl_playlist(
         neuro_profile_override=neuro_profile,
         target_valence=target_valence,
         allow_motivational=nl_result.get("allow_motivational", False),
+        target_size=buffer_size,
     )
     songs = match_result["songs"]
 
@@ -425,11 +469,12 @@ def generate_nl_playlist(
             "Is the library classified? Run: python main.py classify-songs"
         )
 
-    # 3b. Filter unavailable tracks
+    # 3b. Filter unavailable tracks, then trim to target
     if sp is not None:
-        songs = _filter_unavailable_tracks(sp, songs)
+        songs = _filter_unavailable_tracks(sp, songs, conn=conn)
         if not songs:
             raise GenerationError("All matched songs are unavailable on Spotify")
+    songs = songs[:MAX_PLAYLIST_SIZE]
 
     # 4. Format outputs
     cohesion_stats = match_result["match_stats"].get("cohesion_stats", {})
