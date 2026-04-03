@@ -98,11 +98,11 @@ def classify_nl_request(
 
     system_prompt = _NL_SYSTEM_PROMPT.format(whoop_context=whoop_ctx)
 
-    from openai import OpenAI
     from config import get_openai_api_key
+    from llm_client import call_openai
 
-    client = OpenAI(api_key=get_openai_api_key())
-    response = client.chat.completions.create(
+    raw = call_openai(
+        api_key=get_openai_api_key(),
         model=LLM_MODEL_OPENAI,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -112,7 +112,6 @@ def classify_nl_request(
         temperature=0,
         timeout=30,
     )
-    raw = response.choices[0].message.content
     data = json.loads(raw)
 
     # Extract and normalize profile

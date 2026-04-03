@@ -111,12 +111,11 @@ def _build_prompt(songs: list[dict[str, Any]]) -> str:
 
 def _call_openai(prompt: str) -> dict[str, Any]:
     """Call OpenAI GPT-4o-mini for classification. Returns parsed JSON + raw response."""
-    from openai import OpenAI
-
     from config import get_openai_api_key
+    from llm_client import call_openai
 
-    client = OpenAI(api_key=get_openai_api_key())
-    response = client.chat.completions.create(
+    raw = call_openai(
+        api_key=get_openai_api_key(),
         model=LLM_MODEL_OPENAI,
         messages=[
             {"role": "system", "content": _SYSTEM_PROMPT},
@@ -126,27 +125,24 @@ def _call_openai(prompt: str) -> dict[str, Any]:
         temperature=0,
         timeout=60,
     )
-    raw = response.choices[0].message.content
     parsed = json.loads(raw)
     return {"parsed": parsed, "raw_response": raw}
 
 
 def _call_anthropic(prompt: str) -> dict[str, Any]:
     """Call Anthropic Claude for classification. Returns parsed JSON + raw response."""
-    import anthropic
-
     from config import get_anthropic_api_key
+    from llm_client import call_anthropic
 
-    client = anthropic.Anthropic(api_key=get_anthropic_api_key())
-    response = client.messages.create(
+    raw = call_anthropic(
+        api_key=get_anthropic_api_key(),
         model=LLM_MODEL_ANTHROPIC,
-        max_tokens=4096,
         system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
+        max_tokens=4096,
         temperature=0,
         timeout=60,
     )
-    raw = response.content[0].text
 
     # Anthropic doesn't have JSON mode — extract JSON from response
     try:

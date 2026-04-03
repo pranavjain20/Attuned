@@ -1578,18 +1578,9 @@ class TestCallAnthropicMalformedResponse:
         The classify_songs retry loop catches this as a generic Exception, so
         after max retries the batch is marked as 'failed' — not a hang or crash.
         """
-        mock_anthropic = MagicMock()
-        mock_client = MagicMock()
-        mock_anthropic.Anthropic.return_value = mock_client
+        non_json_text = "I cannot classify this song because I don't have enough information."
 
-        # Simulate a response with no JSON at all
-        mock_content_block = MagicMock()
-        mock_content_block.text = "I cannot classify this song because I don't have enough information."
-        mock_response = MagicMock()
-        mock_response.content = [mock_content_block]
-        mock_client.messages.create.return_value = mock_response
-
-        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+        with patch("llm_client.call_anthropic", return_value=non_json_text):
             with patch("config.get_anthropic_api_key", return_value="test-key"):
                 with pytest.raises(json.JSONDecodeError):
                     _call_anthropic("Classify these songs:\n1. \"Unknown Song\" by Unknown Artist")
