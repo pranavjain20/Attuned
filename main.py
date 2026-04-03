@@ -36,6 +36,7 @@ COMMANDS = {
     "recompute-scores": "Recompute neuro scores from existing DB data (no API calls)",
     "match-songs": "Match songs to a physiological state (testing/preview)",
     "generate": "Generate today's playlist from WHOOP state + matched songs",
+    "request": "Generate a playlist from a natural language request",
     "backfill-release-years": "Backfill release_year from Spotify for songs missing it",
     "sync-whoop-history": "Pull full WHOOP recovery + sleep history",
 }
@@ -112,6 +113,8 @@ def main() -> None:
         _cmd_match_songs(db_path)
     elif command == "generate":
         _cmd_generate(db_path)
+    elif command == "request":
+        _cmd_request(db_path)
     elif command == "auth-whoop":
         _cmd_auth_whoop(db_path)
     elif command == "auth-spotify":
@@ -796,6 +799,84 @@ def _cmd_generate(db_path: Path) -> None:
         print(f"  Para: {profile.get('para', 0):.2f}  "
               f"Symp: {profile.get('symp', 0):.2f}  "
               f"Grnd: {profile.get('grnd', 0):.2f}")
+
+        stats = result["match_stats"]
+        print(f"\nMatch stats:")
+        print(f"  Candidates: {stats['total_candidates']:,}")
+        print(f"  Selected:   {stats['selected']}")
+        cohesion = stats.get("cohesion_stats", {})
+        if cohesion:
+            print(f"  Cohesion:   mean_sim={cohesion.get('mean_similarity', 0):.4f}, "
+                  f"genre={cohesion.get('dominant_genre', 'N/A')}")
+
+        print(f"\nTracks:")
+        for i, song in enumerate(result["songs"], 1):
+            name = (song["name"] or "")[:40]
+            artist = (song["artist"] or "")[:25]
+            print(f"  {i:2d}. {name} — {artist} ({song['selection_score']:.3f})")
+    finally:
+        conn.close()
+
+
+def _cmd_request(db_path: Path) -> None:
+    """Generate a playlist from a natural language request."""
+    from matching.generator import GenerationError, generate_nl_playlist
+
+    # Extract the query from argv (everything after "request" that's not a flag)
+    query_parts = []
+    i = sys.argv.index("request") + 1
+    while i < len(sys.argv):
+        arg = sys.argv[i]
+        if arg.startswith("--"):
+            i += 2 if arg in ("--profile", "--date") else 1
+            continue
+        query_parts.append(arg)
+        i += 1
+    query = " ".join(query_parts)
+
+    if not query:
+        print("Usage: python main.py [--profile <name>] request \"your request here\"")
+        print("Example: python main.py request \"walking to campus, want something upbeat\"")
+        sys.exit(1)
+
+    dry_run = "--dry-run" in sys.argv
+
+    conn = get_connection(db_path)
+    try:
+        sp = None
+        if not dry_run:
+            from spotify.auth import get_spotify_client
+            sp = get_spotify_client(conn)
+
+        try:
+            result = generate_nl_playlist(conn, sp, query, dry_run=dry_run)
+        except GenerationError as e:
+            print(f"\nGeneration failed: {e}")
+            sys.exit(1)
+
+        mode = "DRY RUN" if dry_run else "LIVE"
+        print(f"\n{'='*50}")
+        print(f"  [{mode}] NL Playlist Generated")
+        print(f"{'='*50}")
+        print(f"  Name:    {result['name']}")
+        print(f"  Query:   \"{query}\"")
+        print(f"  Tracks:  {len(result['songs'])}")
+
+        if result.get("playlist_url"):
+            print(f"  URL:     {result['playlist_url']}")
+
+        print(f"\nDescription:")
+        print(f"  {result['description']}")
+
+        profile = result["neuro_profile"]
+        print(f"\nNeuro profile:")
+        print(f"  Para: {profile.get('para', 0):.2f}  "
+              f"Symp: {profile.get('symp', 0):.2f}  "
+              f"Grnd: {profile.get('grnd', 0):.2f}")
+        print(f"  Target valence: {result['target_valence']:.2f}")
+
+        print(f"\nReasoning:")
+        print(f"  {result.get('reasoning', '')}")
 
         stats = result["match_stats"]
         print(f"\nMatch stats:")

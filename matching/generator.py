@@ -360,3 +360,134 @@ def generate_playlist(
         "playlist_url": playlist_url,
         "dry_run": dry_run,
     }
+
+
+def generate_nl_playlist(
+    conn: sqlite3.Connection,
+    sp: spotipy.Spotify | None,
+    query: str,
+    date_str: str | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Generate a playlist from a natural language request.
+
+    Uses LLM to translate the request into a neuro profile, optionally
+    calibrated by today's WHOOP recovery. Then uses the existing matching
+    engine to find songs.
+
+    Args:
+        conn: Database connection.
+        sp: Authenticated Spotipy client (None allowed only if dry_run).
+        query: Natural language request (e.g. "walking to campus, want energy").
+        date_str: Date string (YYYY-MM-DD). Defaults to today.
+        dry_run: Preview without creating Spotify playlist.
+
+    Returns:
+        Dict with: name, description, reasoning, songs, match_stats,
+                   neuro_profile, target_valence, playlist_id, playlist_url, dry_run.
+    """
+    if date_str is None:
+        date_str = date.today().isoformat()
+
+    # 1. Get today's WHOOP recovery if available (skip if not)
+    recovery_score = None
+    hrv = None
+    state = None
+    try:
+        classification = classify_state(conn, date_str)
+        state = classification["state"]
+        metrics = classification.get("metrics", {})
+        recovery_score = metrics.get("recovery_score")
+        hrv = metrics.get("hrv_rmssd_milli")
+    except Exception:
+        logger.info("No WHOOP data for NL request — skipping calibration")
+
+    # 2. Classify NL request
+    from intelligence.nl_classifier import classify_nl_request
+    nl_result = classify_nl_request(query, recovery_score, hrv, state)
+    neuro_profile = nl_result["profile"]
+    target_valence = nl_result["target_valence"]
+
+    # 3. Match songs using existing engine
+    match_result = select_songs(
+        conn,
+        state=state or "baseline",
+        date=date_str,
+        neuro_profile_override=neuro_profile,
+        target_valence=target_valence,
+    )
+    songs = match_result["songs"]
+
+    if not songs:
+        raise GenerationError(
+            f"No songs matched for request '{query}'. "
+            "Is the library classified? Run: python main.py classify-songs"
+        )
+
+    # 3b. Filter unavailable tracks
+    if sp is not None:
+        songs = _filter_unavailable_tracks(sp, songs)
+        if not songs:
+            raise GenerationError("All matched songs are unavailable on Spotify")
+
+    # 4. Format outputs
+    cohesion_stats = match_result["match_stats"].get("cohesion_stats", {})
+    name_suffix = nl_result.get("playlist_name_suffix", "On Demand")
+    dt = datetime.strptime(date_str, "%Y-%m-%d")
+    name = f"{dt.strftime('%b %-d')} — {name_suffix}"
+    description = generate_description(neuro_profile, songs, cohesion_stats)
+    track_uris = [s["spotify_uri"] for s in songs]
+
+    reasoning = (
+        f"NL request: \"{query}\"\n"
+        f"Recovery: {recovery_score}%\n" if recovery_score else f"NL request: \"{query}\"\n"
+        f"No WHOOP data\n"
+    )
+    reasoning += (
+        f"\n{nl_result['reasoning']}\n"
+        f"\nNeuro profile: para={neuro_profile['para']:.2f} "
+        f"symp={neuro_profile['symp']:.2f} grnd={neuro_profile['grnd']:.2f}\n"
+        f"Target valence: {target_valence:.2f}"
+    )
+
+    # 5. Create Spotify playlist
+    playlist_id = None
+    playlist_url = None
+
+    if not dry_run:
+        if sp is None:
+            raise GenerationError("Spotify client required for live playlist creation")
+        result = create_playlist(sp, name, description, track_uris)
+        playlist_id = result["playlist_id"]
+        playlist_url = result["playlist_url"]
+
+    # 6. Log to DB
+    insert_generated_playlist(
+        conn,
+        date=date_str,
+        detected_state="nl_request",
+        track_uris=track_uris,
+        reasoning=reasoning,
+        whoop_metrics={"recovery_score": recovery_score, "hrv": hrv, "nl_query": query},
+        description=description,
+        spotify_playlist_id=playlist_id,
+    )
+
+    logger.info(
+        "Generated NL playlist '%s': %d tracks, query='%s', dry_run=%s",
+        name, len(songs), query[:50], dry_run,
+    )
+
+    return {
+        "name": name,
+        "description": description,
+        "reasoning": reasoning,
+        "songs": songs,
+        "match_stats": match_result["match_stats"],
+        "neuro_profile": neuro_profile,
+        "target_valence": target_valence,
+        "playlist_id": playlist_id,
+        "playlist_url": playlist_url,
+        "dry_run": dry_run,
+        "nl_query": query,
+    }
