@@ -15,7 +15,7 @@ TWILIO_WHATSAPP_NUMBER = os.getenv("TWILIO_WHATSAPP_NUMBER", "+14155238886")
 # Loaded from env: WHATSAPP_PRANAV=+91..., WHATSAPP_KOMAL=+91..., etc.
 PHONE_TO_PROFILE: dict[str, str] = {}
 for env_key, profile_name in [
-    ("WHATSAPP_PRANAV", "pranav"),
+    ("WHATSAPP_PRANAV", "default"),
     ("WHATSAPP_KOMAL", "komal"),
     ("WHATSAPP_SAUMYA", "saumya"),
 ]:

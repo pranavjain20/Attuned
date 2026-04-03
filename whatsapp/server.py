@@ -36,8 +36,11 @@ def webhook():
     from_number = flask_request.form.get("From", "")  # "whatsapp:+919876543210"
     body = flask_request.form.get("Body", "").strip()
 
-    # Strip "whatsapp:" prefix to get clean phone number
-    phone = from_number.replace("whatsapp:", "")
+    # Strip "whatsapp:" prefix to get clean phone number.
+    # Twilio sends "whatsapp:+16507989300" but form decoding turns + into space.
+    phone = from_number.replace("whatsapp:", "").strip()
+    if phone and not phone.startswith("+"):
+        phone = "+" + phone
 
     logger.info("Incoming from %s: '%s'", phone, body[:80])
 

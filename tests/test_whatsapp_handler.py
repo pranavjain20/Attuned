@@ -7,14 +7,13 @@ import pytest
 
 class TestHandleMessage:
 
+    @patch("whatsapp.handler.threading")
     @patch("whatsapp.handler.PHONE_TO_PROFILE", {"+1111": "testuser"})
-    @patch("whatsapp.handler.get_spotify_client")
-    @patch("whatsapp.handler.generate_nl_playlist")
     @patch("whatsapp.handler.classify_nl_request")
     @patch("whatsapp.handler.classify_state")
     @patch("whatsapp.handler.get_connection")
-    def test_clear_request_generates_immediately(
-        self, mock_conn, mock_state, mock_classify, mock_generate, mock_sp,
+    def test_clear_request_returns_dj_message_and_spawns_thread(
+        self, mock_conn, mock_state, mock_classify, mock_threading,
     ):
         from whatsapp.handler import handle_message, _conversations
 
@@ -27,19 +26,13 @@ class TestHandleMessage:
             "target_valence": 0.70,
             "allow_motivational": True,
         }
-        mock_generate.return_value = {
-            "dj_message": "Let's go!",
-            "playlist_url": "https://open.spotify.com/playlist/abc",
-            "name": "Gym Motivation",
-            "songs": [{}] * 17,
-        }
 
         reply = handle_message("+1111", "gym motivational")
 
         assert "Let's go!" in reply
-        assert "https://open.spotify.com/playlist/abc" in reply
-        assert "17 tracks" in reply
+        assert "Building your playlist" in reply
         assert "+1111" not in _conversations
+        mock_threading.Thread.assert_called_once()  # background generation spawned
 
     @patch("whatsapp.handler.PHONE_TO_PROFILE", {"+1111": "testuser"})
     @patch("whatsapp.handler.classify_state")
@@ -64,14 +57,13 @@ class TestHandleMessage:
         assert "+1111" in _conversations
         assert _conversations["+1111"]["original_query"] == "im feeling sad"
 
+    @patch("whatsapp.handler.threading")
     @patch("whatsapp.handler.PHONE_TO_PROFILE", {"+1111": "testuser"})
-    @patch("whatsapp.handler.get_spotify_client")
-    @patch("whatsapp.handler.generate_nl_playlist")
     @patch("whatsapp.handler.classify_nl_request")
     @patch("whatsapp.handler.classify_state")
     @patch("whatsapp.handler.get_connection")
     def test_clarification_reply_combines_and_generates(
-        self, mock_conn, mock_state, mock_classify, mock_generate, mock_sp,
+        self, mock_conn, mock_state, mock_classify, mock_threading,
     ):
         from whatsapp.handler import handle_message, _conversations
 
@@ -87,12 +79,6 @@ class TestHandleMessage:
             "target_valence": 0.30,
             "allow_motivational": False,
         }
-        mock_generate.return_value = {
-            "dj_message": "Heartbreak playlist incoming.",
-            "playlist_url": "https://open.spotify.com/playlist/xyz",
-            "name": "Heartbreak Anthems",
-            "songs": [{}] * 20,
-        }
 
         reply = handle_message("+1111", "missing someone")
 
@@ -104,6 +90,7 @@ class TestHandleMessage:
 
         assert "Heartbreak playlist incoming." in reply
         assert "+1111" not in _conversations
+        mock_threading.Thread.assert_called_once()
 
     def test_unknown_phone_returns_error(self):
         from whatsapp.handler import handle_message
