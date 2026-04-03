@@ -2,11 +2,15 @@
 
 ## Current Phase
 
-Day 18. 1,048 tests passing. 3 active users. Natural language playlist engine built (v2 Phase 1) — users describe what they want, LLM translates to neuro profile calibrated by WHOOP recovery. Saumya audio coverage at 85%.
+Day 19. 1,082 tests passing. 3 active users. NL engine now supports mood/genre/era filtering — "all motivational songs" actually gives motivational songs. Song availability tracking prevents dead tracks. All three users have live playlists on Spotify.
 
 ## Last Session (Apr 3, 2026)
 
-Built NL playlist engine: LLM translates natural language ("going to gym, hype me up") to neuro profile + target valence, calibrated by WHOOP recovery. Same word "upbeat" produces different playlists at 35% vs 90% recovery. LLM decides context-specific decisions (gym hype → allow motivational songs, date hype → don't). Tested 9 queries successfully. Downloaded Saumya's remaining clips to 85% (1,959/2,289). Essentia running on new clips.
+Fixed Python import system wedged by `pkill -9` (pyc cache corruption from last session). Generated live playlists for all 3 users: Pranav (Settle In, poor sleep), Komal (Fuel Up, baseline), Saumya (Rest & Repair, poor recovery).
+
+Built song availability tracking: `is_available` + `availability_checked_at` columns on songs table. Generator persists Spotify availability checks to DB, matching engine excludes `is_available=0`. 7-day cache. 5-song buffer for drops. All users now get full 20-track playlists.
+
+Built NL mood/genre/era filter pipeline: LLM outputs `mood_filter`, system expands via `MOOD_CLUSTERS`, matching engine restricts candidates. Iterated through 4 rounds: mood filter wiring → cluster expansion (too broad with "empowering") → tightened clusters → anchor filter. Final "gym motivational" playlist: 17 pure gym anthems, zero party songs, zero duplicates. Also added title-only dedup (two "Ziddi Dil" → one).
 
 ## Blockers
 
@@ -15,7 +19,7 @@ Built NL playlist engine: LLM translates natural language ("going to gym, hype m
 
 ## Next Steps
 
-1. Test more NL prompts live + tune
+1. Test more NL prompts live (romantic, chill, sad, etc.) + tune clusters
 2. Recompute Saumya's scores after Essentia finishes
 3. Automated daily generation (cron)
 4. WhatsApp integration for NL requests (Phase 2)
@@ -41,3 +45,4 @@ Built NL playlist engine: LLM translates natural language ("going to gym, hype m
 - **Day 16** — Essentia validation: 60% ceiling confirmed for Bollywood, ML model identified as next step, playlists generated with corrected energy
 - **Day 17** — Third user (Saumya), remote OAuth, calming ≠ sad (target valence), patriotic exclusion, era cohesion tightening, /generate-playlists skill
 - **Day 18** — Natural language playlist engine (v2 Phase 1), LLM-based context decisions (gym vs date hype), Saumya audio 78%→85%
+- **Day 19** — Song availability tracking (is_available + cache), NL mood/genre/era filters, mood cluster expansion, title-only dedup, anchor mood filtering

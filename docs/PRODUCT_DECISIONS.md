@@ -1210,3 +1210,41 @@ Twilio WhatsApp API. User texts a number → webhook → NL engine → playlist 
 
 Downloaded 165 additional audio clips for Saumya via 5 parallel agents. Coverage went from 1,794/2,289 (78%) to 1,959/2,289 (85%). Remaining 330 songs are mostly missing `duration_ms` (can't verify YouTube match) or yt-dlp timeouts — near the ceiling for automated downloads. Essentia analysis running on new clips.
 
+---
+
+## Day 19: Song Availability Tracking
+
+### Problem
+Songs removed or region-restricted on Spotify were only discovered at playlist push time, dropping tracks from the final playlist (Komal got 18/20, Saumya 19/20).
+
+### Solution
+Added `is_available` + `availability_checked_at` columns to the songs table. The generator's existing per-track Spotify check now persists results to the DB. Songs marked `is_available=0` are excluded from the matching query — they never get selected again. Songs checked within 7 days skip the API call (cache). The matching engine over-selects by 5 (25 instead of 20) so even if 1-3 drop, the playlist stays at 20.
+
+**Effect:** All three users now get full 20-track playlists. Subsequent generations are faster because cached songs skip the 3-second-per-track API check.
+
+---
+
+## Day 19: NL Mood/Genre/Era Filters
+
+### Problem
+"Going to the gym, all motivational songs" produced a playlist dominated by party songs (Daaru Desi, Cutiepie, Lat Lag Gayee). The NL engine set `allow_motivational=True` which just stopped excluding motivational songs — it didn't prioritize them. Party songs outnumbered motivational songs and won on neuro-score.
+
+### Root causes and fixes
+
+**1. No filtering mechanism existed.** The NL classifier LLM already output `mood_filter`, `genre_filter`, `era_filter` fields — but nobody read them. Wired these through `generate_nl_playlist()` → `select_songs()` → `_apply_nl_filters()`. Mood filter is a hard restriction on the candidate pool. Genre and era filters work the same way.
+
+**2. "Empowering" ≠ "motivational".** First attempt expanded mood tags via clusters (e.g. "motivational" → ["motivational", "empowering", "inspirational", ...]). Too broad — Dua Lipa's "Houdini" (empowering/confident) is not a gym song. Choo Lo (inspirational) is feel-good indie, not gym motivation. Tightened motivational cluster to just ["motivational", "triumphant"]. The neuro profile (high symp) already handles energy filtering.
+
+**3. LLM added unrequested filters.** The LLM inferred `genre_filter: ["bollywood"]` from library context, dropping Lose Yourself and Hall of Fame. Strengthened the prompt: genre_filter and era_filter are ONLY set when the user literally mentions a genre or era.
+
+**4. Anchors bypassed mood filter.** Recent plays got guaranteed playlist slots regardless of mood. Fixed: when mood_filter is active, anchors must match the filter.
+
+**5. Same-title dedup.** Two "Ziddi Dil" (different artists) appeared in the same playlist. Added a title-only dedup pass after the existing title+artist dedup. Keeps the higher-scored version.
+
+### Mood cluster expansion
+`MOOD_CLUSTERS` in config.py maps primary intent to related tags. The LLM outputs one tag ("motivational"), the system expands it. Per-filter graceful fallback: if a filter reduces the pool below 15, it's skipped.
+
+**Final result for "going to the gym, all motivational songs":** 17 tracks, all actual gym anthems — Bhaag Milkha Bhaag, Chak De India, Lose Yourself, Apna Time Aayega, Kar Har Maidaan Fateh, Get Ready To Fight. Zero party/dance songs. Zero duplicates.
+
+**Effect:** NL engine now understands "all motivational" means restrict to motivational, not "allow motivational among everything else."
+
