@@ -1288,3 +1288,13 @@ Flask webhook server at `/webhook` receives Twilio POST, extracts phone number +
 
 **Why WhatsApp over Telegram:** Users already have WhatsApp. Telegram requires downloading a new app — that's friction for non-technical users.
 
+### Live testing bugs (found only by real WhatsApp testing, not unit tests)
+
+**1. Twilio webhook timeout.** Twilio expects a response within 15 seconds. Playlist generation takes 60+ seconds (availability checks at 3s/song). Unit tests with mocks never hit this. Fix: return DJ message immediately via TwiML, spawn background thread for generation, send playlist link via Twilio messaging API when ready. Users see two messages: DJ personality message, then the playlist link ~60 seconds later.
+
+**2. Phone number URL encoding.** Twilio sends `whatsapp:+16507989300` in form data. The `+` becomes a space in URL form decoding. The handler looked up ` 16507989300` instead of `+16507989300` — no match. Fix: strip whitespace and re-add `+` prefix.
+
+**3. Profile DB mapping.** Primary user data is in `attuned.db` (default, no --profile flag), but WhatsApp config mapped to `db/pranav.db` (empty). Fix: map primary user to "default" profile which routes to `attuned.db`.
+
+**Key lesson:** All three bugs were invisible to unit tests. The success criterion for the WhatsApp bot was "text from phone, get playlist on Spotify" — and only live testing found these. Curl tests caught the phone parsing but not the timeout.
+

@@ -14,7 +14,7 @@ Built NL mood/genre/era filter pipeline with mood cluster expansion. Iterated th
 
 Conversational DJ: ambiguous requests ("I'm feeling sad") get a clarifying question before generating. Clear requests ("gym motivational") generate immediately with a warm DJ message. Same starting prompt + different answer = completely different playlist (heartbreak vs uplifting). LLM decides when to clarify vs generate.
 
-WhatsApp bot: Flask webhook server receives Twilio messages, routes through the same NL pipeline. Phone-to-profile mapping via env vars. In-memory conversation state with 10-min TTL for clarifications. Ready to deploy — needs Twilio account setup and ngrok.
+WhatsApp bot: Flask webhook server receives Twilio messages, routes through the same NL pipeline. Phone-to-profile mapping via env vars. In-memory conversation state with 10-min TTL for clarifications. Async generation (DJ message immediate, playlist link follows ~60s later). Tested live on WhatsApp — full flow working: clarify → DJ message → Spotify playlist link with rich preview.
 
 ## Blockers
 
@@ -23,7 +23,7 @@ WhatsApp bot: Flask webhook server receives Twilio messages, routes through the 
 
 ## Next Steps
 
-1. Deploy WhatsApp bot: Twilio account, ngrok, add phone numbers to .env, test live
+1. Onboard Komal + Saumya on WhatsApp (add phone numbers to .env, have them join sandbox)
 2. More NL prompt testing (romantic, chill, study, etc.) + tune clusters
 3. Recompute Saumya's scores after Essentia finishes
 4. Automated daily generation (cron)
