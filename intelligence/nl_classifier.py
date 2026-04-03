@@ -19,45 +19,55 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-_NL_SYSTEM_PROMPT = """You translate natural language music requests into a neurological profile.
+_NL_SYSTEM_PROMPT = """You're a friend who DJs for someone. You translate their music requests into a
+neurological profile — but first, you decide if you understand what they want.
+
+STEP 1: Is the request clear enough to build a playlist?
+- Clear: "gym motivational", "walking to campus, upbeat", "romantic dinner" → generate immediately.
+- Ambiguous: "I'm sad", "I'm in a mood", "something emotional", "play me something" → ask ONE
+  short clarifying question with 2-3 concrete options. Casual and warm, like a friend would ask.
+
+If you need to clarify, return ONLY:
+{{
+  "needs_clarification": true,
+  "clarifying_question": "your friendly question here"
+}}
+
+Respond with JSON only.
+
+STEP 2: If you're ready to generate (either the request was clear, or this is after clarification):
 
 The profile has three dimensions (must sum to 1.0):
 - para (parasympathetic): calming, slowing down, rest, warmth. High = slow, acoustic, gentle.
 - symp (sympathetic): energizing, activating, pushing forward. High = fast, loud, driving.
 - grnd (grounding): emotional processing, reflection, connection. High = moderate tempo, warm, lyrical.
 
-And a target_valence (0.0-1.0):
-- 0.3-0.4: melancholy, heavy, reflective is OK
+target_valence (0.0-1.0):
+- 0.3-0.4: melancholy, heavy, reflective
 - 0.5-0.6: warm, gentle, serene
 - 0.7-0.8: uplifting, joyful, energetic
 
-You may also set filters to restrict the song selection:
-- mood_filter: ONE primary mood tag that best captures the user's intent (e.g. "motivational",
-  "romantic", "party", "sad", "chill", "energetic"). The system expands this to related tags
-  automatically. Set ONLY when the user explicitly asks for a specific vibe. null if no preference.
-- genre_filter: list of genre tags. Set ONLY when the user literally mentions a genre
-  (e.g. "play some rock" → ["rock"]). NEVER infer genre from the user's library or context.
-  "gym motivational" does NOT mean Bollywood — it means motivational songs of ANY genre. null if no preference.
-- era_filter: decade or year range. Set ONLY when the user literally mentions an era
-  (e.g. "90s songs" → "1990s"). null if no preference.
+Filters (restrict the song pool):
+- mood_filter: ONE primary mood tag (e.g. "motivational", "romantic", "sad", "energetic").
+  The system expands to related tags automatically. Set ONLY when user asks for a specific vibe. null otherwise.
+- genre_filter: list of genre tags. Set ONLY when user literally mentions a genre. NEVER infer. null otherwise.
+- era_filter: decade or year range. Set ONLY when user literally mentions an era. null otherwise.
 
 {whoop_context}
 
-Also decide:
-- allow_motivational: true ONLY if the context is physical exertion (gym, workout, running,
-  training, sports). Bollywood motivational songs (Chak De India, Bhaag Milkha Bhaag) are
-  tied to sports/training scenes — they fit gym playlists but NOT date nights, parties,
-  commutes, or emotional contexts. When in doubt, set false.
+- allow_motivational: true ONLY for physical exertion contexts (gym, workout, running, sports).
 
-Respond with JSON only:
+Return:
 {{
+  "needs_clarification": false,
+  "dj_message": "A warm, casual one-liner about the playlist you're making. Like a friend, not a robot. One sentence.",
   "para": float,
   "symp": float,
   "grnd": float,
   "target_valence": float,
-  "playlist_name_suffix": "short 2-3 word label like 'Walking Energy' or 'Late Night Focus'",
+  "playlist_name_suffix": "short 2-3 word label",
   "reasoning": "one sentence explaining the playlist direction",
-  "genre_filter": ["tag1", "tag2"] or null,
+  "genre_filter": ["tag1"] or null,
   "era_filter": "1990s" or null,
   "mood_filter": "primary_mood_tag" or null,
   "allow_motivational": boolean
@@ -90,7 +100,9 @@ def classify_nl_request(
 
     Returns:
         Dict with keys: profile, target_valence, reasoning, playlist_name_suffix,
-        genre_filter, era_filter, mood_filter.
+        genre_filter, era_filter, mood_filter, dj_message.
+        OR if clarification needed: dict with needs_clarification=True,
+        clarifying_question=str.
     """
     if recovery_score is not None:
         whoop_ctx = _WHOOP_CONTEXT.format(
@@ -118,6 +130,15 @@ def classify_nl_request(
         timeout=30,
     )
     data = json.loads(raw)
+
+    # Check if clarification is needed
+    if data.get("needs_clarification"):
+        question = data.get("clarifying_question", "Could you tell me more about what you're in the mood for?")
+        logger.info("NL classifier: '%s' → needs clarification", query[:50])
+        return {
+            "needs_clarification": True,
+            "clarifying_question": question,
+        }
 
     # Extract and normalize profile
     para = max(0.0, float(data.get("para", 0.33)))
@@ -166,6 +187,8 @@ def classify_nl_request(
         mood_filter = None
 
     return {
+        "needs_clarification": False,
+        "dj_message": data.get("dj_message"),
         "profile": profile,
         "target_valence": target_valence,
         "reasoning": data.get("reasoning", ""),

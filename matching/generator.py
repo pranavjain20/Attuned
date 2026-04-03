@@ -409,6 +409,7 @@ def generate_nl_playlist(
     query: str,
     date_str: str | None = None,
     dry_run: bool = False,
+    nl_result: dict | None = None,
 ) -> dict:
     """Generate a playlist from a natural language request.
 
@@ -422,10 +423,11 @@ def generate_nl_playlist(
         query: Natural language request (e.g. "walking to campus, want energy").
         date_str: Date string (YYYY-MM-DD). Defaults to today.
         dry_run: Preview without creating Spotify playlist.
+        nl_result: Pre-classified NL result (skips internal classification if provided).
 
     Returns:
         Dict with: name, description, reasoning, songs, match_stats,
-                   neuro_profile, target_valence, playlist_id, playlist_url, dry_run.
+                   neuro_profile, target_valence, playlist_id, playlist_url, dry_run, dj_message.
     """
     if date_str is None:
         date_str = date.today().isoformat()
@@ -443,9 +445,10 @@ def generate_nl_playlist(
     except Exception:
         logger.info("No WHOOP data for NL request — skipping calibration")
 
-    # 2. Classify NL request
-    from intelligence.nl_classifier import classify_nl_request
-    nl_result = classify_nl_request(query, recovery_score, hrv, state)
+    # 2. Classify NL request (unless pre-classified)
+    if nl_result is None:
+        from intelligence.nl_classifier import classify_nl_request
+        nl_result = classify_nl_request(query, recovery_score, hrv, state)
     neuro_profile = nl_result["profile"]
     target_valence = nl_result["target_valence"]
 
@@ -539,4 +542,5 @@ def generate_nl_playlist(
         "playlist_url": playlist_url,
         "dry_run": dry_run,
         "nl_query": query,
+        "dj_message": nl_result.get("dj_message"),
     }

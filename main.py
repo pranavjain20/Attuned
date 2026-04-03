@@ -819,7 +819,9 @@ def _cmd_generate(db_path: Path) -> None:
 
 
 def _cmd_request(db_path: Path) -> None:
-    """Generate a playlist from a natural language request."""
+    """Generate a playlist from a natural language request (interactive)."""
+    from intelligence.nl_classifier import classify_nl_request
+    from intelligence.state_classifier import classify_state
     from matching.generator import GenerationError, generate_nl_playlist
 
     # Extract the query from argv (everything after "request" that's not a flag)
@@ -848,8 +850,56 @@ def _cmd_request(db_path: Path) -> None:
             from spotify.auth import get_spotify_client
             sp = get_spotify_client(conn)
 
+        # Get WHOOP context for NL calibration
+        recovery_score = None
+        hrv = None
+        state = None
         try:
-            result = generate_nl_playlist(conn, sp, query, dry_run=dry_run)
+            classification = classify_state(conn)
+            state = classification["state"]
+            metrics = classification.get("metrics", {})
+            recovery_score = metrics.get("recovery_score")
+            hrv = metrics.get("hrv_rmssd_milli")
+        except Exception:
+            pass
+
+        # Phase 1: Classify — may return a clarifying question
+        nl_result = classify_nl_request(query, recovery_score, hrv, state)
+
+        # If the DJ needs clarification, ask and re-classify
+        if nl_result.get("needs_clarification"):
+            print(f"\n  {nl_result['clarifying_question']}")
+            answer = input("\n  > ").strip()
+            if answer:
+                refined_query = f"{query}. {answer}"
+                nl_result = classify_nl_request(refined_query, recovery_score, hrv, state)
+                query = refined_query
+
+        # If still needs clarification after one round, force generation
+        if nl_result.get("needs_clarification"):
+            nl_result = classify_nl_request(
+                f"{query}. IMPORTANT: Do not ask any more questions. "
+                f"You have enough information. Set needs_clarification to false "
+                f"and generate the profile now.",
+                recovery_score, hrv, state,
+            )
+            # Safety: if STILL clarifying, strip the flag and force with a neutral profile
+            if nl_result.get("needs_clarification"):
+                logger.warning("NL classifier stuck in clarification loop — forcing generation")
+                nl_result["needs_clarification"] = False
+                nl_result["dj_message"] = "Here's something that might fit the mood."
+                nl_result.setdefault("profile", {"para": 0.33, "symp": 0.34, "grnd": 0.33})
+                nl_result.setdefault("target_valence", 0.50)
+                nl_result.setdefault("reasoning", "Forced generation after clarification loop")
+                nl_result.setdefault("playlist_name_suffix", "For You")
+                nl_result.setdefault("allow_motivational", False)
+
+        # Print DJ message
+        if nl_result.get("dj_message"):
+            print(f"\n  {nl_result['dj_message']}")
+
+        try:
+            result = generate_nl_playlist(conn, sp, query, dry_run=dry_run, nl_result=nl_result)
         except GenerationError as e:
             print(f"\nGeneration failed: {e}")
             sys.exit(1)
