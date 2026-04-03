@@ -1153,28 +1153,60 @@ LLM misclassifications of individual songs are inevitable. The fix is a DB overr
 
 ---
 
-## Future: Natural Language Playlist Requests (v2 Direction)
+## Day 18: Natural Language Playlist Engine (v2 Phase 1)
 
-### The problem: WHOOP is a morning snapshot, not a day-long signal
-**What we noticed:** WHOOP recovery is computed from overnight data — it's a great default for the first playlist of the day. But by the afternoon, your state has changed. You've showered, eaten, worked, walked — your energy is different from what your HRV said at 7am. The current system generates one playlist per day from morning data. Users need a way to request music that matches their *current* state, not just their morning state.
+### The problem
+WHOOP recovery is a morning snapshot. By afternoon, your state has changed — you've showered, eaten, worked, walked. Users need playlists throughout the day that match their *current* context, not just morning physiology.
 
-### The idea: natural language + WHOOP as calibration
-**Concept:** Users describe what they want in natural language — "I'm walking to campus, want something upbeat" or "need to focus for the next hour" or "feeling low, want something calming." An LLM translates that into a target neuro profile + context filters, and the existing matching engine pulls songs from their classified library.
+### The solution
+One LLM call translates natural language to a neuro profile + target valence, calibrated by today's WHOOP recovery. The existing matching engine does the rest — zero new scoring logic.
 
-**Key insight — WHOOP becomes the scale, not the signal:** "Energetic" means something different at 30% recovery vs 90% recovery. At 30%, your body's version of energetic is a 110 BPM uplifting track — pushing it gently. At 90%, energetic is 140 BPM full throttle. The WHOOP data doesn't get replaced by natural language — it *calibrates* what the natural language means. It defines the range within which "energetic" or "calm" operates for your body today.
+```
+"walking to campus, want something upbeat" (50% recovery)
+    → LLM → {para: 0.20, symp: 0.60, grnd: 0.20, valence: 0.70}
+    → select_songs() → 20 tracks → Spotify playlist
+```
 
-So it's not WHOOP *or* natural language. It's:
-- **WHOOP** = the rails (what your body can handle today, what it needs)
-- **Natural language** = the override (what you want right now, given your current context)
+### Key product decisions
 
-### Why the architecture supports this
-The expensive work (song classification, Essentia analysis, engagement scoring) is already done. The matching engine already takes a neuro profile and returns songs. The only new piece is a **natural language → neuro profile translation** layer — one LLM call that maps user intent to target para/symp/grnd values and filter constraints (BPM range, mood tags, energy level), calibrated by today's WHOOP data.
+**WHOOP = scale, NL = direction.** "Upbeat" at 35% recovery → symp 0.55 (moderate). "Upbeat" at 90% → symp 0.85 (full throttle). Same word, different intensity. The user describes what they want, WHOOP defines how much their body can handle.
 
-### What this changes about the product
-- Attuned goes from "one playlist per morning" to "on-demand playlists throughout the day"
-- The WHOOP integration becomes more valuable, not less — it's the personalization layer that makes generic requests ("play something energetic") into body-aware responses
-- Opens the door to conversational refinement: "more upbeat" / "less intense" / "something like what you gave me yesterday"
+**Works without WHOOP.** If recovery isn't available, the request is interpreted at face value. No calibration, but still functional.
 
-### Status
-Idea stage. Architecture is ready. Needs: natural language → neuro profile mapping, WHOOP-based calibration logic, and a conversational interface (CLI first, then potentially a lightweight app).
+**LLM makes context decisions, not keywords.** The LLM decides whether Bollywood motivational songs (Chak De India, Bhaag Milkha Bhaag) should be included. "Going to gym, hype me up" → allow_motivational=true. "Going on a date, hype me up" → allow_motivational=false. Same word "hype", different context. Keywords can't distinguish this; the LLM can.
+
+**3-5 NL playlists per day per user.** Rate limited to prevent API cost blowup.
+
+**New playlist each time, auto-cleanup next morning.** "Apr 3 — Walking Energy", "Apr 3 — Focus Mode" etc. Unfollowed automatically when the next day's WHOOP playlist generates. Daily WHOOP playlist always stays.
+
+**Link + short explanation.** Response format: "Walking energy at 50% recovery — keeping it moderate. [Spotify link]"
+
+### Tested queries and results
+
+| Request | Recovery | Profile | Valence | Playlist Name |
+|---------|----------|---------|---------|---------------|
+| walking to campus, upbeat | 50% | symp 0.60 | 0.70 | Campus Energy |
+| need to focus for studying | 50% | para 0.45, symp 0.35 | 0.50 | Study Focus |
+| feeling sad, need comfort | 35% | para 0.70 | 0.40 | Comforting Melancholy |
+| party vibes | 80% | symp 0.80 | 0.75 | Party Energy |
+| winding down, help me sleep | 45% | para 0.70 | 0.40 | Sleepy Wind Down |
+| play old Bollywood music | 60% | para 0.45, symp 0.35 | 0.50 | Classic Bollywood Vibes |
+| going to gym, max hype | 50% | symp 0.80 | 0.80 | Max Hype |
+| going to gym, hype me up | 50% | symp 0.70, motiv=true | 0.80 | Gym Motivation |
+| going on a date, hype me up | 50% | symp 0.55, motiv=false | 0.70 | Date Night Vibes |
+
+### Architecture
+- `intelligence/nl_classifier.py` — LLM translates NL → profile. One OpenAI call (~$0.01).
+- `matching/generator.py` → `generate_nl_playlist()` — orchestrates: WHOOP context → NL classify → select_songs → create_playlist
+- `main.py` → `request` command — CLI interface
+- All existing matching/cohesion/playlist code reused unchanged
+
+### Phase 2 (future): WhatsApp integration
+Twilio WhatsApp API. User texts a number → webhook → NL engine → playlist → reply with link. ~$18/month for 10 users. Sandbox supports 5 pre-registered numbers without business verification.
+
+---
+
+## Day 18: Saumya Audio Coverage 78% → 85%
+
+Downloaded 165 additional audio clips for Saumya via 5 parallel agents. Coverage went from 1,794/2,289 (78%) to 1,959/2,289 (85%). Remaining 330 songs are mostly missing `duration_ms` (can't verify YouTube match) or yt-dlp timeouts — near the ceiling for automated downloads. Essentia analysis running on new clips.
 

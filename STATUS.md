@@ -2,24 +2,24 @@
 
 ## Current Phase
 
-Day 17. 1,048 tests passing. 3 active users (Pranav, Komal, Saumya). Fixed calming ≠ sad (target valence), patriotic exclusion, era cohesion tightening, anchor era filter. Remote OAuth live.
+Day 18. 1,048 tests passing. 3 active users. Natural language playlist engine built (v2 Phase 1) — users describe what they want, LLM translates to neuro profile calibrated by WHOOP recovery. Saumya audio coverage at 85%.
 
-## Last Session (Apr 1-2, 2026)
+## Last Session (Apr 3, 2026)
 
-Onboarded Saumya via remote OAuth. Fixed calming playlists including depressing songs (profiler valence center + target valence in matching). Fixed patriotic songs leaking into recovery playlists. Tightened era cohesion (hard cap 0.30→0.15) and added 15-year anchor era filter so 1958/1999 songs don't appear in 2020s playlists. Fixed Ab To Forever misclassification. Created /generate-playlists skill. Generated playlists for all 3 users.
+Built NL playlist engine: LLM translates natural language ("going to gym, hype me up") to neuro profile + target valence, calibrated by WHOOP recovery. Same word "upbeat" produces different playlists at 35% vs 90% recovery. LLM decides context-specific decisions (gym hype → allow motivational songs, date hype → don't). Tested 9 queries successfully. Downloaded Saumya's remaining clips to 85% (1,959/2,289). Essentia running on new clips.
 
 ## Blockers
 
-- 495 of Saumya's songs missing audio clips (YouTube rate limited). Retry when unblocked.
-- Spotify dev mode: 5-user cap per app. Friends register own dev app (2 min). Documented in Attuned-Auth repo.
+- 330 of Saumya's songs can't be downloaded (missing duration_ms or yt-dlp timeouts). Near ceiling.
+- Spotify dev mode: 5-user cap per app. Friends register own dev app. Documented in Attuned-Auth repo.
 
 ## Next Steps
 
-1. Download remaining 495 audio clips for Saumya
-2. Bollywood energy ML model — label 50-100 songs, train on Essentia features
+1. Test more NL prompts live + tune
+2. Recompute Saumya's scores after Essentia finishes
 3. Automated daily generation (cron)
-4. Natural language playlist requests (v2 direction captured)
-5. Weight tuning from daily feedback
+4. WhatsApp integration for NL requests (Phase 2)
+5. Per-user Spotify dev app credentials in code
 
 ## Project Timeline
 
@@ -39,4 +39,5 @@ Onboarded Saumya via remote OAuth. Fixed calming playlists including depressing 
 - **Day 14** — Cohesion fix: IDF genre similarity, BPM hard cap, original_release_year, opening energy
 - **Day 15** — Audio pipeline rebuild: 60s-from-start clips, YouTube auth, parallel downloads, 7% intro measurement, dual-source classification documented
 - **Day 16** — Essentia validation: 60% ceiling confirmed for Bollywood, ML model identified as next step, playlists generated with corrected energy
-- **Day 17** — Third user (Saumya), remote OAuth, calming ≠ sad (target valence), patriotic exclusion, era cohesion tightening, anchor era filter, /generate-playlists skill
+- **Day 17** — Third user (Saumya), remote OAuth, calming ≠ sad (target valence), patriotic exclusion, era cohesion tightening, /generate-playlists skill
+- **Day 18** — Natural language playlist engine (v2 Phase 1), LLM-based context decisions (gym vs date hype), Saumya audio 78%→85%
