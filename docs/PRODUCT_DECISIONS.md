@@ -1248,3 +1248,23 @@ Added `is_available` + `availability_checked_at` columns to the songs table. The
 
 **Effect:** NL engine now understands "all motivational" means restrict to motivational, not "allow motivational among everything else."
 
+---
+
+## Day 19: Conversational DJ
+
+### Problem
+"I'm feeling very sad and lonely" could mean romantic heartbreak, existential loneliness, homesickness, or cathartic sadness. The system guessed romantic heartbreak (Bollywood's dominant sadness flavor) and got it wrong. One-shot classification can't handle emotional ambiguity.
+
+### Solution: Clarify then generate
+The LLM now decides if the request is clear enough. If ambiguous, it asks ONE clarifying question with concrete options (like a friend would). After the answer, it generates with a warm DJ message.
+
+**Flow:**
+- "I'm feeling sad" → DJ asks: "What kind of sad? Missing someone, feeling disconnected, or want to sit in the feeling?"
+- User: "process feelings" → DJ: "I've got a reflective playlist to help you process those feelings." → melancholic grounding playlist
+- User: "feel uplifted" → DJ: "I've got a playlist to lift your spirits." → high-energy uplifting playlist
+- "Gym motivational" → no question, DJ: "Let's go. Building a playlist to push through walls." → generates immediately
+
+**Implementation:** Two new fields in the LLM JSON response: `clarifying_question` (when ambiguous) and `dj_message` (when ready to generate). `generate_nl_playlist()` accepts a pre-classified `nl_result` so the CLI handles the interactive loop and passes the final result without re-classifying. Max 1 clarification round with forceful fallback.
+
+**Effect:** Same prompt, different answers = completely different playlists. The system feels like a friend who DJs for you, not a classification tool.
+
