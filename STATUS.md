@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-Day 19. 1,082 tests passing. 3 active users. Conversational DJ: NL engine asks clarifying questions for ambiguous requests, responds with personality, supports mood/genre/era filtering. Song availability tracking prevents dead tracks.
+Day 19. 1,090 tests passing. 3 active users. WhatsApp bot built — conversational DJ over Twilio webhook. Users text a message, DJ clarifies if needed, generates playlist, replies with Spotify link.
 
 ## Last Session (Apr 3, 2026)
 
@@ -14,6 +14,8 @@ Built NL mood/genre/era filter pipeline with mood cluster expansion. Iterated th
 
 Conversational DJ: ambiguous requests ("I'm feeling sad") get a clarifying question before generating. Clear requests ("gym motivational") generate immediately with a warm DJ message. Same starting prompt + different answer = completely different playlist (heartbreak vs uplifting). LLM decides when to clarify vs generate.
 
+WhatsApp bot: Flask webhook server receives Twilio messages, routes through the same NL pipeline. Phone-to-profile mapping via env vars. In-memory conversation state with 10-min TTL for clarifications. Ready to deploy — needs Twilio account setup and ngrok.
+
 ## Blockers
 
 - 330 of Saumya's songs can't be downloaded (missing duration_ms or yt-dlp timeouts). Near ceiling.
@@ -21,10 +23,10 @@ Conversational DJ: ambiguous requests ("I'm feeling sad") get a clarifying quest
 
 ## Next Steps
 
-1. More NL prompt testing (romantic, chill, study, etc.) + tune clusters
-2. Recompute Saumya's scores after Essentia finishes
-3. Automated daily generation (cron)
-4. WhatsApp integration — conversational DJ over chat (Phase 2)
+1. Deploy WhatsApp bot: Twilio account, ngrok, add phone numbers to .env, test live
+2. More NL prompt testing (romantic, chill, study, etc.) + tune clusters
+3. Recompute Saumya's scores after Essentia finishes
+4. Automated daily generation (cron)
 5. Per-user Spotify dev app credentials in code
 
 ## Project Timeline
@@ -47,4 +49,4 @@ Conversational DJ: ambiguous requests ("I'm feeling sad") get a clarifying quest
 - **Day 16** — Essentia validation: 60% ceiling confirmed for Bollywood, ML model identified as next step, playlists generated with corrected energy
 - **Day 17** — Third user (Saumya), remote OAuth, calming ≠ sad (target valence), patriotic exclusion, era cohesion tightening, /generate-playlists skill
 - **Day 18** — Natural language playlist engine (v2 Phase 1), LLM-based context decisions (gym vs date hype), Saumya audio 78%→85%
-- **Day 19** — Song availability tracking, NL mood/genre/era filters, mood cluster expansion, title dedup, conversational DJ (clarifying questions + personality)
+- **Day 19** — Song availability tracking, NL filters + mood clusters + title dedup, conversational DJ, WhatsApp bot (Twilio webhook)

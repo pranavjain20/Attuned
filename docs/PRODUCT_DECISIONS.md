@@ -1268,3 +1268,23 @@ The LLM now decides if the request is clear enough. If ambiguous, it asks ONE cl
 
 **Effect:** Same prompt, different answers = completely different playlists. The system feels like a friend who DJs for you, not a classification tool.
 
+---
+
+## Day 19: WhatsApp Bot
+
+### Problem
+The conversational DJ only works via CLI. Komal and Saumya can't use it.
+
+### Solution: Twilio WhatsApp sandbox
+Flask webhook server at `/webhook` receives Twilio POST, extracts phone number + message, routes through the same `classify_nl_request()` → `generate_nl_playlist()` pipeline. Replies inline via TwiML.
+
+**Phone-to-profile mapping:** Env vars (`WHATSAPP_KOMAL=+...`) map phone numbers to Attuned profiles. Unknown numbers get a friendly "ask Pranav to add you" response.
+
+**Conversation state:** In-memory dict keyed by phone number. Stores pending clarification queries with 10-minute TTL. Max 1 clarification round, same as CLI.
+
+**User setup:** Text "join &lt;sandbox-word&gt;" to Twilio's sandbox number once. Then text anytime for playlists. Session expires after 72 hours of inactivity (Twilio sandbox limitation).
+
+**Cost:** ~$0.01 per conversation (2-4 messages). $1-2/month for 3 users.
+
+**Why WhatsApp over Telegram:** Users already have WhatsApp. Telegram requires downloading a new app — that's friction for non-technical users.
+
