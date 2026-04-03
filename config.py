@@ -305,6 +305,21 @@ MOOD_AFFINITY: dict[str, tuple[float, float, float]] = {
     "catchy":         (0.05, 0.40, 0.15),
 }
 
+# Mood clusters — semantically related tags grouped by user intent.
+# When the NL engine says "motivational", expand to the full cluster so we match
+# songs tagged "empowering", "inspirational", etc. too.
+MOOD_CLUSTERS: dict[str, list[str]] = {
+    "motivational": ["motivational", "triumphant"],
+    "romantic": ["romantic", "tender", "heartfelt", "passionate", "warm", "sentimental"],
+    "party": ["party", "danceable", "celebratory", "festive", "fun", "groovy"],
+    "sad": ["sad", "melancholy", "melancholic", "bittersweet", "wistful"],
+    "chill": ["chill", "relaxed", "laid-back", "calm", "peaceful", "serene"],
+    "energetic": ["energetic", "intense", "dynamic", "vibrant", "lively", "upbeat"],
+    "reflective": ["reflective", "introspective", "contemplative", "thoughtful", "nostalgic"],
+    "confident": ["confident", "rebellious", "edgy", "bold"],
+    "dreamy": ["dreamy", "ethereal", "meditative", "spiritual"],
+}
+
 # Genre tags that indicate Indian music (BPM from LLM, not Essentia)
 INDIAN_GENRE_TAGS = frozenset({
     "bollywood", "hindi", "punjabi", "indian", "desi", "bhangra",

@@ -460,6 +460,9 @@ def generate_nl_playlist(
         target_valence=target_valence,
         allow_motivational=nl_result.get("allow_motivational", False),
         target_size=buffer_size,
+        mood_filter=nl_result.get("mood_filter"),
+        genre_filter=nl_result.get("genre_filter"),
+        era_filter=nl_result.get("era_filter"),
     )
     songs = match_result["songs"]
 

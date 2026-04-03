@@ -84,13 +84,15 @@ class TestDedupNearDuplicates:
         assert len(result) == 1
         assert result[0]["spotify_uri"] == "uri:1"  # more plays
 
-    def test_keeps_different_artists(self):
+    def test_dedup_same_title_different_artists(self):
+        """Same title, different artists — keeps higher play count (avoids two 'Ziddi Dil')."""
         songs = [
             {"name": "Tum Hi Ho", "artist": "Arijit Singh", "play_count": 10, "spotify_uri": "uri:1"},
             {"name": "Tum Hi Ho", "artist": "Someone Else", "play_count": 5, "spotify_uri": "uri:2"},
         ]
         result = _dedup_near_duplicates(songs)
-        assert len(result) == 2
+        assert len(result) == 1
+        assert result[0]["artist"] == "Arijit Singh"  # more plays
 
     def test_dedup_remix_variant_same_artist(self):
         songs = [
@@ -671,6 +673,128 @@ class TestSelectSongs:
 
         # The removed duplicate (lower plays) should not appear
         assert dup_uri_b not in uris
+
+
+# ---------------------------------------------------------------------------
+# NL filter tests
+# ---------------------------------------------------------------------------
+
+class TestApplyNlFilters:
+
+    @staticmethod
+    def _apply_filters(songs, mood_filter=None, genre_filter=None, era_filter=None):
+        from matching.query_engine import _apply_nl_filters
+        return _apply_nl_filters(songs, mood_filter, genre_filter, era_filter)
+
+    def _make_songs(self, mood_tags_list, genre_tags_list=None, release_years=None):
+        songs = []
+        for i, moods in enumerate(mood_tags_list):
+            songs.append({
+                "spotify_uri": f"uri:{i}",
+                "name": f"Song {i}",
+                "mood_tags": moods,
+                "genre_tags": (genre_tags_list[i] if genre_tags_list else ["pop"]),
+                "release_year": (release_years[i] if release_years else 2020),
+            })
+        return songs
+
+    def test_mood_filter_restricts_to_matching_songs(self):
+        """With enough matching songs, filter restricts properly."""
+        songs = self._make_songs(
+            [["motivational", "energetic"]] * 10
+            + [["romantic", "nostalgic"]] * 10
+            + [["motivational", "uplifting"]] * 8,
+        )
+        result = self._apply_filters(songs, mood_filter=["motivational"])
+        assert len(result) == 18  # 10 + 8 motivational songs
+        assert all("motivational" in s["mood_tags"] for s in result)
+
+    def test_mood_filter_case_insensitive(self):
+        songs = self._make_songs(
+            [["Motivational", "Energetic"]] * 8
+            + [["romantic"]] * 8
+            + [["motivational"]] * 8,
+        )
+        result = self._apply_filters(songs, mood_filter=["motivational"])
+        assert len(result) == 16
+
+    def test_mood_filter_multiple_tags(self):
+        songs = self._make_songs(
+            [["motivational"]] * 8 + [["empowering"]] * 8 + [["romantic"]] * 8,
+        )
+        result = self._apply_filters(songs, mood_filter=["motivational", "empowering"])
+        assert len(result) == 16
+
+    def test_genre_filter_restricts(self):
+        songs = self._make_songs(
+            [["energetic"]] * 30,
+            genre_tags_list=[["bollywood"]] * 20 + [["rock"]] * 10,
+        )
+        result = self._apply_filters(songs, genre_filter=["bollywood"])
+        assert len(result) == 20
+
+    def test_era_filter_decade(self):
+        songs = self._make_songs(
+            [["energetic"]] * 30,
+            release_years=[1995] * 10 + [1998] * 10 + [2020] * 10,
+        )
+        result = self._apply_filters(songs, era_filter="1990s")
+        assert len(result) == 20  # 10 × 1995 + 10 × 1998
+
+    def test_no_filters_returns_unchanged(self):
+        songs = self._make_songs([["romantic"]] * 5)
+        result = self._apply_filters(songs)
+        assert result is songs  # same object, not a copy
+
+    def test_fallback_when_too_few_songs(self):
+        """Falls back to unfiltered pool when filter is too restrictive."""
+        songs = self._make_songs([["romantic"]] * 20 + [["motivational"]] * 2)
+        result = self._apply_filters(songs, mood_filter=["motivational"])
+        # 2 < MIN_PLAYLIST_SIZE (15), so falls back to full pool
+        assert len(result) == 22
+
+    def test_mood_and_genre_combined(self):
+        songs = self._make_songs(
+            [["motivational"]] * 10 + [["motivational"]] * 10 + [["party"]] * 10,
+            genre_tags_list=[["bollywood"]] * 10 + [["rock"]] * 10 + [["pop"]] * 10,
+        )
+        result = self._apply_filters(songs, mood_filter=["motivational"], genre_filter=["bollywood"])
+        # Mood filter: 30 → 20 (passes). Genre filter: 20 → 10 (< 15, skipped).
+        # Result keeps mood-filtered pool.
+        assert len(result) == 20
+
+
+class TestExpandMoodFilter:
+
+    @staticmethod
+    def _expand(tags):
+        from matching.query_engine import _expand_mood_filter
+        return _expand_mood_filter(tags)
+
+    def test_expands_cluster_key(self):
+        result = self._expand(["motivational"])
+        assert "motivational" in result
+        assert "triumphant" in result
+
+    def test_expands_cluster_member(self):
+        """A tag that's inside a cluster (not the key) still expands the whole cluster."""
+        result = self._expand(["triumphant"])
+        assert "motivational" in result
+        assert "triumphant" in result
+
+    def test_unknown_tag_kept_as_is(self):
+        result = self._expand(["aggressive"])
+        assert result == {"aggressive"}
+
+    def test_multiple_tags_union(self):
+        result = self._expand(["motivational", "romantic"])
+        # Should have both clusters
+        assert "triumphant" in result  # from motivational cluster
+        assert "tender" in result  # from romantic cluster
+
+    def test_case_insensitive(self):
+        result = self._expand(["Motivational"])
+        assert "triumphant" in result
 
 
 # ---------------------------------------------------------------------------

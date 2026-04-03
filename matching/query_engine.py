@@ -18,6 +18,8 @@ from config import (
     ANCHOR_RECENCY_DAYS,
     MAX_PLAYLIST_SIZE,
     MIN_MATCH_FLOOR,
+    MIN_PLAYLIST_SIZE,
+    MOOD_CLUSTERS,
     VALENCE_MATCH_WEIGHT,
 )
 from db.queries import (
@@ -73,9 +75,11 @@ def _normalize_title(name: str) -> str:
 def _dedup_near_duplicates(songs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Remove near-duplicate songs, keeping the version with more plays.
 
-    Two songs are near-duplicates if they share the same normalized title
-    AND the same artist (case-insensitive).
+    Two passes:
+    1. Same normalized title AND same artist (case-insensitive) — classic dedup.
+    2. Same normalized title, different artists — avoids two "Ziddi Dil" in one playlist.
     """
+    # Pass 1: same title + same artist
     seen: dict[tuple[str, str], dict[str, Any]] = {}
     for song in songs:
         key = (
@@ -86,7 +90,6 @@ def _dedup_near_duplicates(songs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if existing is None:
             seen[key] = song
         else:
-            # Keep the version with more plays (engagement_score as proxy)
             existing_plays = existing.get("play_count") or 0
             new_plays = song.get("play_count") or 0
             if new_plays > existing_plays:
@@ -102,7 +105,36 @@ def _dedup_near_duplicates(songs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     existing.get("name"), existing_plays,
                     song.get("name"), new_plays,
                 )
-    return list(seen.values())
+    result = list(seen.values())
+
+    # Pass 2: same title, different artists — keep higher-scored version
+    seen_titles: dict[str, dict[str, Any]] = {}
+    deduped = []
+    for song in result:
+        title = _normalize_title(song.get("name", ""))
+        existing = seen_titles.get(title)
+        if existing is None:
+            seen_titles[title] = song
+            deduped.append(song)
+        else:
+            existing_score = existing.get("selection_score") or existing.get("play_count") or 0
+            new_score = song.get("selection_score") or song.get("play_count") or 0
+            if new_score > existing_score:
+                logger.info(
+                    "Title dedup: keeping '%s' — %s over '%s' — %s (same title)",
+                    song.get("name"), song.get("artist"),
+                    existing.get("name"), existing.get("artist"),
+                )
+                deduped = [s for s in deduped if s is not existing]
+                deduped.append(song)
+                seen_titles[title] = song
+            else:
+                logger.info(
+                    "Title dedup: keeping '%s' — %s over '%s' — %s (same title)",
+                    existing.get("name"), existing.get("artist"),
+                    song.get("name"), song.get("artist"),
+                )
+    return deduped
 
 
 # ---------------------------------------------------------------------------
@@ -364,6 +396,101 @@ _USER_BLOCKLIST = frozenset({
 })
 
 
+def _expand_mood_filter(tags: list[str]) -> set[str]:
+    """Expand mood filter tags to include semantically related tags via MOOD_CLUSTERS.
+
+    E.g. ["motivational"] → {"motivational", "empowering", "inspirational", ...}
+    Tags not in any cluster are kept as-is.
+    """
+    expanded = set()
+    for tag in tags:
+        tag_lower = tag.lower()
+        if tag_lower in MOOD_CLUSTERS:
+            expanded.update(MOOD_CLUSTERS[tag_lower])
+        else:
+            # Check if this tag appears in any cluster's values
+            found = False
+            for cluster_key, cluster_tags in MOOD_CLUSTERS.items():
+                if tag_lower in cluster_tags:
+                    expanded.update(cluster_tags)
+                    found = True
+                    break
+            if not found:
+                expanded.add(tag_lower)
+    return expanded
+
+
+def _apply_nl_filters(
+    songs: list[dict],
+    mood_filter: list[str] | None,
+    genre_filter: list[str] | None,
+    era_filter: str | None,
+) -> list[dict]:
+    """Restrict candidates by NL-requested mood, genre, or era filters.
+
+    Applies each filter in order. If any filter would reduce the pool below
+    MIN_PLAYLIST_SIZE, that filter is skipped (keeping what passed so far).
+    If the very first filter already produces too few, falls back to unfiltered.
+    """
+    if not mood_filter and not genre_filter and not era_filter:
+        return songs
+
+    result = songs
+
+    if mood_filter:
+        mood_set = _expand_mood_filter(mood_filter)
+        candidate = [
+            s for s in result
+            if any(t.lower() in mood_set for t in (s.get("mood_tags") or []))
+        ]
+        logger.info("Mood filter %s (expanded: %s): %d → %d songs", mood_filter, sorted(mood_set), len(result), len(candidate))
+        if len(candidate) >= MIN_PLAYLIST_SIZE:
+            result = candidate
+        else:
+            logger.warning("Mood filter too restrictive (%d < %d) — skipping", len(candidate), MIN_PLAYLIST_SIZE)
+
+    if genre_filter:
+        genre_set = {t.lower() for t in genre_filter}
+        candidate = [
+            s for s in result
+            if any(t.lower() in genre_set for t in (s.get("genre_tags") or []))
+        ]
+        logger.info("Genre filter %s: %d → %d songs", genre_filter, len(result), len(candidate))
+        if len(candidate) >= MIN_PLAYLIST_SIZE:
+            result = candidate
+        else:
+            logger.warning("Genre filter too restrictive (%d < %d) — skipping", len(candidate), MIN_PLAYLIST_SIZE)
+
+    if era_filter:
+        candidate = _filter_by_era(result, era_filter)
+        logger.info("Era filter '%s': %d → %d songs", era_filter, len(result), len(candidate))
+        if len(candidate) >= MIN_PLAYLIST_SIZE:
+            result = candidate
+        else:
+            logger.warning("Era filter too restrictive (%d < %d) — skipping", len(candidate), MIN_PLAYLIST_SIZE)
+
+    return result
+
+
+def _filter_by_era(songs: list[dict], era: str) -> list[dict]:
+    """Filter songs by era string (e.g. '1990s', '2010s', 'pre-2005')."""
+    era_lower = era.lower().strip()
+    if era_lower.endswith("s") and era_lower[:-1].isdigit():
+        # Decade: "1990s" → 1990-1999
+        decade_start = int(era_lower[:-1])
+        return [s for s in songs if s.get("release_year") and decade_start <= s["release_year"] < decade_start + 10]
+    if era_lower.startswith("pre-") and era_lower[4:].isdigit():
+        # "pre-2005" → before 2005
+        cutoff = int(era_lower[4:])
+        return [s for s in songs if s.get("release_year") and s["release_year"] < cutoff]
+    if era_lower.startswith("post-") and era_lower[5:].isdigit():
+        # "post-2010" → 2010 and later
+        cutoff = int(era_lower[5:])
+        return [s for s in songs if s.get("release_year") and s["release_year"] >= cutoff]
+    logger.warning("Unrecognized era filter format: '%s' — ignoring", era)
+    return songs
+
+
 def identify_anchors(
     scored: list[tuple[dict, float, dict]],
     date: str,
@@ -516,6 +643,9 @@ def select_songs(
     target_valence: float | None = None,
     allow_motivational: bool = False,
     target_size: int | None = None,
+    mood_filter: list[str] | None = None,
+    genre_filter: list[str] | None = None,
+    era_filter: str | None = None,
 ) -> dict[str, Any]:
     """Select songs matching the given physiological state.
 
@@ -535,6 +665,9 @@ def select_songs(
         date: Date string (YYYY-MM-DD) for freshness check.
         neuro_profile_override: If provided, use instead of state's default profile.
         target_valence: Target valence from continuous profile (0.0-1.0).
+        mood_filter: If provided, restrict to songs with at least one matching mood tag.
+        genre_filter: If provided, restrict to songs with at least one matching genre tag.
+        era_filter: If provided, restrict to songs from that era (e.g. "1990s").
 
     Returns:
         Dict with keys: songs, state, neuro_profile, match_stats.
@@ -563,6 +696,9 @@ def select_songs(
         if excluded:
             logger.info("Excluded %d Bollywood motivational song(s) (state=%s)", excluded, state)
 
+    # Apply NL filters (mood, genre, era) — restrict candidates when user specifies
+    all_songs = _apply_nl_filters(all_songs, mood_filter, genre_filter, era_filter)
+
     # Get recent playlist URIs for freshness nudge
     recent_playlist_uris = get_recent_playlist_track_uris(conn, before_date=date, days=4)
 
@@ -589,9 +725,16 @@ def select_songs(
     scored = compute_selection_scores(all_songs, neuro_profile, recent_playlist_uris, target_valence=target_valence)
 
     # Identify recent anchors — songs played within ANCHOR_RECENCY_DAYS
+    # When mood_filter is active, only anchor songs that match the filter
     anchor_indices = identify_anchors(
         scored, date, ANCHOR_RECENCY_DAYS, ANCHOR_MAX_COUNT,
     )
+    if anchor_indices and mood_filter:
+        expanded_moods = _expand_mood_filter(mood_filter)
+        anchor_indices = [
+            i for i in anchor_indices
+            if any(t.lower() in expanded_moods for t in (scored[i][0].get("mood_tags") or []))
+        ]
     if anchor_indices:
         anchor_names = [
             f"'{scored[i][0].get('name', '?')}'" for i in anchor_indices

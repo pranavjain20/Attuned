@@ -31,10 +31,15 @@ And a target_valence (0.0-1.0):
 - 0.5-0.6: warm, gentle, serene
 - 0.7-0.8: uplifting, joyful, energetic
 
-You may also suggest filters to narrow the song selection:
-- genre_filter: list of genre tags to prefer (e.g. ["bollywood", "rock", "pop"])
-- era_filter: decade or year range (e.g. "1990s" or "pre-2005" or null if no preference)
-- mood_filter: list of mood tags to prefer (e.g. ["romantic", "party"])
+You may also set filters to restrict the song selection:
+- mood_filter: ONE primary mood tag that best captures the user's intent (e.g. "motivational",
+  "romantic", "party", "sad", "chill", "energetic"). The system expands this to related tags
+  automatically. Set ONLY when the user explicitly asks for a specific vibe. null if no preference.
+- genre_filter: list of genre tags. Set ONLY when the user literally mentions a genre
+  (e.g. "play some rock" → ["rock"]). NEVER infer genre from the user's library or context.
+  "gym motivational" does NOT mean Bollywood — it means motivational songs of ANY genre. null if no preference.
+- era_filter: decade or year range. Set ONLY when the user literally mentions an era
+  (e.g. "90s songs" → "1990s"). null if no preference.
 
 {whoop_context}
 
@@ -54,7 +59,7 @@ Respond with JSON only:
   "reasoning": "one sentence explaining the playlist direction",
   "genre_filter": ["tag1", "tag2"] or null,
   "era_filter": "1990s" or null,
-  "mood_filter": ["tag1", "tag2"] or null,
+  "mood_filter": "primary_mood_tag" or null,
   "allow_motivational": boolean
 }}"""
 
@@ -151,6 +156,15 @@ def classify_nl_request(
         query[:50], para, symp, grnd, target_valence,
     )
 
+    # Normalize mood_filter: LLM may return a string or list — always pass a list downstream
+    raw_mood = data.get("mood_filter")
+    if isinstance(raw_mood, str):
+        mood_filter = [raw_mood]
+    elif isinstance(raw_mood, list):
+        mood_filter = raw_mood
+    else:
+        mood_filter = None
+
     return {
         "profile": profile,
         "target_valence": target_valence,
@@ -158,6 +172,6 @@ def classify_nl_request(
         "playlist_name_suffix": data.get("playlist_name_suffix", "On Demand"),
         "genre_filter": data.get("genre_filter"),
         "era_filter": data.get("era_filter"),
-        "mood_filter": data.get("mood_filter"),
+        "mood_filter": mood_filter,
         "allow_motivational": bool(data.get("allow_motivational", False)),
     }
