@@ -40,14 +40,29 @@ class TestNormalizeTitle:
     def test_strips_from_double_quotes(self):
         assert _normalize_title('Tum Hi Ho Bandhu (From "Cocktail")') == "tum hi ho bandhu"
 
-    def test_preserves_remix(self):
-        assert "(remix)" in _normalize_title("Song Name (Remix)")
+    def test_strips_paren_remix(self):
+        assert _normalize_title("Song Name (Remix)") == "song name"
 
-    def test_preserves_acoustic(self):
-        assert "(acoustic)" in _normalize_title("Song Name (Acoustic)")
+    def test_strips_paren_acoustic(self):
+        assert _normalize_title("Song Name (Acoustic)") == "song name"
 
-    def test_preserves_live(self):
-        assert "(live)" in _normalize_title("Song Name (Live)")
+    def test_strips_paren_live(self):
+        assert _normalize_title("Song Name (Live)") == "song name"
+
+    def test_strips_dash_acoustic(self):
+        assert _normalize_title("tere bina - Acoustic") == "tere bina"
+
+    def test_strips_dash_unplugged(self):
+        assert _normalize_title("Song - Unplugged") == "song"
+
+    def test_strips_dash_lofi_flip(self):
+        assert _normalize_title("Song Name - Lofi Flip") == "song name"
+
+    def test_strips_paren_remaster(self):
+        assert _normalize_title("Song (Remaster)") == "song"
+
+    def test_strips_dash_remastered(self):
+        assert _normalize_title("Song - Remastered") == "song"
 
     def test_no_parens_unchanged(self):
         assert _normalize_title("Just a Song") == "just a song"
@@ -77,13 +92,23 @@ class TestDedupNearDuplicates:
         result = _dedup_near_duplicates(songs)
         assert len(result) == 2
 
-    def test_keeps_remix_as_distinct(self):
+    def test_dedup_remix_variant_same_artist(self):
         songs = [
             {"name": "Song Name", "artist": "Artist", "play_count": 10, "spotify_uri": "uri:1"},
             {"name": "Song Name (Remix)", "artist": "Artist", "play_count": 5, "spotify_uri": "uri:2"},
         ]
         result = _dedup_near_duplicates(songs)
-        assert len(result) == 2
+        assert len(result) == 1
+        assert result[0]["spotify_uri"] == "uri:1"  # more plays
+
+    def test_dedup_dash_acoustic_same_artist(self):
+        songs = [
+            {"name": "tere bina", "artist": "Zaeden", "play_count": 15, "spotify_uri": "uri:1"},
+            {"name": "tere bina - Acoustic", "artist": "Zaeden", "play_count": 5, "spotify_uri": "uri:2"},
+        ]
+        result = _dedup_near_duplicates(songs)
+        assert len(result) == 1
+        assert result[0]["spotify_uri"] == "uri:1"  # more plays
 
     def test_keeps_higher_play_count(self):
         songs = [
@@ -842,36 +867,42 @@ class TestGetDaysSinceLastAppearance:
 
     def test_yesterday_returns_1(self, db_conn):
         insert_generated_playlist(db_conn, date="2026-03-19", detected_state="baseline",
-                                  track_uris=["spotify:track:a"])
+                                  track_uris=["spotify:track:a"],
+                                  spotify_playlist_id="6DlW1gqPEcRYCSUSNhmd83")
         result = get_days_since_last_appearance(db_conn, "2026-03-20")
         assert result["spotify:track:a"] == 1
 
     def test_two_days_ago_returns_2(self, db_conn):
         insert_generated_playlist(db_conn, date="2026-03-18", detected_state="baseline",
-                                  track_uris=["spotify:track:a"])
+                                  track_uris=["spotify:track:a"],
+                                  spotify_playlist_id="6DlW1gqPEcRYCSUSNhmd83")
         result = get_days_since_last_appearance(db_conn, "2026-03-20")
         assert result["spotify:track:a"] == 2
 
     def test_gap_still_finds_most_recent(self, db_conn):
         """Song appeared 3 days ago and 1 day ago — returns 1 (most recent)."""
         insert_generated_playlist(db_conn, date="2026-03-17", detected_state="baseline",
-                                  track_uris=["spotify:track:a"])
+                                  track_uris=["spotify:track:a"],
+                                  spotify_playlist_id="6DlW1gqPEcRYCSUSNhmd83")
         insert_generated_playlist(db_conn, date="2026-03-19", detected_state="baseline",
-                                  track_uris=["spotify:track:a"])
+                                  track_uris=["spotify:track:a"],
+                                  spotify_playlist_id="43Lk4nF0nTx9JFlBEefu1f")
         result = get_days_since_last_appearance(db_conn, "2026-03-20")
         assert result["spotify:track:a"] == 1
 
     def test_song_only_in_old_playlist_still_found(self, db_conn):
         """Song from 3 days ago (no gap issue) is found with days_since=3."""
         insert_generated_playlist(db_conn, date="2026-03-17", detected_state="baseline",
-                                  track_uris=["spotify:track:a"])
+                                  track_uris=["spotify:track:a"],
+                                  spotify_playlist_id="6DlW1gqPEcRYCSUSNhmd83")
         result = get_days_since_last_appearance(db_conn, "2026-03-20")
         assert result["spotify:track:a"] == 3
 
     def test_beyond_lookback_not_found(self, db_conn):
         """Songs older than max_lookback are not returned."""
         insert_generated_playlist(db_conn, date="2026-03-10", detected_state="baseline",
-                                  track_uris=["spotify:track:a"])
+                                  track_uris=["spotify:track:a"],
+                                  spotify_playlist_id="6DlW1gqPEcRYCSUSNhmd83")
         result = get_days_since_last_appearance(db_conn, "2026-03-20", max_lookback=7)
         assert result == {}
 
@@ -881,13 +912,30 @@ class TestGetDaysSinceLastAppearance:
     def test_multiple_playlists_same_date_uses_latest_only(self, db_conn):
         """When multiple playlists exist for one date, only the latest counts."""
         insert_generated_playlist(db_conn, date="2026-03-19", detected_state="baseline",
-                                  track_uris=["spotify:track:old", "spotify:track:dropped"])
+                                  track_uris=["spotify:track:old", "spotify:track:dropped"],
+                                  spotify_playlist_id="6DlW1gqPEcRYCSUSNhmd83")
         insert_generated_playlist(db_conn, date="2026-03-19", detected_state="baseline",
-                                  track_uris=["spotify:track:final"])
+                                  track_uris=["spotify:track:final"],
+                                  spotify_playlist_id="43Lk4nF0nTx9JFlBEefu1f")
         result = get_days_since_last_appearance(db_conn, "2026-03-20")
         assert "spotify:track:final" in result
         assert "spotify:track:old" not in result
         assert "spotify:track:dropped" not in result
+
+    def test_ignores_dry_run_playlists(self, db_conn):
+        """Playlists without a spotify_playlist_id (dry runs) are not counted."""
+        insert_generated_playlist(db_conn, date="2026-03-19", detected_state="baseline",
+                                  track_uris=["spotify:track:dry_run"])
+        result = get_days_since_last_appearance(db_conn, "2026-03-20")
+        assert result == {}
+
+    def test_ignores_date_as_playlist_id(self, db_conn):
+        """Playlists where spotify_playlist_id is a date string are not counted."""
+        insert_generated_playlist(db_conn, date="2026-03-19", detected_state="baseline",
+                                  track_uris=["spotify:track:bad_id"],
+                                  spotify_playlist_id="2026-03-19")
+        result = get_days_since_last_appearance(db_conn, "2026-03-20")
+        assert result == {}
 
 
 # ---------------------------------------------------------------------------
@@ -912,33 +960,52 @@ class TestPlaylistQueries:
 
     def test_get_recent_uris_yesterday(self, db_conn):
         insert_generated_playlist(db_conn, date="2026-03-18", detected_state="baseline",
-                                  track_uris=["spotify:track:a", "spotify:track:b"])
+                                  track_uris=["spotify:track:a", "spotify:track:b"],
+                                  spotify_playlist_id="6DlW1gqPEcRYCSUSNhmd83")
         result = get_recent_playlist_track_uris(db_conn, "2026-03-19", days=2)
         assert result == {"spotify:track:a": 1, "spotify:track:b": 1}
 
     def test_get_recent_uris_newest_wins(self, db_conn):
         insert_generated_playlist(db_conn, date="2026-03-17", detected_state="baseline",
-                                  track_uris=["spotify:track:a"])
+                                  track_uris=["spotify:track:a"],
+                                  spotify_playlist_id="6DlW1gqPEcRYCSUSNhmd83")
         insert_generated_playlist(db_conn, date="2026-03-18", detected_state="baseline",
-                                  track_uris=["spotify:track:a", "spotify:track:b"])
+                                  track_uris=["spotify:track:a", "spotify:track:b"],
+                                  spotify_playlist_id="43Lk4nF0nTx9JFlBEefu1f")
         result = get_recent_playlist_track_uris(db_conn, "2026-03-19", days=2)
         assert result["spotify:track:a"] == 1
 
     def test_get_recent_uris_ignores_old(self, db_conn):
         insert_generated_playlist(db_conn, date="2026-03-15", detected_state="baseline",
-                                  track_uris=["spotify:track:old"])
+                                  track_uris=["spotify:track:old"],
+                                  spotify_playlist_id="6DlW1gqPEcRYCSUSNhmd83")
         assert get_recent_playlist_track_uris(db_conn, "2026-03-19", days=2) == {}
 
     def test_multiple_playlists_same_date_uses_latest_only(self, db_conn):
         """Iterations on same day: only the final playlist counts for freshness."""
         insert_generated_playlist(db_conn, date="2026-03-18", detected_state="baseline",
-                                  track_uris=["spotify:track:draft1", "spotify:track:dropped"])
+                                  track_uris=["spotify:track:draft1", "spotify:track:dropped"],
+                                  spotify_playlist_id="6DlW1gqPEcRYCSUSNhmd83")
         insert_generated_playlist(db_conn, date="2026-03-18", detected_state="baseline",
-                                  track_uris=["spotify:track:final"])
+                                  track_uris=["spotify:track:final"],
+                                  spotify_playlist_id="43Lk4nF0nTx9JFlBEefu1f")
         result = get_recent_playlist_track_uris(db_conn, "2026-03-19", days=2)
         assert "spotify:track:final" in result
         assert "spotify:track:draft1" not in result
         assert "spotify:track:dropped" not in result
+
+    def test_get_recent_uris_ignores_dry_runs(self, db_conn):
+        """Playlists without spotify_playlist_id (dry runs) are not counted."""
+        insert_generated_playlist(db_conn, date="2026-03-18", detected_state="baseline",
+                                  track_uris=["spotify:track:dry_run"])
+        assert get_recent_playlist_track_uris(db_conn, "2026-03-19", days=2) == {}
+
+    def test_get_recent_uris_ignores_date_as_playlist_id(self, db_conn):
+        """Playlists where spotify_playlist_id is a date string are not counted."""
+        insert_generated_playlist(db_conn, date="2026-03-18", detected_state="baseline",
+                                  track_uris=["spotify:track:bad"],
+                                  spotify_playlist_id="2026-03-18")
+        assert get_recent_playlist_track_uris(db_conn, "2026-03-19", days=2) == {}
 
 
 # ---------------------------------------------------------------------------

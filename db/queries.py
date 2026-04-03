@@ -657,8 +657,9 @@ def get_recent_playlist_track_uris(
     before_date: str,
     days: int = 2,
 ) -> dict[str, int]:
-    """Get track URIs from recent playlists for variety penalty.
+    """Get track URIs from recently pushed playlists for variety penalty.
 
+    Only counts playlists actually pushed to Spotify (valid spotify_playlist_id).
     Returns dict of {uri: days_ago} where days_ago is 1 or 2.
     If a URI appears in both day 1 and day 2 playlists, the more recent (1) wins.
     """
@@ -670,7 +671,11 @@ def get_recent_playlist_track_uris(
     for days_ago in range(days, 0, -1):  # Process oldest first so newest overwrites
         check_date = (target - timedelta(days=days_ago)).strftime("%Y-%m-%d")
         row = conn.execute(
-            "SELECT track_uris FROM generated_playlists WHERE date = ? ORDER BY id DESC LIMIT 1",
+            """SELECT track_uris FROM generated_playlists
+               WHERE date = ?
+                 AND spotify_playlist_id IS NOT NULL
+                 AND spotify_playlist_id NOT LIKE '20%'
+               ORDER BY id DESC LIMIT 1""",
             (check_date,),
         ).fetchone()
         if row and row["track_uris"]:
@@ -685,8 +690,9 @@ def get_days_since_last_appearance(
     before_date: str,
     max_lookback: int = 7,
 ) -> dict[str, int]:
-    """Find how many days ago each track last appeared in a playlist.
+    """Find how many days ago each track last appeared in a pushed playlist.
 
+    Only counts playlists actually pushed to Spotify (valid spotify_playlist_id).
     Walks backwards from before_date. Uses only the latest playlist per date.
     A track that appeared 2 days ago (but not yesterday) gets a value of 2.
 
@@ -701,7 +707,11 @@ def get_days_since_last_appearance(
     for days_ago in range(1, max_lookback + 1):
         check_date = (target - timedelta(days=days_ago)).strftime("%Y-%m-%d")
         row = conn.execute(
-            "SELECT track_uris FROM generated_playlists WHERE date = ? ORDER BY id DESC LIMIT 1",
+            """SELECT track_uris FROM generated_playlists
+               WHERE date = ?
+                 AND spotify_playlist_id IS NOT NULL
+                 AND spotify_playlist_id NOT LIKE '20%'
+               ORDER BY id DESC LIMIT 1""",
             (check_date,),
         ).fetchone()
         if row and row["track_uris"]:

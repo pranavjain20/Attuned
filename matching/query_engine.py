@@ -36,16 +36,38 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 # Strips "(From 'Movie Name')" and '(From "Movie Name")' — Bollywood album variants.
-# Does NOT strip "(Remix)", "(Acoustic)", "(Live)" — those are genuinely different.
 _FROM_PATTERN = re.compile(r"""\s*\(From\s+['"].*?['"]\)""", re.IGNORECASE)
+
+# Strips variant suffixes: "- Acoustic", "(Remix)", "- Live", "(Unplugged)", etc.
+# Two versions of the same song by the same artist shouldn't both appear in a playlist.
+_VARIANT_SUFFIXES = {"acoustic", "remix", "live", "unplugged", "lofi", "lofi flip",
+                     "slowed", "reverb", "slowed + reverb", "sped up",
+                     "deluxe", "remastered", "remaster", "radio edit"}
+_VARIANT_PATTERN = re.compile(
+    r"""\s*[-–—]\s*(?:"""
+    + "|".join(re.escape(s) for s in sorted(_VARIANT_SUFFIXES, key=len, reverse=True))
+    + r""")\s*$""",
+    re.IGNORECASE,
+)
+_PAREN_VARIANT_PATTERN = re.compile(
+    r"""\s*\(\s*(?:"""
+    + "|".join(re.escape(s) for s in sorted(_VARIANT_SUFFIXES, key=len, reverse=True))
+    + r""")\s*\)\s*$""",
+    re.IGNORECASE,
+)
 
 
 def _normalize_title(name: str) -> str:
     """Normalize song title for near-duplicate detection.
 
-    Strips "(From 'X')" / '(From "X")' suffixes and lowercases.
+    Strips "(From 'X')" / '(From "X")' album suffixes, variant suffixes like
+    "- Acoustic", "(Remix)", "(Live)", "(Unplugged)", and lowercases.
+    Two versions of the same song by the same artist collapse to the same key.
     """
-    return _FROM_PATTERN.sub("", name).strip().lower()
+    result = _FROM_PATTERN.sub("", name)
+    result = _VARIANT_PATTERN.sub("", result)
+    result = _PAREN_VARIANT_PATTERN.sub("", result)
+    return result.strip().lower()
 
 
 def _dedup_near_duplicates(songs: list[dict[str, Any]]) -> list[dict[str, Any]]:
