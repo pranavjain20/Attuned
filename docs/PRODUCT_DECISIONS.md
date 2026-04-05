@@ -1298,3 +1298,35 @@ Flask webhook server at `/webhook` receives Twilio POST, extracts phone number +
 
 **Key lesson:** All three bugs were invisible to unit tests. The success criterion for the WhatsApp bot was "text from phone, get playlist on Spotify" — and only live testing found these. Curl tests caught the phone parsing but not the timeout.
 
+---
+
+## Day 19: LLM-Direct Song Selection (Replacing Neuro-Profile Math for NL)
+
+### Problem
+The neuro-profile pipeline translates user intent into 3 numbers, then cosine similarity picks songs. This destroys information — "dark seductive Weeknd" and "soft romantic Bollywood" produce similar profiles. The math can't distinguish them. Result: user asks for 50 Shades vibes, gets In Dino and Roke Na Ruke Naina.
+
+### Root cause
+The translation layer (intent → 3 floats → cosine similarity → songs) is a lossy compression. An LLM understands "dark seductive Weeknd" means Earned It and Wicked Games — but we strip that understanding and replace it with math that can't recover the meaning.
+
+### Solution: Let the LLM pick directly
+The full library is only 18,000 tokens (1,188 songs). Claude Sonnet sees every song with its name, artist, mood tags, energy, and valence. It picks 20 directly by meaning. No neuro profile middleman.
+
+WHOOP data feeds into the conversation, not the math. The LLM knows "recovery is 35%, user wants upbeat" and can ask "want me to keep it moderate or go full throttle?" — like a friend who knows you're tired.
+
+### Iteration path
+1. **GPT-4o-mini on full library**: Failed. Picked John Denver and Pitbull for "dark seductive." Too dumb for 1,188 items — skims instead of reading.
+2. **Claude Sonnet on full library, engagement-sorted**: Right songs, wrong variety. 13/20 Prateek Kuhad for "chill campus walk" — artist concentration from position bias.
+3. **Claude Sonnet, shuffled library**: Diverse artists, wrong songs. Lost the engagement signal — picked devotional songs for a campus walk.
+4. **Claude Sonnet, artist-interleaved**: Right songs AND right variety. Round-robin by artist preserves engagement within each artist but ensures diverse artists appear early. Favorites marked with ★.
+
+### What changed
+- **NL requests**: `intelligence/nl_song_selector.py` — LLM sees full library, picks by meaning
+- **WHOOP daily playlists**: Unchanged — still neuro profiles, cosine similarity, cohesion. That path works because the signal is numerical (body state), not semantic (user intent).
+- **Version dedup**: Code-level (not prompt-level) dedup of Channa Mereya x3 → x1. The LLM can't distinguish same-song-different-URI variants.
+
+### Cost
+~$0.05 per NL request (Claude Sonnet, 18k input tokens). ~$15/month at heavy usage. Negligible vs the improvement in playlist quality.
+
+### Effect
+"Dark seductive Weeknd" → Earned It, What You Need, Nothing Compares, Starboy, Dangerous, cold/mess, Husn. Zero Bollywood romantic fillers. The LLM understands what a human DJ would understand.
+
