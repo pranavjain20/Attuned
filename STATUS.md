@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-Day 19. 1,090 tests passing. 3 active users. WhatsApp bot built — conversational DJ over Twilio webhook. Users text a message, DJ clarifies if needed, generates playlist, replies with Spotify link.
+Day 19. 1,090 tests passing. 3 active users. LLM-direct song selection: Claude Sonnet picks songs from the full library by meaning, not neuro-profile math. WhatsApp bot live on Twilio. Conversational DJ with clarifying questions.
 
 ## Last Session (Apr 3, 2026)
 
@@ -12,9 +12,9 @@ Built song availability tracking: `is_available` + `availability_checked_at` on 
 
 Built NL mood/genre/era filter pipeline with mood cluster expansion. Iterated through 4 rounds of tuning: "empowering" too broad → "inspirational" too broad → tightened to ["motivational", "triumphant"]. Added title-only dedup, anchor mood filtering, per-filter graceful fallback.
 
-Conversational DJ: ambiguous requests ("I'm feeling sad") get a clarifying question before generating. Clear requests ("gym motivational") generate immediately with a warm DJ message. Same starting prompt + different answer = completely different playlist (heartbreak vs uplifting). LLM decides when to clarify vs generate.
+Conversational DJ with clarifying questions. WhatsApp bot live on Twilio (async generation). LLM-direct song selection replaced neuro-profile-cosine pipeline for NL requests — Claude Sonnet sees full 1,188-song library interleaved by artist and picks 20 by semantic understanding. "Dark seductive Weeknd" → Earned It, What You Need, Nothing Compares (not In Dino, Roke Na Ruke Naina). WHOOP daily playlists still use neuro profiles — that path is unchanged.
 
-WhatsApp bot: Flask webhook server receives Twilio messages, routes through the same NL pipeline. Phone-to-profile mapping via env vars. In-memory conversation state with 10-min TTL for clarifications. Async generation (DJ message immediate, playlist link follows ~60s later). Tested live on WhatsApp — full flow working: clarify → DJ message → Spotify playlist link with rich preview.
+Iterated through: GPT-4o-mini (too dumb for 1,188 songs) → engagement-sorted library (artist concentration) → shuffled (lost taste signal) → artist-interleaved (right balance). Version dedup in code (Channa Mereya x3 → x1).
 
 ## Blockers
 
@@ -49,4 +49,4 @@ WhatsApp bot: Flask webhook server receives Twilio messages, routes through the 
 - **Day 16** — Essentia validation: 60% ceiling confirmed for Bollywood, ML model identified as next step, playlists generated with corrected energy
 - **Day 17** — Third user (Saumya), remote OAuth, calming ≠ sad (target valence), patriotic exclusion, era cohesion tightening, /generate-playlists skill
 - **Day 18** — Natural language playlist engine (v2 Phase 1), LLM-based context decisions (gym vs date hype), Saumya audio 78%→85%
-- **Day 19** — Song availability tracking, NL filters + mood clusters + title dedup, conversational DJ, WhatsApp bot (Twilio webhook)
+- **Day 19** — Song availability tracking, NL filters + mood clusters, conversational DJ, WhatsApp bot (Twilio), LLM-direct song selection (Claude Sonnet replaces neuro-profile math for NL)
