@@ -425,14 +425,17 @@ def _apply_nl_filters(
     mood_filter: list[str] | None,
     genre_filter: list[str] | None,
     era_filter: str | None,
+    artist_filter: list[str] | None = None,
 ) -> list[dict]:
-    """Restrict candidates by NL-requested mood, genre, or era filters.
+    """Restrict candidates by NL-requested mood, genre, era, or artist filters.
 
     Applies each filter in order. If any filter would reduce the pool below
     MIN_PLAYLIST_SIZE, that filter is skipped (keeping what passed so far).
-    If the very first filter already produces too few, falls back to unfiltered.
+    Artist filter is a soft boost: matching artists get a 2x score multiplier
+    rather than hard exclusion, so the playlist is dominated by the artist
+    but can include other songs if the artist doesn't have enough matching tracks.
     """
-    if not mood_filter and not genre_filter and not era_filter:
+    if not mood_filter and not genre_filter and not era_filter and not artist_filter:
         return songs
 
     result = songs
@@ -468,6 +471,14 @@ def _apply_nl_filters(
             result = candidate
         else:
             logger.warning("Era filter too restrictive (%d < %d) — skipping", len(candidate), MIN_PLAYLIST_SIZE)
+
+    if artist_filter:
+        artist_set = {a.lower() for a in artist_filter}
+        artist_songs = [s for s in result if (s.get("artist") or "").lower() in artist_set]
+        non_artist = [s for s in result if (s.get("artist") or "").lower() not in artist_set]
+        logger.info("Artist filter %s: %d matching songs out of %d", artist_filter, len(artist_songs), len(result))
+        # Put artist songs first so they get priority in scoring/cohesion
+        result = artist_songs + non_artist
 
     return result
 
@@ -646,6 +657,7 @@ def select_songs(
     mood_filter: list[str] | None = None,
     genre_filter: list[str] | None = None,
     era_filter: str | None = None,
+    artist_filter: list[str] | None = None,
 ) -> dict[str, Any]:
     """Select songs matching the given physiological state.
 
@@ -696,8 +708,8 @@ def select_songs(
         if excluded:
             logger.info("Excluded %d Bollywood motivational song(s) (state=%s)", excluded, state)
 
-    # Apply NL filters (mood, genre, era) — restrict candidates when user specifies
-    all_songs = _apply_nl_filters(all_songs, mood_filter, genre_filter, era_filter)
+    # Apply NL filters (mood, genre, era, artist) — restrict candidates when user specifies
+    all_songs = _apply_nl_filters(all_songs, mood_filter, genre_filter, era_filter, artist_filter)
 
     # Get recent playlist URIs for freshness nudge
     recent_playlist_uris = get_recent_playlist_track_uris(conn, before_date=date, days=4)
@@ -723,6 +735,22 @@ def select_songs(
 
     # Score and rank all songs (unified ranking, with freshness nudge)
     scored = compute_selection_scores(all_songs, neuro_profile, recent_playlist_uris, target_valence=target_valence)
+
+    # Boost artist-matched songs so they dominate the playlist.
+    # Strong boost (3x) ensures mentioned artists fill most of the playlist.
+    if artist_filter:
+        artist_set = {a.lower() for a in artist_filter}
+        ARTIST_BOOST = 5.0
+        boosted_count = 0
+        new_scored = []
+        for song, score, breakdown in scored:
+            if (song.get("artist") or "").lower() in artist_set:
+                new_scored.append((song, score * ARTIST_BOOST, breakdown))
+                boosted_count += 1
+            else:
+                new_scored.append((song, score, breakdown))
+        scored = sorted(new_scored, key=lambda x: x[1], reverse=True)
+        logger.info("Artist boost (%.1fx): %d songs boosted for %s", ARTIST_BOOST, boosted_count, artist_filter)
 
     # Identify recent anchors — songs played within ANCHOR_RECENCY_DAYS
     # When mood_filter is active, only anchor songs that match the filter

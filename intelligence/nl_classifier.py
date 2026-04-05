@@ -48,10 +48,14 @@ target_valence (0.0-1.0):
 - 0.7-0.8: uplifting, joyful, energetic
 
 Filters (restrict the song pool):
-- mood_filter: ONE primary mood tag (e.g. "motivational", "romantic", "sad", "energetic").
+- mood_filter: ONE primary mood tag (e.g. "motivational", "romantic", "sad", "energetic", "seductive").
   The system expands to related tags automatically. Set ONLY when user asks for a specific vibe. null otherwise.
+  IMPORTANT: "seductive", "freaky", "50 shades" → mood_filter: "seductive", para ~0.30, grnd ~0.40, valence ~0.40.
+  Seductive is NOT party. It's dark, slow, sultry. Low energy, not high energy.
 - genre_filter: list of genre tags. Set ONLY when user literally mentions a genre. NEVER infer. null otherwise.
 - era_filter: decade or year range. Set ONLY when user literally mentions an era. null otherwise.
+- artist_filter: list of artist names the user mentioned (e.g. ["The Weeknd", "Drake"]). Set when user
+  mentions specific artists. The system will prioritize their songs. null if no artists mentioned.
 
 {whoop_context}
 
@@ -70,6 +74,7 @@ Return:
   "genre_filter": ["tag1"] or null,
   "era_filter": "1990s" or null,
   "mood_filter": "primary_mood_tag" or null,
+  "artist_filter": ["Artist Name"] or null,
   "allow_motivational": boolean
 }}"""
 
@@ -196,5 +201,6 @@ def classify_nl_request(
         "genre_filter": data.get("genre_filter"),
         "era_filter": data.get("era_filter"),
         "mood_filter": mood_filter,
+        "artist_filter": data.get("artist_filter"),
         "allow_motivational": bool(data.get("allow_motivational", False)),
     }

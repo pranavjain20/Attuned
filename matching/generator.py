@@ -413,9 +413,11 @@ def generate_nl_playlist(
 ) -> dict:
     """Generate a playlist from a natural language request.
 
-    Uses LLM to translate the request into a neuro profile, optionally
-    calibrated by today's WHOOP recovery. Then uses the existing matching
-    engine to find songs.
+    The LLM sees the full song library and picks songs directly by meaning.
+    No neuro profile middleman — "dark seductive Weeknd" goes straight to
+    Earned It, not through cosine similarity.
+
+    WHOOP data makes the DJ smarter about questions, not about math.
 
     Args:
         conn: Database connection.
@@ -423,16 +425,21 @@ def generate_nl_playlist(
         query: Natural language request (e.g. "walking to campus, want energy").
         date_str: Date string (YYYY-MM-DD). Defaults to today.
         dry_run: Preview without creating Spotify playlist.
-        nl_result: Pre-classified NL result (skips internal classification if provided).
+        nl_result: Pre-selected NL result (skips LLM if provided — used by
+                   WhatsApp handler after clarification).
 
     Returns:
-        Dict with: name, description, reasoning, songs, match_stats,
-                   neuro_profile, target_valence, playlist_id, playlist_url, dry_run, dj_message.
+        Dict with: name, description, songs, playlist_id, playlist_url,
+                   dry_run, dj_message, nl_query.
     """
+    from config import MAX_PLAYLIST_SIZE
+    from db.queries import get_all_classified_songs
+    from intelligence.nl_song_selector import select_songs_nl
+
     if date_str is None:
         date_str = date.today().isoformat()
 
-    # 1. Get today's WHOOP recovery if available (skip if not)
+    # 1. Get today's WHOOP recovery if available
     recovery_score = None
     hrv = None
     state = None
@@ -445,61 +452,54 @@ def generate_nl_playlist(
     except Exception:
         logger.info("No WHOOP data for NL request — skipping calibration")
 
-    # 2. Classify NL request (unless pre-classified)
+    # 2. LLM picks songs directly (unless pre-selected)
     if nl_result is None:
-        from intelligence.nl_classifier import classify_nl_request
-        nl_result = classify_nl_request(query, recovery_score, hrv, state)
-    neuro_profile = nl_result["profile"]
-    target_valence = nl_result["target_valence"]
+        all_songs = get_all_classified_songs(conn)
+        if not all_songs:
+            raise GenerationError(
+                "No classified songs in database. "
+                "Run: python main.py classify-songs"
+            )
+        nl_result = select_songs_nl(query, all_songs, recovery_score, hrv, state)
 
-    # 3. Match songs using existing engine (over-select for availability buffer)
-    from config import AVAILABILITY_BUFFER_SIZE, MAX_PLAYLIST_SIZE
-    buffer_size = MAX_PLAYLIST_SIZE + AVAILABILITY_BUFFER_SIZE
-    match_result = select_songs(
-        conn,
-        state=state or "baseline",
-        date=date_str,
-        neuro_profile_override=neuro_profile,
-        target_valence=target_valence,
-        allow_motivational=nl_result.get("allow_motivational", False),
-        target_size=buffer_size,
-        mood_filter=nl_result.get("mood_filter"),
-        genre_filter=nl_result.get("genre_filter"),
-        era_filter=nl_result.get("era_filter"),
-    )
-    songs = match_result["songs"]
+    # If clarification needed, return it (caller handles the interaction)
+    if nl_result.get("needs_clarification"):
+        return {
+            "needs_clarification": True,
+            "clarifying_question": nl_result["clarifying_question"],
+        }
+
+    songs = nl_result["songs"]
+    dj_message = nl_result.get("dj_message", "Here's your playlist.")
+    playlist_name = nl_result.get("playlist_name", "On Demand")
 
     if not songs:
         raise GenerationError(
-            f"No songs matched for request '{query}'. "
-            "Is the library classified? Run: python main.py classify-songs"
+            f"No songs selected for request '{query}'."
         )
 
-    # 3b. Filter unavailable tracks, then trim to target
+    # 3. Filter unavailable tracks
     if sp is not None:
         songs = _filter_unavailable_tracks(sp, songs, conn=conn)
         if not songs:
-            raise GenerationError("All matched songs are unavailable on Spotify")
+            raise GenerationError("All selected songs are unavailable on Spotify")
     songs = songs[:MAX_PLAYLIST_SIZE]
 
     # 4. Format outputs
-    cohesion_stats = match_result["match_stats"].get("cohesion_stats", {})
-    name_suffix = nl_result.get("playlist_name_suffix", "On Demand")
     dt = datetime.strptime(date_str, "%Y-%m-%d")
-    name = f"{dt.strftime('%b %-d')} — {name_suffix}"
-    description = generate_description(neuro_profile, songs, cohesion_stats)
+    name = f"{dt.strftime('%b %-d')} — {playlist_name}"
     track_uris = [s["spotify_uri"] for s in songs]
+
+    # Simple description from the songs
+    artists = list(dict.fromkeys(s.get("artist", "?") for s in songs[:5]))
+    description = f"{dj_message[:200]} · {', '.join(artists[:3])}"
+    if len(description) > 300:
+        description = description[:297] + "..."
 
     reasoning = (
         f"NL request: \"{query}\"\n"
         f"Recovery: {recovery_score}%\n" if recovery_score else f"NL request: \"{query}\"\n"
         f"No WHOOP data\n"
-    )
-    reasoning += (
-        f"\n{nl_result['reasoning']}\n"
-        f"\nNeuro profile: para={neuro_profile['para']:.2f} "
-        f"symp={neuro_profile['symp']:.2f} grnd={neuro_profile['grnd']:.2f}\n"
-        f"Target valence: {target_valence:.2f}"
     )
 
     # 5. Create Spotify playlist
@@ -535,12 +535,9 @@ def generate_nl_playlist(
         "description": description,
         "reasoning": reasoning,
         "songs": songs,
-        "match_stats": match_result["match_stats"],
-        "neuro_profile": neuro_profile,
-        "target_valence": target_valence,
         "playlist_id": playlist_id,
         "playlist_url": playlist_url,
         "dry_run": dry_run,
         "nl_query": query,
-        "dj_message": nl_result.get("dj_message"),
+        "dj_message": dj_message,
     }

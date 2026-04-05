@@ -318,7 +318,9 @@ MOOD_CLUSTERS: dict[str, list[str]] = {
     "reflective": ["reflective", "introspective", "contemplative", "thoughtful", "nostalgic"],
     "confident": ["confident", "rebellious", "edgy", "bold"],
     "dreamy": ["dreamy", "ethereal", "meditative", "spiritual"],
+    "seductive": ["seductive", "sensual", "sultry", "smooth", "dark"],
 }
+
 
 # Genre tags that indicate Indian music (BPM from LLM, not Essentia)
 INDIAN_GENRE_TAGS = frozenset({

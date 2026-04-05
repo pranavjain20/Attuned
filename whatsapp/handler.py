@@ -12,8 +12,9 @@ import time
 from datetime import date
 
 from config import get_profile_db_path
+from db.queries import get_all_classified_songs
 from db.schema import get_connection
-from intelligence.nl_classifier import classify_nl_request
+from intelligence.nl_song_selector import select_songs_nl
 from intelligence.state_classifier import classify_state
 from matching.generator import GenerationError, generate_nl_playlist
 from spotify.auth import get_spotify_client
@@ -67,12 +68,13 @@ def _clear_expired_conversations() -> None:
 
 
 def _generate_and_send(phone: str, profile: str, query: str, nl_result: dict) -> None:
-    """Generate playlist in background thread and send result via Twilio API."""
+    """Create Spotify playlist from pre-selected songs and send link via Twilio API."""
     db_path = get_profile_db_path(None if profile == "default" else profile)
     conn = get_connection(db_path)
 
     try:
         sp = get_spotify_client(conn)
+        # nl_result already has the songs selected by the LLM
         result = generate_nl_playlist(
             conn, sp, query, nl_result=nl_result, dry_run=False,
         )
@@ -138,8 +140,9 @@ def handle_message(phone: str, message: str) -> str:
             query = message
             logger.info("WhatsApp [%s]: new request → '%s'", profile, message[:50])
 
-        # Classify
-        nl_result = classify_nl_request(query, recovery_score, hrv, state)
+        # LLM picks songs directly from the library
+        all_songs = get_all_classified_songs(conn)
+        nl_result = select_songs_nl(query, all_songs, recovery_score, hrv, state)
 
         # If needs clarification and this isn't already a follow-up
         if nl_result.get("needs_clarification") and not pending:
@@ -152,19 +155,10 @@ def handle_message(phone: str, message: str) -> str:
 
         # If still needs clarification after follow-up, force generation
         if nl_result.get("needs_clarification"):
-            nl_result = classify_nl_request(
-                f"{query}. IMPORTANT: Do not ask any more questions. "
-                f"Set needs_clarification to false and generate the profile now.",
-                recovery_score, hrv, state,
+            nl_result = select_songs_nl(
+                f"{query}. IMPORTANT: Do not ask questions. Pick 20 songs now.",
+                all_songs, recovery_score, hrv, state,
             )
-            if nl_result.get("needs_clarification"):
-                nl_result["needs_clarification"] = False
-                nl_result.setdefault("dj_message", "Here's something for you.")
-                nl_result.setdefault("profile", {"para": 0.33, "symp": 0.34, "grnd": 0.33})
-                nl_result.setdefault("target_valence", 0.50)
-                nl_result.setdefault("reasoning", "Forced after clarification loop")
-                nl_result.setdefault("playlist_name_suffix", "For You")
-                nl_result.setdefault("allow_motivational", False)
 
         # Return DJ message immediately, generate playlist in background
         dj_msg = nl_result.get("dj_message") or "Working on your playlist..."

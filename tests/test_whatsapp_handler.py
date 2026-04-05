@@ -9,22 +9,22 @@ class TestHandleMessage:
 
     @patch("whatsapp.handler.threading")
     @patch("whatsapp.handler.PHONE_TO_PROFILE", {"+1111": "testuser"})
-    @patch("whatsapp.handler.classify_nl_request")
+    @patch("whatsapp.handler.select_songs_nl")
+    @patch("whatsapp.handler.get_all_classified_songs", return_value=[])
     @patch("whatsapp.handler.classify_state")
     @patch("whatsapp.handler.get_connection")
     def test_clear_request_returns_dj_message_and_spawns_thread(
-        self, mock_conn, mock_state, mock_classify, mock_threading,
+        self, mock_conn, mock_state, mock_get_songs, mock_select, mock_threading,
     ):
         from whatsapp.handler import handle_message, _conversations
 
         mock_conn.return_value = MagicMock()
         mock_state.return_value = {"state": "baseline", "metrics": {"recovery_score": 60}}
-        mock_classify.return_value = {
+        mock_select.return_value = {
             "needs_clarification": False,
             "dj_message": "Let's go!",
-            "profile": {"para": 0.10, "symp": 0.80, "grnd": 0.10},
-            "target_valence": 0.70,
-            "allow_motivational": True,
+            "songs": [{"spotify_uri": "uri:1", "name": "Song", "artist": "Art"}] * 20,
+            "playlist_name": "Gym Motivation",
         }
 
         reply = handle_message("+1111", "gym motivational")
@@ -32,21 +32,22 @@ class TestHandleMessage:
         assert "Let's go!" in reply
         assert "Building your playlist" in reply
         assert "+1111" not in _conversations
-        mock_threading.Thread.assert_called_once()  # background generation spawned
+        mock_threading.Thread.assert_called_once()
 
     @patch("whatsapp.handler.PHONE_TO_PROFILE", {"+1111": "testuser"})
+    @patch("whatsapp.handler.select_songs_nl")
+    @patch("whatsapp.handler.get_all_classified_songs", return_value=[])
     @patch("whatsapp.handler.classify_state")
-    @patch("whatsapp.handler.classify_nl_request")
     @patch("whatsapp.handler.get_connection")
     def test_ambiguous_request_asks_clarification(
-        self, mock_conn, mock_classify, mock_state,
+        self, mock_conn, mock_state, mock_get_songs, mock_select,
     ):
         from whatsapp.handler import handle_message, _conversations
 
         _conversations.clear()
         mock_conn.return_value = MagicMock()
         mock_state.return_value = {"state": "baseline", "metrics": {}}
-        mock_classify.return_value = {
+        mock_select.return_value = {
             "needs_clarification": True,
             "clarifying_question": "What kind of sad?",
         }
@@ -59,11 +60,12 @@ class TestHandleMessage:
 
     @patch("whatsapp.handler.threading")
     @patch("whatsapp.handler.PHONE_TO_PROFILE", {"+1111": "testuser"})
-    @patch("whatsapp.handler.classify_nl_request")
+    @patch("whatsapp.handler.select_songs_nl")
+    @patch("whatsapp.handler.get_all_classified_songs", return_value=[])
     @patch("whatsapp.handler.classify_state")
     @patch("whatsapp.handler.get_connection")
     def test_clarification_reply_combines_and_generates(
-        self, mock_conn, mock_state, mock_classify, mock_threading,
+        self, mock_conn, mock_state, mock_get_songs, mock_select, mock_threading,
     ):
         from whatsapp.handler import handle_message, _conversations
 
@@ -72,19 +74,17 @@ class TestHandleMessage:
 
         mock_conn.return_value = MagicMock()
         mock_state.return_value = {"state": "baseline", "metrics": {}}
-        mock_classify.return_value = {
+        mock_select.return_value = {
             "needs_clarification": False,
             "dj_message": "Heartbreak playlist incoming.",
-            "profile": {"para": 0.40, "symp": 0.10, "grnd": 0.50},
-            "target_valence": 0.30,
-            "allow_motivational": False,
+            "songs": [{"spotify_uri": "uri:1", "name": "Song", "artist": "Art"}] * 20,
+            "playlist_name": "Heartbreak Anthems",
         }
 
         reply = handle_message("+1111", "missing someone")
 
-        # Should have combined the queries
-        mock_classify.assert_called_once()
-        call_query = mock_classify.call_args[0][0]
+        mock_select.assert_called_once()
+        call_query = mock_select.call_args[0][0]
         assert "im feeling sad" in call_query
         assert "missing someone" in call_query
 
@@ -99,16 +99,16 @@ class TestHandleMessage:
         assert "don't recognize" in reply.lower()
 
     @patch("whatsapp.handler.PHONE_TO_PROFILE", {"+1111": "testuser"})
+    @patch("whatsapp.handler.select_songs_nl")
+    @patch("whatsapp.handler.get_all_classified_songs", return_value=[])
     @patch("whatsapp.handler.classify_state")
-    @patch("whatsapp.handler.classify_nl_request")
     @patch("whatsapp.handler.get_connection")
     def test_expired_conversation_treated_as_new(
-        self, mock_conn, mock_classify, mock_state,
+        self, mock_conn, mock_state, mock_get_songs, mock_select,
     ):
         from whatsapp.handler import handle_message, _conversations, CONVERSATION_TTL_SECONDS
 
         import time
-        # Set a conversation that's expired
         _conversations["+1111"] = {
             "original_query": "old message",
             "timestamp": time.time() - CONVERSATION_TTL_SECONDS - 1,
@@ -116,14 +116,13 @@ class TestHandleMessage:
 
         mock_conn.return_value = MagicMock()
         mock_state.return_value = {"state": "baseline", "metrics": {}}
-        mock_classify.return_value = {
+        mock_select.return_value = {
             "needs_clarification": True,
             "clarifying_question": "Tell me more?",
         }
 
         reply = handle_message("+1111", "new message")
 
-        # Should treat as new (expired conversation cleared)
         assert "Tell me more?" in reply
         assert _conversations["+1111"]["original_query"] == "new message"
 

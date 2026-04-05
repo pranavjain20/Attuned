@@ -820,7 +820,8 @@ def _cmd_generate(db_path: Path) -> None:
 
 def _cmd_request(db_path: Path) -> None:
     """Generate a playlist from a natural language request (interactive)."""
-    from intelligence.nl_classifier import classify_nl_request
+    from db.queries import get_all_classified_songs
+    from intelligence.nl_song_selector import select_songs_nl
     from intelligence.state_classifier import classify_state
     from matching.generator import GenerationError, generate_nl_playlist
 
@@ -863,36 +864,27 @@ def _cmd_request(db_path: Path) -> None:
         except Exception:
             pass
 
-        # Phase 1: Classify — may return a clarifying question
-        nl_result = classify_nl_request(query, recovery_score, hrv, state)
+        # Load song library for LLM-direct selection
+        all_songs = get_all_classified_songs(conn)
 
-        # If the DJ needs clarification, ask and re-classify
+        # Phase 1: LLM picks songs or asks a clarifying question
+        nl_result = select_songs_nl(query, all_songs, recovery_score, hrv, state)
+
+        # If the DJ needs clarification, ask and re-select
         if nl_result.get("needs_clarification"):
             print(f"\n  {nl_result['clarifying_question']}")
             answer = input("\n  > ").strip()
             if answer:
                 refined_query = f"{query}. {answer}"
-                nl_result = classify_nl_request(refined_query, recovery_score, hrv, state)
+                nl_result = select_songs_nl(refined_query, all_songs, recovery_score, hrv, state)
                 query = refined_query
 
-        # If still needs clarification after one round, force generation
+        # If still needs clarification after one round, force selection
         if nl_result.get("needs_clarification"):
-            nl_result = classify_nl_request(
-                f"{query}. IMPORTANT: Do not ask any more questions. "
-                f"You have enough information. Set needs_clarification to false "
-                f"and generate the profile now.",
-                recovery_score, hrv, state,
+            nl_result = select_songs_nl(
+                f"{query}. IMPORTANT: Do not ask questions. Pick 20 songs now.",
+                all_songs, recovery_score, hrv, state,
             )
-            # Safety: if STILL clarifying, strip the flag and force with a neutral profile
-            if nl_result.get("needs_clarification"):
-                logger.warning("NL classifier stuck in clarification loop — forcing generation")
-                nl_result["needs_clarification"] = False
-                nl_result["dj_message"] = "Here's something that might fit the mood."
-                nl_result.setdefault("profile", {"para": 0.33, "symp": 0.34, "grnd": 0.33})
-                nl_result.setdefault("target_valence", 0.50)
-                nl_result.setdefault("reasoning", "Forced generation after clarification loop")
-                nl_result.setdefault("playlist_name_suffix", "For You")
-                nl_result.setdefault("allow_motivational", False)
 
         # Print DJ message
         if nl_result.get("dj_message"):
@@ -918,30 +910,11 @@ def _cmd_request(db_path: Path) -> None:
         print(f"\nDescription:")
         print(f"  {result['description']}")
 
-        profile = result["neuro_profile"]
-        print(f"\nNeuro profile:")
-        print(f"  Para: {profile.get('para', 0):.2f}  "
-              f"Symp: {profile.get('symp', 0):.2f}  "
-              f"Grnd: {profile.get('grnd', 0):.2f}")
-        print(f"  Target valence: {result['target_valence']:.2f}")
-
-        print(f"\nReasoning:")
-        print(f"  {result.get('reasoning', '')}")
-
-        stats = result["match_stats"]
-        print(f"\nMatch stats:")
-        print(f"  Candidates: {stats['total_candidates']:,}")
-        print(f"  Selected:   {stats['selected']}")
-        cohesion = stats.get("cohesion_stats", {})
-        if cohesion:
-            print(f"  Cohesion:   mean_sim={cohesion.get('mean_similarity', 0):.4f}, "
-                  f"genre={cohesion.get('dominant_genre', 'N/A')}")
-
         print(f"\nTracks:")
         for i, song in enumerate(result["songs"], 1):
-            name = (song["name"] or "")[:40]
-            artist = (song["artist"] or "")[:25]
-            print(f"  {i:2d}. {name} — {artist} ({song['selection_score']:.3f})")
+            name = (song.get("name") or "")[:40]
+            artist = (song.get("artist") or "")[:25]
+            print(f"  {i:2d}. {name} — {artist}")
     finally:
         conn.close()
 
