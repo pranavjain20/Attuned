@@ -747,6 +747,13 @@ def _cmd_generate(db_path: Path) -> None:
 
     conn = get_connection(db_path)
     try:
+        # Auto-sync WHOOP before generation (so today's recovery is always fresh)
+        from whoop.sync import sync_today
+        try:
+            sync_today(conn)
+        except Exception as e:
+            logger.warning("WHOOP sync failed (continuing with cached data): %s", e)
+
         sp = None
 
         if not dry_run:
