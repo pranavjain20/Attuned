@@ -59,7 +59,7 @@ This is the difference between Attuned and a generic "calming music" app. A calm
 
 ## 2. What Attuned Does (30 Seconds)
 
-Every morning, WHOOP measures your body while you sleep — heart rate variability, resting heart rate, sleep stages, recovery. Attuned reads that data, figures out what your autonomic nervous system needs right now, and generates a Spotify playlist of 15-20 songs from your own library whose acoustic properties are scientifically matched to that need.
+Every morning, WHOOP measures your body while you sleep — heart rate variability, resting heart rate, sleep stages, recovery. Attuned extracts 12 independent signals from that data — not just the recovery score, but HRV, resting heart rate, sleep architecture, multi-day trends, and accumulated debt — computes a continuous neurological profile of how your autonomic nervous system actually feels, and generates a Spotify playlist of 15-20 songs from your own library whose acoustic properties are scientifically matched to that profile.
 
 Not generic spa music. YOUR songs — ones you've listened to dozens of times — selected because their tempo, energy, acousticness, and other measurable properties support your nervous system in the direction it needs to go.
 
@@ -929,10 +929,13 @@ These features use available data but aren't needed for v1:
 - **Temporal listening patterns:** Time-of-day associations (morning songs vs. night songs). Interesting but the acoustic property matching already works without it.
 - **WHOOP-Spotify correlation:** Retrospective analysis of whether certain music before bed correlated with better sleep. Not needed for the core pipeline.
 - **Taste profiling:** Genre, artist, language preferences. Not needed because all recommendations already come from the user's own library.
-- **Essentia audio analysis:** Precise property extraction from actual audio files. Valuable when the library grows past 500+ songs and the matching engine needs fine-grained precision.
 - **Behavioral feedback loop:** Learning from play/skip behavior on generated playlists to calibrate classifications. Requires the system to be running first.
-- **WHOOP webhook automation:** Auto-generating playlists when recovery is calculated each morning. v1 uses manual trigger.
-- **Conversational DJ:** Natural language interface ("give me something for a walk"). Separate feature entirely.
+- **WHOOP webhook automation:** Auto-generating playlists when recovery is calculated each morning. Currently uses manual trigger + launchd.
+- **Beyond-library recommendations:** Using LLM knowledge of all music to recommend songs from all of Spotify, not just the user's classified library. Taste-anchored by feeding the user's library as context.
+
+_Previously deferred, now shipped:_
+- **Essentia audio analysis** — shipped Day 5. 92% coverage across all users.
+- **Conversational DJ** — shipped Day 19. Live on WhatsApp via Twilio. LLM-direct song selection (Claude Sonnet sees full library).
 
 ---
 

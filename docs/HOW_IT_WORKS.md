@@ -22,7 +22,7 @@ _If I had to rebuild this from scratch, this is everything I'd need to know._
 
 ## 1. What This Is
 
-Attuned reads your morning WHOOP data, figures out what your nervous system needs, and builds a Spotify playlist of 15-20 songs from YOUR library that have the right neurological properties. Not generic "chill vibes" — your songs, chosen by science.
+Attuned extracts 12 physiological signals from your morning WHOOP data, computes a continuous neurological profile of how your nervous system actually feels — a 3D representation WHOOP doesn't compute — and builds a Spotify playlist of 15-20 songs from YOUR library that have the right neurological properties. Not generic "chill vibes" — your songs, chosen by science.
 
 It runs locally on your laptop. Supports multiple users via `--profile` flag (separate databases per user). One command: `python main.py generate`.
 
@@ -51,9 +51,9 @@ The system has two independent intelligence layers:
 
 **Brain 1 (WHOOP Intelligence):** Takes your recovery data, sleep architecture, and multi-day trends → computes 12 physiological z-scores → feeds them through a weighted function to produce a continuous neuro profile (parasympathetic/sympathetic/grounding weights). The state classifier still runs for display labels (e.g., "Rest & Repair," "Fuel Up") but does NOT drive song selection.
 
-**Brain 2 (Song Intelligence):** Takes your songs (5,313 classified across 2 users) → classifies each with 3 neurological scores: parasympathetic (calming), sympathetic (energizing), grounding (emotional centering). Uses a combination of LLM classification and Essentia audio analysis.
+**Brain 2 (Song Intelligence):** Takes your songs (5,313 classified across 3 users) → classifies each with 3 neurological scores: parasympathetic (calming), sympathetic (energizing), grounding (emotional centering). Uses a combination of LLM classification and Essentia audio analysis.
 
-**The Bridge (Matching Engine):** Given a continuous neuro profile from Brain 1 and scored songs from Brain 2, selects the 20 best songs via cosine similarity scoring + cohesion filtering.
+**The Bridge (Matching Engine):** Given a continuous neuro profile from Brain 1 and scored songs from Brain 2, selects the 20 best songs via cosine similarity scoring + cohesion filtering. For natural language requests via WhatsApp, the LLM picks songs directly by meaning (Claude Sonnet sees the full library) — no neuro-profile middleman.
 
 ---
 
