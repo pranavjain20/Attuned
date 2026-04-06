@@ -6,7 +6,11 @@ WHOOP's recovery score measures readiness: "can I train hard today?" That's what
 
 Attuned builds a neurological profile for the feeling question. It reads 12 independent physiological signals — HRV, resting heart rate, sleep architecture, multi-day trends, accumulated debt — and computes a continuous 3-dimensional profile of your actual state. Recovery is one of 12 inputs, not the whole picture. Then it matches your songs to that profile.
 
-Two modes: a morning playlist picked from your library to match how your body feels today. And a WhatsApp DJ — tell it what you want ("something for a long drive," "hype me up for the gym") and it builds a playlist. It knows your WHOOP data, so "hype me up" at 40% recovery sounds different than at 90%.
+Two modes:
+
+1. **Daily playlist.** Every morning, Attuned pulls your latest WHOOP data, computes your neurological profile, and creates a Spotify playlist from your library matched to how you feel. Shows up automatically — no input needed.
+
+2. **WhatsApp DJ.** Text what you're in the mood for — "something for a long drive," "hype me up for the gym." The DJ selects songs from your library that match your request, adjusted for your physiological state so the same request produces a different playlist depending on where your body is that day.
 
 Not a calming sounds app. Not a mood button. Your songs, chosen by neuroscience.
 
