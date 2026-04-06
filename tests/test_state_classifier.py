@@ -1,4 +1,4 @@
-"""Tests for intelligence/state_classifier.py — recovery-first, 5-state system."""
+"""Tests for intelligence/state_classifier.py — display-label classifier, 5-state system."""
 
 import pytest
 

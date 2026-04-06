@@ -1,7 +1,10 @@
-"""Composite physiological state classifier.
+"""Composite physiological state classifier — display labels only.
 
-Recovery-first, 5-state system. Trusts WHOOP's recovery score as the primary
-signal, then looks at individual metrics to determine HOW to help.
+Priority-ordered, 5-state system. Produces human-readable labels
+("Rest & Repair", "Fuel Up") for playlist names and descriptions.
+Does NOT drive song selection — the continuous neuro profile does that.
+Recovery thresholds gate the priority ordering; individual metrics
+(sleep architecture, trends, debt) determine the specific label.
 
 Priority order:
 0. insufficient_data — <14 days HRV
