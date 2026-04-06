@@ -23,11 +23,11 @@ Iterated through: GPT-4o-mini (too dumb for 1,188 songs) → engagement-sorted l
 
 ## Next Steps
 
-1. Onboard Komal + Saumya on WhatsApp (add phone numbers to .env, have them join sandbox)
-2. More NL prompt testing (romantic, chill, study, etc.) + tune clusters
-3. Recompute Saumya's scores after Essentia finishes
-4. Automated daily generation (cron)
-5. Per-user Spotify dev app credentials in code
+1. Onboard Saumya on WhatsApp (same process as Komal)
+2. More NL prompt testing — have Komal + Saumya try prompts, see what breaks
+3. Automated daily generation (cron)
+4. Per-user Spotify dev app credentials in code
+5. Deploy to cloud for true 24/7 ($5/month VPS) — currently runs on Mac with launchd
 
 ## Project Timeline
 
