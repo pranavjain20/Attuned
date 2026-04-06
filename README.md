@@ -1,10 +1,12 @@
 # Attuned
 
-Every WHOOP user sees their recovery score and thinks "I should do something about this." Nobody does. You can't will your nervous system into recovery. But you can press play on a playlist — and music directly modulates the autonomic nervous system, the same system WHOOP measures.
+WHOOP's recovery score answers one question: "can I train hard today?" It was built for athletes measuring peak readiness, and HRV dominates the calculation because HRV predicts physical performance.
 
-Attuned reads your WHOOP data every morning — not the recovery score, but 12 independent physiological signals including HRV, resting heart rate, sleep architecture, and multi-day trends — and computes a continuous neurological profile of how you actually feel. Then it builds a playlist from your own Spotify library whose acoustic properties are scientifically matched to that profile.
+But most people wearing a WHOOP are asking a different question: "how do I feel today?" Readiness and feeling aren't the same thing. You can have a 44% recovery and feel fine because your HRV dipped but you slept well. You can have a 75% recovery and feel terrible because your HRV rebounded but you got no deep sleep and you're running on accumulated debt. The recovery score doesn't capture feeling — it was never designed to.
 
-Why 12 signals instead of the recovery score? Because WHOOP compresses 32 data points into one number, and that compression is lossy. A 44% recovery where your HRV is crashing and you barely got deep sleep is a fundamentally different body state from a 44% where HRV is stable and you just had a short night. Same number, completely different playlist needed. Recovery is one of 12 inputs (~30% weight), not the answer.
+Attuned tries to. It reads your WHOOP data every morning — not the recovery score, but 12 independent physiological signals including HRV, resting heart rate, sleep architecture, and multi-day trends — and computes a continuous neurological profile that models how you actually feel. Then it builds a Spotify playlist from your own library whose acoustic properties are scientifically matched to that profile.
+
+The playlist is matched to how you feel, not to your readiness score.
 
 Two modes: a morning playlist that reads your body and selects your songs. A WhatsApp DJ that takes what you want to hear, grounds it in your body's context, and builds you a playlist by conversation.
 
@@ -35,15 +37,15 @@ DJ: Your recovery is 62%, HRV is stable — I can go full moody.
 
 ### The representation problem
 
-WHOOP's recovery score compresses 32 measurements into a single number. The compression is lossy — it can't distinguish between:
+WHOOP's recovery score is good at what it was designed for — measuring physical readiness, where HRV is the dominant signal. But readiness and feeling are different questions, and the recovery score can't distinguish between:
 
 - Physical recovery deficit (low deep sleep) vs emotional processing deficit (low REM)
 - Genuine recovery (HRV + sleep architecture both strong) vs misleading recovery (HRV rebounded but sleep is deteriorating)
 - A one-off bad night vs accumulated fatigue across 5 days
 
-The recovery score was designed on a Harvard squash team in 2012 to answer "can I train hard today?" — a question where HRV dominates. But most users ask a different question: "how will I feel today?" For that, sleep architecture matters as much as HRV, multi-day trends matter as much as today's snapshot, and the interaction between signals matters more than any single metric.
+To answer "how do I feel today?", sleep architecture matters as much as HRV, multi-day trends matter as much as today's snapshot, and the interaction between signals matters more than any single metric.
 
-Attuned builds the representation WHOOP doesn't: a 12-signal neurological profile where recovery is one input (~30% weight), not the answer. The other 70% comes from HRV, resting heart rate, sleep architecture, sleep efficiency, accumulated debt, and multi-day trends — each normalized against your personal baselines.
+Attuned builds a representation for the feeling question: a 12-signal neurological profile where recovery is one input (~30% weight), not the whole picture. The other 70% comes from HRV, resting heart rate, sleep architecture, sleep efficiency, accumulated debt, and multi-day trends — each normalized against your personal baselines.
 
 ### The action gap
 
