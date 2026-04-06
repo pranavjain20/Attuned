@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Attuned — a personal system that connects WHOOP recovery data to Spotify using neuroscience research on how music affects the autonomic nervous system. Reads morning WHOOP data (12 signals: HRV, RHR, sleep architecture, trends, deltas, debt), computes a continuous neurological profile of what the body needs, then generates a Spotify playlist of 15-20 songs from your own library whose acoustic properties are scientifically matched to that profile.
+Attuned — a personal system that extracts 12 physiological signals from WHOOP data, computes a continuous neurological profile of how your body actually feels (a 3D representation WHOOP doesn't compute — recovery is one of 12 inputs, not the driver), and connects that profile to your Spotify library using neuroscience research on how music affects the autonomic nervous system. Two modes: daily automatic playlists (body → music) and a WhatsApp conversational DJ (your intent + body context → music via LLM-direct selection).
 
 Multi-user, runs locally. Not a company — a personal tool.
 

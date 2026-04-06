@@ -1,8 +1,14 @@
 # Attuned
 
-Every WHOOP user sees their recovery score and thinks "I should do something about this." Nobody does. You can't will your nervous system into recovery. But you can press play on a playlist — and music directly modulates the autonomic nervous system, the same system WHOOP measures.
+WHOOP collects 32 data points about your body every night — heart rate variability, resting heart rate, deep sleep, REM sleep, sleep efficiency, respiratory rate, skin temperature, and more. Then it compresses all of that into one number: "44% recovered."
 
-Attuned reads your morning WHOOP data — not just the recovery score, but 12 physiological signals including HRV trends, resting heart rate, sleep architecture, and accumulated debt — computes a continuous neurological profile of what your body needs right now, and builds a playlist from your own Spotify library whose acoustic properties are scientifically matched to that profile.
+That compression loses critical information. A 44% recovery where your HRV is crashing, RHR is spiking, and you barely got deep sleep is a fundamentally different body state from a 44% where HRV is stable and you just had a short night. Same number, completely different neurological reality.
+
+Attuned decompresses it. It extracts 12 independent physiological signals from WHOOP data, normalizes each against your personal 30-day baseline, and computes a continuous 3-dimensional neurological profile — parasympathetic (calming), sympathetic (energizing), grounding (emotional centering). This is a representation of how you actually feel, not what one number says.
+
+Then it connects that profile to the one intervention you were already going to do: listen to music.
+
+A morning playlist that reads your body and selects songs from your Spotify library. A WhatsApp DJ that takes what you want to hear, grounds it in your body's context, and builds you a playlist by conversation.
 
 Not a calming sounds app. Not a mood button. Your songs, chosen by neuroscience.
 
@@ -11,10 +17,17 @@ python main.py generate
 ```
 
 ```
-State: Baseline (leaning calmer)  |  Recovery: 44%  |  HRV: 39.4ms
 Profile: Para 0.40 · Symp 0.26 · Grnd 0.34  (12 signals)
+State: Baseline (leaning calmer)  |  Recovery: 44%  |  HRV: 39.4ms
 Playlist: "Mar 27 — Rest & Repair" (20 tracks)
 Calming your nervous system · Bollywood · Romantic, Melancholy, Reflective
+→ open.spotify.com/playlist/...
+```
+
+```
+WhatsApp: "something dark and moody for a late night drive"
+DJ: Your recovery is 62%, HRV is stable — I can go full moody.
+→ "Late Night Drive" (20 tracks) — The Weeknd, Dua Lipa, AP Dhillon
 → open.spotify.com/playlist/...
 ```
 
@@ -22,11 +35,39 @@ Calming your nervous system · Bollywood · Romantic, Melancholy, Reflective
 
 ## Why This Exists
 
-Talk to anyone who wears a WHOOP, Oura, or Garmin. They see the data, they understand it broadly, but they don't take a specific action because of it on any given day. Recovery is 42% — now what? Sleep better tonight? You were already trying. Reduce stress? Sure, but how, specifically, right now? The insight is real. The actionable step is missing. This is the universal wearable problem.
+### The representation problem
+
+WHOOP's recovery score compresses 32 measurements into a single number. The compression is lossy — it can't distinguish between:
+
+- Physical recovery deficit (low deep sleep) vs emotional processing deficit (low REM)
+- Genuine recovery (HRV + sleep architecture both strong) vs misleading recovery (HRV rebounded but sleep is deteriorating)
+- A one-off bad night vs accumulated fatigue across 5 days
+
+The recovery score was designed on a Harvard squash team in 2012 to answer "can I train hard today?" — a question where HRV dominates. But most users ask a different question: "how will I feel today?" For that, sleep architecture matters as much as HRV, multi-day trends matter as much as today's snapshot, and the interaction between signals matters more than any single metric.
+
+Attuned builds the representation WHOOP doesn't: a 12-signal neurological profile where recovery is one input (~30% weight), not the answer. The other 70% comes from HRV, resting heart rate, sleep architecture, sleep efficiency, accumulated debt, and multi-day trends — each normalized against your personal baselines.
+
+### The action gap
+
+Even if you understood your body state perfectly, wearable data gives you no specific action. Recovery is 42% — now what? Sleep better tonight? You were already trying. Reduce stress? Sure, but how, specifically, right now? The insight is real. The actionable step is missing. This is the universal wearable problem.
 
 Music is the only intervention that doesn't have this friction. You were already going to listen — on your commute, at your desk, before a workout. It requires zero behavior change, zero willpower, zero extra time. And it's not a metaphor: the autonomic nervous system that WHOOP reads is the same system that music modulates. Slow tempo measurably increases parasympathetic activity. Fast tempo activates the sympathetic response. These are the same neurons, the same pathways, measured by the same metrics.
 
-A generic calming app feels like medicine — you use it when you "should" and abandon it when you forget. Attuned uses YOUR songs, the ones you've played dozens of times, because the research is clear: familiar music triggers significantly stronger physiological responses than unfamiliar music (European Heart Journal, 2024). You're not doing a health protocol. You're listening to a playlist you genuinely want to hear. The intervention is invisible — and that's why it sticks.
+Attuned uses YOUR songs — the ones you've played dozens of times — because the research is clear: familiar music triggers significantly stronger physiological responses than unfamiliar music (European Heart Journal, 2024). You're not doing a health protocol. You're listening to a playlist you genuinely want to hear. The intervention is invisible — and that's why it sticks.
+
+---
+
+## Two Modes
+
+**Daily Playlist — your body decides.**
+
+Every morning, Attuned reads your WHOOP data, computes your neurological profile from 12 signals, and generates a Spotify playlist from your library. Fully automatic. Songs are scored against the target profile using cosine similarity, then filtered through a cohesion engine (genre, era, mood, BPM). No input needed — your body's state drives the selection.
+
+**WhatsApp DJ — you decide, informed by your body.**
+
+Send a message: "walking to campus, want energy." "Dark and moody for a late night drive." "Hype me up for the gym." The LLM sees your entire classified library — every song's name, artist, genre, mood tags, energy, era — and picks 20 tracks by semantic understanding. Your WHOOP data calibrates the response: "hype me up" at 50% recovery produces a different playlist than at 85%. The DJ asks clarifying questions when the request is ambiguous. A Spotify playlist appears in your library within 30 seconds.
+
+The distinction: daily playlists use the neuro-profile math pipeline (12 z-score signals → cosine similarity → cohesion engine). Conversational playlists use LLM-direct selection (Claude Sonnet sees the full library and picks by meaning). Both paths are live.
 
 ---
 
@@ -34,7 +75,9 @@ A generic calming app feels like medicine — you use it when you "should" and a
 
 ### 1. Read the Body
 
-Every morning, WHOOP calculates your recovery. Most apps stop there — one number, one bucket. Attuned reads **12 independent signals** and computes each one as a z-score against your personal 30-day baseline:
+Every morning, WHOOP measures your body while you sleep — heart rate variability, resting heart rate, sleep stages (deep, REM, light, awake), respiratory rate, skin temperature. Then it compresses all of that into one number: your recovery score. Attuned starts from the raw signals.
+
+**12 independent signals**, each computed as a z-score against your personal 30-day baseline:
 
 | Signal | What it tells us | Example |
 |--------|-----------------|---------|
@@ -53,7 +96,7 @@ Every morning, WHOOP calculates your recovery. Most apps stop there — one numb
 
 **Why 12 signals instead of 1?** Because a 44% recovery day where your HRV is crashing, RHR is rising, and you barely got deep sleep is fundamentally different from a 44% recovery day where your HRV is stable and you just had a short night. Same number, completely different body state, completely different playlist needed.
 
-### 2. Compute What the Body Needs
+### 2. Compute How You Actually Feel
 
 Each z-score pushes a three-dimensional neurological profile:
 
@@ -64,6 +107,8 @@ Each z-score pushes a three-dimensional neurological profile:
 The push is proportional. A slightly bad day shifts the profile slightly calmer. A terrible day across all metrics shifts it strongly calming. There are no buckets, no cliffs, no thresholds where you suddenly flip from "energetic playlist" to "meditation mode." The profile moves continuously as your body state changes.
 
 Interaction terms capture compound stress: if HRV is crashing AND resting heart rate is spiking simultaneously, that's a stronger signal than either alone — the profile gets an extra parasympathetic boost.
+
+This is Attuned's core output — a continuous 3D representation of your neurological state that WHOOP doesn't compute. Recovery is one of 12 inputs, weighted at roughly 30%. HRV, sleep architecture, resting heart rate, and multi-day trends contribute the other 70%.
 
 **Example — two consecutive days:**
 
@@ -105,7 +150,7 @@ The top candidates pass through a **cohesion engine** that ensures the playlist 
 
 ### 5. Push to Spotify
 
-A dated playlist appears in your Spotify: "Mar 27 — Rest & Repair" with a description explaining what the music is doing and why. Only one playlist per day — iterations during testing replace the previous version automatically.
+A dated playlist appears in your Spotify: "Mar 27 — Rest & Repair" with a description explaining what the music is doing and why. Daily playlists replace the previous version automatically. WhatsApp playlists create fresh entries alongside the daily ones.
 
 ---
 
@@ -139,6 +184,10 @@ A weekend project picks calming songs when recovery is low and upbeat songs when
 
 Attuned does something fundamentally different:
 
+**A neurological profile, not a recovery score.** Other approaches map recovery to music: low = calm, high = energetic. Three buckets, three playlists. Attuned extracts 12 signals that WHOOP doesn't combine, computes them into a continuous 3-dimensional profile, and matches music to that profile. Recovery is one of 12 inputs, weighted at roughly 30%. It's not the driver.
+
+**Two interfaces, one intelligence.** A daily automatic playlist when you want your body to decide. A WhatsApp DJ when you want to decide, informed by your body. Same song library, same WHOOP context, different selection engines.
+
 **Personal baselines, not population averages.** A 50% recovery with HRV at 45ms means something completely different if your 30-day average is 48ms versus 65ms. Every metric is interpreted relative to YOUR norms, computed from YOUR history.
 
 **Continuous intelligence, not brackets.** 12 physiological signals feed a weighted function that produces a continuous profile. There are no thresholds that flip a switch. A slightly worse day produces a slightly calmer playlist. A much worse day produces a much calmer playlist. The system responds proportionally.
@@ -155,9 +204,19 @@ Attuned does something fundamentally different:
 
 ---
 
+## What's Next
+
+**Beyond your library.** Today, every playlist draws from your own Spotify library — songs you've listened to and we've classified. The next step: using the LLM's knowledge of all music to recommend songs you haven't heard yet but would love, taste-anchored by your library. Your familiar songs as the foundation, new discoveries woven in. Verified on Spotify before they hit the playlist.
+
+**Automated daily generation.** Cron-scheduled playlists that appear in your Spotify every morning without running a command.
+
+**Feedback loop.** Learning from which songs you play, skip, and seek out on your own to calibrate classifications over time.
+
+---
+
 ## Current Numbers
 
-- **5,313** classified songs across 2 users (2+ meaningful listens each)
+- **5,313** classified songs across 3 users (2+ meaningful listens each)
 - **4,871** with Essentia audio analysis (92% coverage)
 - **1,319** days of WHOOP recovery data (combined)
 - **138,569** listening history records (combined)
@@ -165,9 +224,10 @@ Attuned does something fundamentally different:
 - **12** physiological z-score signals driving continuous profiles
 - **64** mood tags with research-backed neurological weights
 - **22** cited research papers
-- **1,048** tests across 25 test files
-- **2** active users with live daily playlists
-- **12** days of iterative development and refinement
+- **1,090** tests across 30 test files
+- **3** active users with live daily playlists
+- **WhatsApp conversational DJ** live on Twilio
+- **19** days of iterative development and refinement
 
 ---
 
@@ -179,9 +239,18 @@ Runs locally. Requires your own WHOOP and Spotify accounts. Each user authentica
 python main.py generate            # Generate today's playlist
 python main.py generate --dry-run  # Preview without pushing to Spotify
 python main.py classify-state      # See today's physiological classification
+python -m whatsapp.server          # Start WhatsApp DJ (requires Twilio + ngrok)
 ```
 
 **[Get onboarded →](https://github.com/pranavjain20/Attuned-Auth)**
+
+---
+
+## The Framework
+
+The representation problem Attuned solves — that a single recovery score is a lossy compression of multidimensional physiological state — is analyzed in depth in the companion research repo. Attuned proves the framework works by acting on it: if a single number can't capture how you feel, build a better representation and connect it to an intervention.
+
+**[WHOOP 2.0 — Continuous Neurological Profile →](https://github.com/pranavjain20/whoop-2.0)**
 
 ---
 
@@ -191,6 +260,7 @@ python main.py classify-state      # See today's physiological classification
 attuned/
 ├── intelligence/
 │   ├── continuous_profile.py    # 12-signal weighted function → neuro profile
+│   ├── nl_song_selector.py      # LLM-direct song selection for conversational DJ
 │   ├── baselines.py             # 30-day rolling means, SDs, CVs (LnRMSSD)
 │   ├── trends.py                # 7-day HRV/RHR slopes, trajectory
 │   ├── sleep_analysis.py        # Deep/REM ratios vs personal norms
@@ -204,10 +274,13 @@ attuned/
 │   ├── query_engine.py          # Cosine similarity scoring + rotation
 │   ├── cohesion.py              # Genre-aware era decay, mood/BPM clustering
 │   └── generator.py             # End-to-end pipeline orchestration
+├── whatsapp/
+│   ├── server.py                # Flask webhook for Twilio
+│   └── handler.py               # Conversation state, clarification, generation
 ├── whoop/                       # OAuth, API client, sync
 ├── spotify/                     # OAuth, library sync, playlist creation
 ├── db/                          # SQLite schema + queries
-├── tests/                       # 1,048 tests
+├── tests/                       # 1,090 tests
 └── docs/
     ├── RESEARCH.md              # Full research analysis with citations
     ├── SYSTEM_LOGIC.md          # How the system thinks (bridge between research and code)
