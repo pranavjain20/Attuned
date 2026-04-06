@@ -4,7 +4,17 @@
 
 Day 19. 1,090 tests passing. 3 active users. LLM-direct song selection: Claude Sonnet picks songs from the full library by meaning, not neuro-profile math. WhatsApp bot live on Twilio. Conversational DJ with clarifying questions.
 
-## Last Session (Apr 3, 2026)
+## Last Session (Apr 5, 2026)
+
+Product narrative reframe. README, CLAUDE.md, and internal docs rewrote to lead with the compression problem (WHOOP compresses 32 signals into one number) rather than the action gap. Core language shift: "how you actually feel" replaces "what your body needs." Recovery explicitly framed as one of 12 inputs (~30% weight), not the driver.
+
+WhatsApp conversational DJ added to README as first-class mode (was completely absent despite being live). What's Next section added (beyond-library recommendations, automated generation, feedback loop). WHOOP 2.0 bridge section connects the repos. Numbers updated to Day 19 state.
+
+Beyond-library recommendations concept documented in PRODUCT_DECISIONS.md — using LLM knowledge of all music to recommend from Spotify's full catalog, 60/40 known/discovery split, taste-anchored. Future feature, not built yet.
+
+State classifier docstring fixed: "recovery-first" → "display-label only." Internal docs (SYSTEM_LOGIC, HOW_IT_WORKS) aligned to 12-signal framing. Deferred section updated — Essentia and Conversational DJ moved to shipped.
+
+## Previous Session (Apr 3, 2026)
 
 Fixed Python import system wedged by `pkill -9` (pyc cache corruption from last session). Generated live playlists for all 3 users: Pranav (Settle In, poor sleep), Komal (Fuel Up, baseline), Saumya (Rest & Repair, poor recovery).
 
