@@ -1330,3 +1330,36 @@ WHOOP data feeds into the conversation, not the math. The LLM knows "recovery is
 ### Effect
 "Dark seductive Weeknd" → Earned It, What You Need, Nothing Compares, Starboy, Dangerous, cold/mess, Husn. Zero Bollywood romantic fillers. The LLM understands what a human DJ would understand.
 
+---
+
+## Future Direction: Beyond-Library Recommendations
+
+### The limitation today
+Every playlist — daily or WhatsApp — draws only from the user's classified library. For Pranav that's ~1,360 songs, for Saumya ~2,289. The matching engine is strong within that pool, but the pool is finite. Songs the user would love but hasn't discovered yet are invisible.
+
+### The concept
+Use the LLM's knowledge of all music to recommend songs from the entirety of Spotify, not just the user's library. The LLM already understands the user's taste (it sees their full library with mood tags, genres, energy levels). It can extrapolate: "you love Prateek Kuhad and soft acoustic Bollywood — here are 8 songs you haven't heard that live in the same space."
+
+### How it would work
+1. User sends WhatsApp request (or daily playlist generates)
+2. LLM selects songs in two pools:
+   - **Known pool (~60%):** Songs from the user's classified library (high confidence — we know the user likes these, we know their properties)
+   - **Discovery pool (~40%):** Songs the LLM recommends from its knowledge of all music, taste-anchored by the user's library
+3. Every discovery song is verified via Spotify Search API before inclusion — if Spotify can't find it, it's silently dropped (handles LLM hallucination)
+4. The playlist mixes familiar and new, with familiar songs providing an anchor so the playlist doesn't feel like a stranger's recommendations
+
+### Why this matters
+- Solves the finite pool problem — library size no longer constrains quality
+- Adds a discovery dimension that curated playlists can't provide (your own playlists can only contain songs you already know)
+- The LLM-direct selection architecture (Day 19) already handles the hard part — the LLM sees the library and picks by meaning. Extending it to recommend beyond the library is an incremental change, not a new architecture
+- Bollywood is harder (transliteration mismatches in Spotify search), but search by artist + approximate name with fuzzy matching handles most cases
+
+### Taste anchoring is the key risk
+Without anchoring, the LLM defaults to popular/obvious songs — generic recommendations anyone could get. The user's library IS the taste signal. Feeding it as context ("here are 1,188 songs this person loves") grounds the LLM's suggestions in the user's actual preferences. The risk is mediocre recommendations, not wrong ones — real songs that just don't vibe. Taste anchoring minimizes this.
+
+### The product shift
+This changes Attuned from "your songs, matched to your state" to "the right songs for you, including ones you haven't heard yet." It's a move from playlist curation to music discovery — a fundamentally bigger value proposition.
+
+### Status
+Designed but not built. The WhatsApp + LLM-direct architecture makes this an incremental extension. Priority TBD based on user feedback on the current library-only experience.
+

@@ -321,7 +321,8 @@
 - [ ] Era cohesion sigma tuning — tune Gaussian decay values based on real playlist output
 
 ### Future features — designed but deferred
+- [ ] **Beyond-library recommendations** — Use LLM knowledge of all music to recommend songs from all of Spotify, not just the user's classified library. Mix known library songs (~60%) with LLM-suggested discoveries (~40%), verified via Spotify search API. Taste-anchored by feeding user's library as context. Expands from "your songs, matched to your state" to "the right songs for you, including ones you haven't heard yet." Full concept write-up in PRODUCT_DECISIONS.md.
 - [ ] **Playlist taste import** — mine user playlists for co-occurrence, add as cohesion signal. Needs `playlist-read-private` scope, re-auth. Research done in docs/playlist_cohesion_research.md.
 - [ ] **WHOOP webhook** — auto-generate playlist when recovery is calculated each morning. Currently manual `generate` command.
 - [ ] **User preferences** — genre exclusions, iso principle preference, cold-start questions. user_preferences table (key-value).
-- [ ] **Conversational DJ** — natural language interface ("give me something for a walk"). Separate feature entirely.
+- [x] **Conversational DJ** — Live on WhatsApp via Twilio. LLM-direct song selection (Claude Sonnet sees full library, picks by meaning). Clarifying questions for ambiguous requests. Shipped Day 19.
