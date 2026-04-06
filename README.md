@@ -1,14 +1,12 @@
 # Attuned
 
-WHOOP collects 32 data points about your body every night — heart rate variability, resting heart rate, deep sleep, REM sleep, sleep efficiency, respiratory rate, skin temperature, and more. Then it compresses all of that into one number: "44% recovered."
+Every WHOOP user sees their recovery score and thinks "I should do something about this." Nobody does. You can't will your nervous system into recovery. But you can press play on a playlist — and music directly modulates the autonomic nervous system, the same system WHOOP measures.
 
-That compression loses critical information. A 44% recovery where your HRV is crashing, RHR is spiking, and you barely got deep sleep is a fundamentally different body state from a 44% where HRV is stable and you just had a short night. Same number, completely different neurological reality.
+Attuned reads your WHOOP data every morning — not the recovery score, but 12 independent physiological signals including HRV, resting heart rate, sleep architecture, and multi-day trends — and computes a continuous neurological profile of how you actually feel. Then it builds a playlist from your own Spotify library whose acoustic properties are scientifically matched to that profile.
 
-Attuned decompresses it. It extracts 12 independent physiological signals from WHOOP data, normalizes each against your personal 30-day baseline, and computes a continuous 3-dimensional neurological profile — parasympathetic (calming), sympathetic (energizing), grounding (emotional centering). This is a representation of how you actually feel, not what one number says.
+Why 12 signals instead of the recovery score? Because WHOOP compresses 32 data points into one number, and that compression is lossy. A 44% recovery where your HRV is crashing and you barely got deep sleep is a fundamentally different body state from a 44% where HRV is stable and you just had a short night. Same number, completely different playlist needed. Recovery is one of 12 inputs (~30% weight), not the answer.
 
-Then it connects that profile to the one intervention you were already going to do: listen to music.
-
-A morning playlist that reads your body and selects songs from your Spotify library. A WhatsApp DJ that takes what you want to hear, grounds it in your body's context, and builds you a playlist by conversation.
+Two modes: a morning playlist that reads your body and selects your songs. A WhatsApp DJ that takes what you want to hear, grounds it in your body's context, and builds you a playlist by conversation.
 
 Not a calming sounds app. Not a mood button. Your songs, chosen by neuroscience.
 
