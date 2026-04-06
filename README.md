@@ -1,12 +1,10 @@
 # Attuned
 
-WHOOP's recovery score answers one question: "can I train hard today?" It was built for athletes measuring peak readiness, and HRV dominates the calculation because HRV predicts physical performance.
+Attuned reads your WHOOP data every morning and builds a Spotify playlist from your own library that's matched to how you actually feel. Not your recovery score — how you *feel*.
 
-But most people wearing a WHOOP are asking a different question: "how do I feel today?" Readiness and feeling aren't the same thing. You can have a 44% recovery and feel fine because your HRV dipped but you slept well. You can have a 75% recovery and feel terrible because your HRV rebounded but you got no deep sleep and you're running on accumulated debt. The recovery score doesn't capture feeling — it was never designed to.
+WHOOP's recovery score measures readiness: "can I train hard today?" That's what it was built for, and HRV dominates the calculation. But most people are asking a different question: "how do I feel?" You can have a 44% recovery and feel fine because your HRV dipped but you slept well. You can have a 75% and feel terrible because your HRV rebounded but you got no deep sleep. Readiness and feeling aren't the same thing.
 
-Attuned tries to. It reads your WHOOP data every morning — not the recovery score, but 12 independent physiological signals including HRV, resting heart rate, sleep architecture, and multi-day trends — and computes a continuous neurological profile that models how you actually feel. Then it builds a Spotify playlist from your own library whose acoustic properties are scientifically matched to that profile.
-
-The playlist is matched to how you feel, not to your readiness score.
+Attuned builds a neurological profile for the feeling question. It reads 12 independent physiological signals — HRV, resting heart rate, sleep architecture, multi-day trends, accumulated debt — and computes a continuous 3-dimensional profile of your actual state. Recovery is one of 12 inputs (~30% weight), not the whole picture. Then it matches your songs to that profile.
 
 Two modes: a morning playlist that reads your body and selects your songs. A WhatsApp DJ that takes what you want to hear, grounds it in your body's context, and builds you a playlist by conversation.
 
