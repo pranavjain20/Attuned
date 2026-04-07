@@ -27,25 +27,34 @@ from intelligence.trends import compute_hrv_trend
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Weight table: research-backed starting points
+# Weight table: research-backed, sleep-dominant
+#
+# Sleep architecture correlates with next-morning subjective state at r=0.4-0.6
+# (Vitale 2015, PMC6456824). HRV correlates at r=0.2-0.3 (Hynynen 2011).
+# Aggregate sleep:autonomic weight ratio targets ~2:1 to match the research.
+#
+# Previous table had this inverted (2.5:1 autonomic over sleep) because the
+# Day 10 sleep dampener was architecturally bypassed by the Day 12 continuous
+# profile. See PRODUCT_DECISIONS.md "Day 20: Weight Rebalance" for full history.
+#
 # Each signal's z-score pushes the profile. Negative weight on para means
 # a negative z (bad metric) INCREASES para (calming). Double negative = calming.
 # ---------------------------------------------------------------------------
 
 SIGNAL_WEIGHTS: dict[str, dict[str, float]] = {
     #                          para    symp    grnd
-    "recovery_z":            {"para": -0.15, "symp":  0.15, "grnd":  0.00},
-    "recovery_delta_z":      {"para": -0.10, "symp":  0.10, "grnd":  0.00},
-    "hrv_z":                 {"para": -0.12, "symp":  0.12, "grnd":  0.00},
-    "hrv_delta_z":           {"para": -0.05, "symp":  0.05, "grnd":  0.00},
-    "rhr_z":                 {"para": -0.08, "symp":  0.08, "grnd":  0.00},
-    "rhr_delta_z":           {"para": -0.04, "symp":  0.04, "grnd":  0.00},
-    "deep_sleep_z":          {"para": -0.08, "symp":  0.05, "grnd": -0.03},
-    "deep_ratio_z":          {"para":  0.00, "symp":  0.00, "grnd": -0.05},
-    "rem_sleep_z":           {"para": -0.03, "symp":  0.00, "grnd": -0.07},
-    "sleep_efficiency_z":    {"para": -0.08, "symp":  0.08, "grnd":  0.00},
-    "sleep_debt_z":          {"para": -0.05, "symp":  0.03, "grnd": -0.02},
-    "hrv_trend_z":           {"para": -0.05, "symp":  0.05, "grnd":  0.00},
+    "recovery_z":            {"para": -0.07, "symp":  0.07, "grnd":  0.00},
+    "recovery_delta_z":      {"para": -0.04, "symp":  0.04, "grnd":  0.00},
+    "hrv_z":                 {"para": -0.05, "symp":  0.05, "grnd":  0.00},
+    "hrv_delta_z":           {"para": -0.02, "symp":  0.02, "grnd":  0.00},
+    "rhr_z":                 {"para": -0.04, "symp":  0.04, "grnd":  0.00},
+    "rhr_delta_z":           {"para": -0.02, "symp":  0.02, "grnd":  0.00},
+    "deep_sleep_z":          {"para": -0.15, "symp":  0.10, "grnd": -0.05},
+    "deep_ratio_z":          {"para":  0.00, "symp":  0.00, "grnd": -0.09},
+    "rem_sleep_z":           {"para": -0.06, "symp":  0.00, "grnd": -0.14},
+    "sleep_efficiency_z":    {"para": -0.18, "symp":  0.18, "grnd":  0.00},
+    "sleep_debt_z":          {"para": -0.10, "symp":  0.06, "grnd": -0.04},
+    "hrv_trend_z":           {"para": -0.03, "symp":  0.03, "grnd":  0.00},
 }
 
 # Interaction bonuses: when multiple signals are simultaneously bad
@@ -60,11 +69,18 @@ Z_CLAMP = 2.5
 
 # Global sensitivity: scales all weights. 1.0 = full sensitivity (too aggressive
 # when many signals align). 0.2 = moderate sensitivity, tested across scenarios:
-# - Great day (85% recovery): Para 0.21, Symp 0.46 (energetic)
-# - Okay day (54%): Para 0.36, Symp 0.32 (balanced, slightly calm)
-# - Bad day (44%): Para 0.40, Symp 0.26 (noticeably calmer, not rest mode)
-# - Terrible day (15%): Para 0.59, Symp 0.06 (deep rest)
+# - Great day (85% recovery): Para ~0.22, Symp ~0.44 (energetic)
+# - Okay day (54%): Para ~0.34, Symp ~0.33 (balanced, slightly calm)
+# - Bad day (44%): Para ~0.37, Symp ~0.29 (noticeably calmer)
+# - Terrible day (15%): Para ~0.53, Symp ~0.08 (deep rest, more grounded)
+# - Divergence (81% recovery, bad sleep): Para ~0.33, Symp ~0.32 (balanced, not energy)
 WEIGHT_SENSITIVITY = 0.20
+
+# Sleep debt z-score cap: debt above this threshold (7-day rolling hours) cannot
+# produce a positive z-score. "Less debt than your chronic pattern" ≠ "good."
+# Van Dongen 2003: 1h/night deficit (7h/week) is onset of measurable impairment.
+# Belenky 2003 corroborates: 7h/night stable, 5h/night significant decline.
+SLEEP_DEBT_POSITIVE_THRESHOLD = 7.0
 
 
 def _safe_z(value: float | None, mean: float, sd: float) -> float | None:
@@ -218,9 +234,15 @@ def compute_z_scores(
     scores["sleep_efficiency_z"] = _safe_z(efficiency, eff_mean, eff_sd) if eff_mean else None
 
     # Sleep debt z (INVERTED: high debt = bad = negative z)
+    # Cap: debt above SLEEP_DEBT_POSITIVE_THRESHOLD cannot produce positive z.
+    # "Less debt than your chronic pattern" is not a good signal when you still
+    # carry meaningful debt. Van Dongen 2003: 7h/week is onset of impairment.
     if debt is not None and debt_bl:
         raw_debt_z = _safe_z(debt, debt_bl["mean"], debt_bl["sd"])
-        scores["sleep_debt_z"] = -raw_debt_z if raw_debt_z is not None else None
+        z = -raw_debt_z if raw_debt_z is not None else None
+        if z is not None and debt > SLEEP_DEBT_POSITIVE_THRESHOLD:
+            z = min(z, 0.0)
+        scores["sleep_debt_z"] = z
     else:
         scores["sleep_debt_z"] = None
 
