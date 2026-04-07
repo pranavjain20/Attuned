@@ -328,6 +328,16 @@
 - [ ] Quality testing framework — automated before/after comparison for classifier changes. ~2 hours.
 - [ ] Era cohesion sigma tuning — tune Gaussian decay values based on real playlist output
 
+### WhatsApp Spotify Coach — product vision
+The WhatsApp DJ is evolving into a full Spotify Coach — the equivalent of WHOOP Coach but for music. It knows your full library, knows your body state, and handles multiple intents conversationally. Not a command-response playlist button — a music assistant you talk to.
+
+- [ ] **Neuro profile integration** — replace 4-bucket recovery interpretation with 12-signal profile (Day 21 priority above)
+- [ ] **Song finder mode** — identify songs from vague descriptions (Day 21 priority above)
+- [ ] **Multi-intent conversation** — handle playlist requests, song finding, and future intents within the same conversation thread without losing context
+- [ ] **Body-aware explanations** — "why did you pick this?" / "what would change if I felt different?"
+- [ ] **Pre-activity suggestions** — "I'm going for a run in 20 minutes" → body-calibrated workout playlist
+- [ ] **Listening pattern awareness** — "what have I been listening to this week?" / "what haven't I played in a while?"
+
 ### Future features — designed but deferred
 - [ ] **Beyond-library recommendations** — Use LLM knowledge of all music to recommend songs from all of Spotify, not just the user's classified library. Mix known library songs (~60%) with LLM-suggested discoveries (~40%), verified via Spotify search API. Taste-anchored by feeding user's library as context. Expands from "your songs, matched to your state" to "the right songs for you, including ones you haven't heard yet." Full concept write-up in PRODUCT_DECISIONS.md.
 - [ ] **Playlist taste import** — mine user playlists for co-occurrence, add as cohesion signal. Needs `playlist-read-private` scope, re-auth. Research done in docs/playlist_cohesion_research.md.
