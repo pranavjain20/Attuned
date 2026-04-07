@@ -4,9 +4,9 @@
 
 Day 19. 1,090 tests passing. 3 active users. LLM-direct song selection: Claude Sonnet picks songs from the full library by meaning, not neuro-profile math. WhatsApp bot live on Twilio. Conversational DJ with clarifying questions.
 
-## Last Session (Apr 5, 2026)
+## Last Session (Apr 5-7, 2026)
 
-Product narrative reframe. README, CLAUDE.md, and internal docs rewrote to lead with the compression problem (WHOOP compresses 32 signals into one number) rather than the action gap. Core language shift: "how you actually feel" replaces "what your body needs." Recovery explicitly framed as one of 12 inputs (~30% weight), not the driver.
+Product narrative reframe. README, CLAUDE.md, and internal docs rewritten. Core distinction: WHOOP recovery measures readiness ("can I train hard today?"), Attuned models feeling ("how do I feel?") — different questions needing different signals. The 12-signal neurological profile exists to capture feeling, which recovery was never designed to measure. Recovery is one of 12 inputs, not the driver.
 
 WhatsApp conversational DJ added to README as first-class mode (was completely absent despite being live). What's Next section added (beyond-library recommendations, automated generation, feedback loop). WHOOP 2.0 bridge section connects the repos. Numbers updated to Day 19 state.
 
