@@ -1363,3 +1363,166 @@ This changes Attuned from "your songs, matched to your state" to "the right song
 ### Status
 Designed but not built. The WhatsApp + LLM-direct architecture makes this an incremental extension. Priority TBD based on user feedback on the current library-only experience.
 
+---
+
+## Day 20: Weight Rebalance — The Research Got Lost in the Refactor
+
+### The discovery (April 7, 2026)
+
+April 7 is a textbook recovery-feeling mismatch day. WHOOP says 81% recovery (green). But I woke up feeling pre-tired, worked up, low energy. The data backs the subjective experience:
+
+| Signal | Value | vs Baseline | z-score |
+|--------|-------|-------------|---------|
+| Recovery | 81% | Above | +1.38 |
+| HRV | 51.9ms | Above | +1.12 |
+| REM | 1.2h | Well below | -1.12 |
+| Sleep efficiency | 84% | Well below | -1.05 |
+| Sleep debt | 1.9h | Accumulated | — |
+| RHR | 57 bpm | Elevated (norm 52-55) | — |
+| Respiratory rate | 14.4 | Elevated (norm 13.7-14.0) | — |
+| Sleep consistency | 72% | Dropped (norm 80-84%) | — |
+
+WHOOP says green because HRV bounced back. But subjective state is driven more by sleep architecture than HRV. High HRV doesn't mean you feel good — it means your autonomic nervous system recovered. If your sleep was fragmented, REM-deprived, and inefficient, you wake up feeling like garbage regardless of what HRV says.
+
+**What the neuro profile produced:** para=0.26, symp=0.41 — energy-leaning. Wrong. Should be calming/grounding for someone feeling pre-tired and worked up.
+
+### Root cause: aggregate weight ratio is inverted
+
+Traced the problem to the `SIGNAL_WEIGHTS` table in `continuous_profile.py`. The aggregate weight ratio is inverted from what the research says.
+
+**Current aggregate weights:**
+- Autonomic signals (recovery, HRV, RHR + deltas + trend) total symp weight: **0.59**
+- Sleep signals (deep, REM, efficiency, debt, deep ratio) total para weight: **0.24**
+- Ratio: **2.5:1 autonomic over sleep**
+
+**Research says:**
+- Sleep architecture correlates with next-morning subjective state at r=0.4-0.6 (Vitale 2015, PMC6456824)
+- HRV correlates with subjective state at r=0.2-0.3 (Hynynen 2011)
+- That's roughly 2:1 in favor of sleep
+- Sleep quality predicts next-day positive affect with coefficient 2.6x larger than the reverse (Holding et al., PMC6456824)
+
+**Our weights are 2.5:1 in the wrong direction.** The research says sleep should dominate next-morning feel. Our code has autonomic dominating.
+
+### How this happened: refactor orphaned the research
+
+This is a refactor orphaning problem. The research insight was implemented correctly — then architecturally bypassed.
+
+1. **Day 10:** Built the sleep dampener in `state_mapper.py`. Formula: `z_effective = 0.35 * z_recovery + 0.65 * z_sleep`. Research-backed 2:1 sleep over HRV. Correct.
+
+2. **Day 12:** Built `continuous_profile.py` as a better system — 12 individual z-score signals, continuous weights, no thresholds. This computes a `neuro_profile_override` that passes directly to the matching engine.
+
+3. The override completely bypasses `state_mapper.py`. In `generator.py`:
+   ```python
+   continuous = compute_continuous_profile(conn, date_str)
+   neuro_profile_override = continuous["profile"]
+   ```
+   And in `query_engine.py`:
+   ```python
+   neuro_profile = neuro_profile_override if neuro_profile_override else get_state_neuro_profile(state)
+   ```
+   The state_mapper's sleep dampener never runs. Dead code.
+
+4. When designing the Day 12 weight table, each signal was weighted individually ("recovery is important -> 0.15, HRV -> 0.12, sleep efficiency -> 0.08"). Testing validated four scenarios where **all signals agreed** — great day, okay day, bad day, terrible day. On those days, the sleep:autonomic ratio doesn't matter because everything pushes the same direction. Divergence days — where recovery is high but sleep is bad — were never tested.
+
+5. Nobody checked whether the aggregate weight ratio matched the research. The Day 10 insight was correct. The Day 12 system is architecturally better. But the calibration didn't carry forward.
+
+**The sleep dampener formula (`z_effective = 0.35 * recovery + 0.65 * sleep`) encoded the research correctly. The individual weight table in `continuous_profile.py` does not. The right idea is sitting in dead code while the live code has the wrong ratio.**
+
+### A second bug: sleep_debt_z pushes positive when debt exists
+
+While investigating, found that sleep_debt_z = +2.25 on a day with 16h of 7-day rolling debt (baseline mean: 23.24h, SD: 3.21h). The z-score says "your debt dropped from 26h to 16h — great improvement!" But 16h of rolling debt is still 2.3h/night of deficit — firmly in the impairment zone.
+
+The z-score normalizes away the absolute badness. "Better than your chronically terrible pattern" is not "good." Van Dongen 2003: 1h/night deficit (7h rolling weekly) is the onset of measurable impairment. 2h/night (14h rolling) produces cognitive impairment equivalent to 2 nights of total sleep deprivation by day 14. At 16h, the user is well past the threshold. The z-score should not push toward energy.
+
+### What we're doing about it
+
+**Fix: Rebalance the weight table globally** so sleep:autonomic aggregate matches the research (~2:1). This is the root cause fix — not an interaction term for divergence days (that would be overfitting to today's case), not just bumping sleep weights (too blunt). Get the ratio right, and divergence days resolve naturally.
+
+**Also fixing sleep_debt_z:** Cap at 0 when 7-day rolling debt > 7h (Van Dongen threshold). Below 7h, allow positive z — genuinely low debt is a valid good signal.
+
+### The fix
+
+**New weight table** — autonomic reduced ~0.5x, sleep increased ~1.8x:
+
+| Signal | Old para/symp/grnd | New para/symp/grnd |
+|--------|-------------------|-------------------|
+| recovery_z | -0.15 / 0.15 / 0.00 | -0.07 / 0.07 / 0.00 |
+| recovery_delta_z | -0.10 / 0.10 / 0.00 | -0.04 / 0.04 / 0.00 |
+| hrv_z | -0.12 / 0.12 / 0.00 | -0.05 / 0.05 / 0.00 |
+| hrv_delta_z | -0.05 / 0.05 / 0.00 | -0.02 / 0.02 / 0.00 |
+| rhr_z | -0.08 / 0.08 / 0.00 | -0.04 / 0.04 / 0.00 |
+| rhr_delta_z | -0.04 / 0.04 / 0.00 | -0.02 / 0.02 / 0.00 |
+| deep_sleep_z | -0.08 / 0.05 / -0.03 | -0.15 / 0.10 / -0.05 |
+| deep_ratio_z | 0.00 / 0.00 / -0.05 | 0.00 / 0.00 / -0.09 |
+| rem_sleep_z | -0.03 / 0.00 / -0.07 | -0.06 / 0.00 / -0.14 |
+| sleep_efficiency_z | -0.08 / 0.08 / 0.00 | -0.18 / 0.18 / 0.00 |
+| sleep_debt_z | -0.05 / 0.03 / -0.02 | -0.10 / 0.06 / -0.04 |
+| hrv_trend_z | -0.05 / 0.05 / 0.00 | -0.03 / 0.03 / 0.00 |
+
+**Aggregate ratio:**
+- Old: autonomic symp 0.59, sleep para 0.24 → 2.5:1 autonomic (wrong)
+- New: autonomic symp 0.27, sleep para 0.49 → 2.1:1 sleep (matches research)
+
+**sleep_debt_z cap:** `SLEEP_DEBT_POSITIVE_THRESHOLD = 7.0` hours. Debt above 7h/week (1h/night) caps z at 0. Van Dongen 2003: this is the onset of measurable impairment. Belenky 2003 corroborates.
+
+### Before/after: April 7 divergence day
+
+Recovery 81%, HRV 51.9ms, REM 1.2h (z=-1.12), efficiency 84% (z=-1.05), debt 16h, RHR 57.
+
+| | Para | Symp | Grnd | Character |
+|--|------|------|------|-----------|
+| Old weights | 0.255 | 0.410 | 0.335 | Energy-leaning — **wrong** |
+| New weights + debt cap | 0.333 | 0.322 | 0.345 | Balanced/grounding — **correct** |
+
+### Before/after: historical scenarios
+
+| Scenario | Old profile | New profile | Character preserved? |
+|----------|------------|------------|---------------------|
+| Mar 28 (27% recovery) | — | para=0.47, symp=0.22 | Deep calming ✓ |
+| Mar 30 (81%, good sleep) | — | para=0.25, symp=0.42 | Energetic ✓ |
+| Apr 1 (64%) | — | para=0.33, symp=0.34 | Balanced ✓ |
+| Apr 3 (50%) | — | para=0.39, symp=0.27 | Noticeably calmer ✓ |
+| Apr 5 (39%) | — | para=0.42, symp=0.28 | Clearly calmer ✓ |
+
+All 1,113 tests pass (1,090 existing + 23 new for weight properties, scenarios, debt cap).
+
+### Objective validation: 828 days of historical data
+
+To prove the rebalance works beyond vibes, ran a full-history analysis comparing old weights vs new weights across every day in the database. The test: if the research says sleep predicts feeling ~2x better than HRV, then the new profile should track sleep quality more than the old profile, and produce directionally correct outputs on days when recovery and sleep disagree.
+
+**Divergence days — the critical test (277 days, 33.5% of history):**
+
+A divergence day is where recovery and sleep signals disagree. These are the days the rebalance was designed to fix.
+
+| Type | Days | Old profile | New profile | Change |
+|------|------|-------------|-------------|--------|
+| Recovery good, sleep bad | 123 (14.9%) | para=0.254, symp=0.412 | para=0.319, symp=0.343 | para ↑0.065, symp ↓0.069 ✓ |
+| Recovery bad, sleep good | 154 (18.6%) | para=0.431, symp=0.246 | para=0.369, symp=0.310 | para ↓0.062, symp ↑0.064 ✓ |
+
+On "recovery good, sleep bad" days, old weights produced energy playlists (trusting recovery). New weights correctly dampen toward calm (trusting sleep). On "recovery bad, sleep good" days, old weights produced calming playlists (trusting bad recovery). New weights correctly lift toward energy (trusting good sleep).
+
+**Correlation analysis — does the profile track the right signal?**
+
+| Correlation | r | p-value |
+|---|---|---|
+| Sleep quality vs OLD profile | 0.333 | 8.2e-23 |
+| Sleep quality vs NEW profile | **0.713** | 4.6e-129 |
+| Autonomic vs OLD profile | 0.930 | ~0 |
+| Autonomic vs NEW profile | 0.674 | 9.2e-111 |
+
+The old profile was 93% driven by autonomic and only 33% by sleep. The new profile is 71% sleep-driven and 67% autonomic — sleep leads, matching the research. The sleep:autonomic correlation ratio went from 0.36:1 (deeply inverted) to 1.06:1 (roughly balanced with sleep leading).
+
+**Agreement day stability — did we break the common case?**
+
+On 445 days where sleep and autonomic agreed (both good or both bad): average para difference 0.042, symp difference 0.040 — both under 0.05. The rebalance does not disrupt days where the data already agrees.
+
+**Profile range tightening:**
+
+Old para range: [0.086, 0.696], std=0.102. New para range: [0.124, 0.626], std=0.063. Fewer extreme profiles. Old weights could push symp to literally 0.00 on bad autonomic days (even with good sleep) — that's wrong. New weights moderate this.
+
+**Verdict: 4/4 checks pass.** The rebalance corrects a structural flaw validated across 828 days. One-third of historical days had recovery-sleep disagreement, and the new weights produce materially different, directionally correct profiles on every one of them, while remaining stable on agreement days.
+
+### Status
+
+Implemented and validated across full history.
+

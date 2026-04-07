@@ -2,17 +2,25 @@
 
 ## Current Phase
 
-Day 19. 1,090 tests passing. 3 active users. LLM-direct song selection: Claude Sonnet picks songs from the full library by meaning, not neuro-profile math. WhatsApp bot live on Twilio. Conversational DJ with clarifying questions.
+Day 20. 1,113 tests passing. 3 active users. LLM-direct song selection: Claude Sonnet picks songs from the full library by meaning, not neuro-profile math. WhatsApp bot live on Twilio. Conversational DJ with clarifying questions.
 
-## Last Session (Apr 5-7, 2026)
+## Last Session (Apr 7, 2026)
 
-Product narrative reframe. README, CLAUDE.md, and internal docs rewritten. Core distinction: WHOOP recovery measures readiness ("can I train hard today?"), Attuned models feeling ("how do I feel?") — different questions needing different signals. The 12-signal neurological profile exists to capture feeling, which recovery was never designed to measure. Recovery is one of 12 inputs, not the driver.
+**Weight rebalance — the research got lost in the refactor.** April 7 exposed a structural flaw: WHOOP said 81% recovery (green) but user felt pre-tired, worked up, low energy. The neuro profile produced para=0.26, symp=0.41 (energy playlist) — wrong.
 
-WhatsApp conversational DJ added to README as first-class mode (was completely absent despite being live). What's Next section added (beyond-library recommendations, automated generation, feedback loop). WHOOP 2.0 bridge section connects the repos. Numbers updated to Day 19 state.
+Root cause: the SIGNAL_WEIGHTS table in continuous_profile.py had autonomic signals dominating sleep signals at 2.5:1. Research says sleep predicts subjective state ~2x better than HRV (Vitale 2015 r=0.4-0.6 vs Hynynen 2011 r=0.2-0.3). The Day 10 sleep dampener (z_effective = 0.35 * recovery + 0.65 * sleep) encoded this correctly, but the Day 12 continuous profile system bypassed it — the dampener is dead code, and the weight table was never checked against the research ratio.
 
-Beyond-library recommendations concept documented in PRODUCT_DECISIONS.md — using LLM knowledge of all music to recommend from Spotify's full catalog, 60/40 known/discovery split, taste-anchored. Future feature, not built yet.
+Fix: rebalanced weights to 2.1:1 sleep over autonomic. Added sleep_debt_z cap (Van Dongen 2003: debt >7h/week cannot produce positive z). Validated across 828 days of historical data: 277 divergence days (33.5%) show directionally correct profile changes, sleep correlation jumped from r=0.33 to r=0.71, agreement days stable (<0.05 diff). April 7 now produces para=0.33, symp=0.32, grnd=0.35 (balanced/grounding — correct).
 
-State classifier docstring fixed: "recovery-first" → "display-label only." Internal docs (SYSTEM_LOGIC, HOW_IT_WORKS) aligned to 12-signal framing. Deferred section updated — Essentia and Conversational DJ moved to shipped.
+README rewritten: readiness vs feeling gap explained with concrete April 7 example, research woven in accessibly, "The Science" section restructured with connective tissue. Reader should finish convinced without opening any papers.
+
+23 new tests for weight table properties, scenario validation, debt cap.
+
+## Previous Session (Apr 5-7, 2026)
+
+Product narrative reframe. README, CLAUDE.md, and internal docs rewritten. Core distinction: WHOOP recovery measures readiness ("can I train hard today?"), Attuned models feeling ("how do I feel?") — different questions needing different signals.
+
+Beyond-library recommendations concept documented in PRODUCT_DECISIONS.md. State classifier docstring fixed. Internal docs aligned to 12-signal framing.
 
 ## Previous Session (Apr 3, 2026)
 
@@ -60,3 +68,4 @@ Iterated through: GPT-4o-mini (too dumb for 1,188 songs) → engagement-sorted l
 - **Day 17** — Third user (Saumya), remote OAuth, calming ≠ sad (target valence), patriotic exclusion, era cohesion tightening, /generate-playlists skill
 - **Day 18** — Natural language playlist engine (v2 Phase 1), LLM-based context decisions (gym vs date hype), Saumya audio 78%→85%
 - **Day 19** — Song availability tracking, NL filters + mood clusters, conversational DJ, WhatsApp bot (Twilio), LLM-direct song selection (Claude Sonnet replaces neuro-profile math for NL)
+- **Day 20** — Weight rebalance: sleep:autonomic ratio fixed from 2.5:1 wrong to 2.1:1 correct, sleep_debt_z cap, validated across 828 days, README research rewrite
