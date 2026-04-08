@@ -6,7 +6,7 @@ Day 20. 1,113 tests passing. 3 active users. LLM-direct song selection: Claude S
 
 ## Last Session (Apr 7, 2026)
 
-**Weight rebalance — the research got lost in the refactor.** April 7 exposed a structural flaw: WHOOP said 81% recovery (green) but user felt pre-tired, worked up, low energy. The neuro profile produced para=0.26, symp=0.41 (energy playlist) — wrong.
+**Weight rebalance — the research got lost in the refactor.** April 7 exposed a structural flaw: WHOOP said 81% recovery (green) but user felt pretty tired, worked up, low energy. The neuro profile produced para=0.26, symp=0.41 (energy playlist) — wrong.
 
 Root cause: the SIGNAL_WEIGHTS table in continuous_profile.py had autonomic signals dominating sleep signals at 2.5:1. Research says sleep predicts subjective state ~2x better than HRV (Vitale 2015 r=0.4-0.6 vs Hynynen 2011 r=0.2-0.3). The Day 10 sleep dampener (z_effective = 0.35 * recovery + 0.65 * sleep) encoded this correctly, but the Day 12 continuous profile system bypassed it — the dampener is dead code, and the weight table was never checked against the research ratio.
 

@@ -1369,7 +1369,7 @@ Designed but not built. The WhatsApp + LLM-direct architecture makes this an inc
 
 ### The discovery (April 7, 2026)
 
-April 7 is a textbook recovery-feeling mismatch day. WHOOP says 81% recovery (green). But I woke up feeling pre-tired, worked up, low energy. The data backs the subjective experience:
+April 7 is a textbook recovery-feeling mismatch day. WHOOP says 81% recovery (green). But I woke up feeling pretty tired, worked up, low energy. The data backs the subjective experience:
 
 | Signal | Value | vs Baseline | z-score |
 |--------|-------|-------------|---------|
@@ -1384,7 +1384,7 @@ April 7 is a textbook recovery-feeling mismatch day. WHOOP says 81% recovery (gr
 
 WHOOP says green because HRV bounced back. But subjective state is driven more by sleep architecture than HRV. High HRV doesn't mean you feel good — it means your autonomic nervous system recovered. If your sleep was fragmented, REM-deprived, and inefficient, you wake up feeling like garbage regardless of what HRV says.
 
-**What the neuro profile produced:** para=0.26, symp=0.41 — energy-leaning. Wrong. Should be calming/grounding for someone feeling pre-tired and worked up.
+**What the neuro profile produced:** para=0.26, symp=0.41 — energy-leaning. Wrong. Should be calming/grounding for someone feeling pretty tired and worked up.
 
 ### Root cause: aggregate weight ratio is inverted
 
