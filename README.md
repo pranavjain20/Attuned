@@ -6,7 +6,11 @@ WHOOP's recovery score answers one question: "can I train hard today?" It's good
 
 But "my autonomic system recovered" is a different statement from "I feel good." HRV can rebound in a single night even when your sleep architecture is terrible — fragmented sleep, minimal REM, low efficiency. Recovery resets daily. Feeling accumulates.
 
-**April 7: WHOOP says 81%, green.** But REM was 1.2 hours — more than 1 SD below baseline. Sleep efficiency was 84% — more than 1 SD below baseline (below the clinical threshold for good sleep). RHR was 57 bpm against a 52-55 norm. Respiratory rate was 14.4 against a 13.7-14.0 norm. I woke up pretty tired, worked up, low energy. WHOOP is right that my autonomic system recovered. It's wrong about how I feel.
+**April 7: WHOOP says 81%, green.** But REM was 1.2 hours — more than 1 SD below baseline. Sleep efficiency was 84% — more than 1 SD below baseline. Respiratory rate was 14.4 against a 13.7-14.0 norm. I woke up pretty tired, worked up, low energy. WHOOP is right that my autonomic system recovered. It's wrong about how I feel.
+
+**April 8: WHOOP says 59%, yellow.** But REM nearly doubled to 2.1 hours — well above baseline. Sleep efficiency normalized to 88%. Consistency jumped from 72% to 83%. Respiratory rate dropped back to 13.6. I woke up happier and more energetic than I'd felt in days. WHOOP is right that my HRV dipped. It's wrong about how I feel.
+
+Two consecutive days, same point from opposite directions. Recovery good + sleep bad = felt terrible. Recovery mediocre + sleep good = felt amazing. Sleep predicted the subjective experience both times. Recovery got it backwards both times.
 
 This isn't a WHOOP problem — it's a representation problem. Any single number dominated by HRV will get the readiness question right and the feeling question wrong on days when those two things diverge. And the research says they diverge often: sleep architecture correlates with next-morning subjective state at r=0.4-0.6, while HRV correlates at r=0.2-0.3 (Vitale 2015, Hynynen 2011). Sleep predicts how you feel roughly twice as well as HRV does.
 
