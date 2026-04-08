@@ -2,13 +2,13 @@
 
 Attuned reads your WHOOP data every morning and builds a Spotify playlist from your own library that's matched to how you actually feel. Not your recovery score — how you *feel*.
 
-WHOOP's recovery score answers one question: "can I train hard today?" It's good at that question. HRV — measured during your last slow-wave sleep window — accounts for roughly 65% of the score, with resting heart rate and respiratory rate making up most of the rest. That's a measurement of parasympathetic reactivation: did your autonomic nervous system recover overnight? It resets every night. One good SWS window and HRV bounces back.
+WHOOP's recovery score answers one question: "can I train hard today?" It's good at that question. HRV is the dominant signal — measured during your last slow-wave sleep window, with resting heart rate, respiratory rate, and sleep performance as secondary inputs. That's primarily a measurement of parasympathetic reactivation: did your autonomic nervous system recover overnight? It resets every night. One good SWS window and HRV bounces back.
 
 But "my autonomic system recovered" is a different statement from "I feel good." HRV can rebound in a single night even when your sleep architecture is terrible — fragmented sleep, minimal REM, low efficiency. Recovery resets daily. Feeling accumulates.
 
 **April 7: WHOOP says 81%, green.** But REM was 1.2 hours — more than 1 SD below baseline. Sleep efficiency was 84% — more than 1 SD below baseline (below the clinical threshold for good sleep). RHR was 57 bpm against a 52-55 norm. Respiratory rate was 14.4 against a 13.7-14.0 norm. I woke up pretty tired, worked up, low energy. WHOOP is right that my autonomic system recovered. It's wrong about how I feel.
 
-This isn't a WHOOP problem — it's a representation problem. Any single number that's 65% HRV will get the readiness question right and the feeling question wrong on days when those two things diverge. And the research says they diverge often: sleep architecture correlates with next-morning subjective state at r=0.4-0.6, while HRV correlates at r=0.2-0.3 (Vitale 2015, Hynynen 2011). Sleep predicts how you feel roughly twice as well as HRV does.
+This isn't a WHOOP problem — it's a representation problem. Any single number dominated by HRV will get the readiness question right and the feeling question wrong on days when those two things diverge. And the research says they diverge often: sleep architecture correlates with next-morning subjective state at r=0.4-0.6, while HRV correlates at r=0.2-0.3 (Vitale 2015, Hynynen 2011). Sleep predicts how you feel roughly twice as well as HRV does.
 
 Attuned builds a neurological profile for the feeling question. It reads 12 independent physiological signals — HRV, resting heart rate, sleep architecture, multi-day trends, accumulated debt — and computes a continuous 3-dimensional profile of your actual state. Recovery is one of 12 inputs, not the whole picture. Then it matches your songs to that profile.
 
@@ -45,7 +45,7 @@ DJ: Your recovery is 62%, HRV is stable — I can go full moody.
 
 ### The representation problem
 
-WHOOP's recovery score is a lossy compression. It takes six physiological inputs, weights HRV at ~65%, and outputs one number. That compression works well for the readiness question because HRV genuinely is the strongest single readiness indicator. But it loses information that matters for the feeling question.
+WHOOP's recovery score is a lossy compression. It combines multiple physiological inputs into one number, with HRV as the dominant signal. That compression works well for the readiness question because HRV genuinely is the strongest single readiness indicator. But it loses information that matters for the feeling question.
 
 The research is specific about what gets lost:
 
