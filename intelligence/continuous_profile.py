@@ -51,7 +51,7 @@ SIGNAL_WEIGHTS: dict[str, dict[str, float]] = {
     "rhr_delta_z":           {"para": -0.02, "symp":  0.02, "grnd":  0.00},
     "deep_sleep_z":          {"para": -0.15, "symp":  0.10, "grnd": -0.05},
     "deep_ratio_z":          {"para":  0.00, "symp":  0.00, "grnd": -0.09},
-    "rem_sleep_z":           {"para": -0.06, "symp":  0.00, "grnd": -0.14},
+    "rem_sleep_z":           {"para": -0.10, "symp":  0.10, "grnd": -0.10},
     "sleep_efficiency_z":    {"para": -0.18, "symp":  0.18, "grnd":  0.00},
     "sleep_debt_z":          {"para": -0.10, "symp":  0.06, "grnd": -0.04},
     "hrv_trend_z":           {"para": -0.03, "symp":  0.03, "grnd":  0.00},

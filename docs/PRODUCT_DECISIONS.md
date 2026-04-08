@@ -1553,7 +1553,24 @@ The Apr 8 profile leans calmer than the subjective state suggests. The user feel
 
 This is a second calibration data point. The weight rebalance fixed the structural ratio (sleep > autonomic). The next question is whether the relative weights *within* sleep signals are correct — specifically whether REM should push more toward symp/energy given its strong correlation with positive affect.
 
+### REM weight fix: symp=0.00 → symp=0.10
+
+The April 8 calibration gap was traced to a design assumption: REM was modeled as a grounding-only signal ("did your brain process emotions?"). Its weights were para=-0.06, symp=0.00, grnd=-0.14. High REM reduced grounding need but did nothing for energy. But Walker & van der Helm 2009 showed REM drives both emotional stability AND positive affect. High REM = better mood = more energy. We captured the deficit case (low REM → need grounding) but not the surplus case (high REM → feel good → more energy).
+
+**Updated REM weights:** para=-0.10, symp=0.10, grnd=-0.10. REM now affects all three dimensions — mood (symp), calming need (para), and emotional stability (grnd).
+
+**After fix:**
+- Apr 8 (high REM, low deep, feels great): para=0.343, symp=0.318 — nearly balanced, correct
+- Apr 7 (low REM, felt terrible): para=0.349, symp=0.307 — more calming than before, correct (low REM now pushes away from energy)
+
+**Objective validation (829 days):**
+- Sleep correlation: r=0.713 → r=0.790 (improved)
+- Type A breakdown now discriminates by REM quality:
+  - Recovery good + REM also bad (48 days): para=0.326, symp=0.325 — balanced/calming ✓
+  - Recovery good + REM ok (75 days): para=0.317, symp=0.351 — energy leaning ✓
+- Aggregate ratio: 2.13:1 → 2.31:1 sleep over autonomic (still within target)
+
 ### Status
 
-Implemented and validated across full history. Two subjective data points (Apr 7-8) confirm the direction. Within-sleep weight tuning is a potential next step as more data points accumulate.
+Implemented and validated. Sleep:autonomic ratio correct (2.31:1). REM now drives mood in both directions. Three subjective data points (Apr 7, Apr 8, historical validation).
 

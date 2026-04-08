@@ -80,11 +80,16 @@ class TestWeightTableProperties:
                     f"sleep_efficiency_z para ({eff_para}) should be >= {s} para ({abs(SIGNAL_WEIGHTS[s]['para'])})"
                 )
 
-    def test_rem_routes_through_grounding(self):
-        """REM deficit should primarily affect grounding (emotional processing)."""
-        rem_grnd = abs(SIGNAL_WEIGHTS["rem_sleep_z"]["grnd"])
-        rem_para = abs(SIGNAL_WEIGHTS["rem_sleep_z"]["para"])
-        assert rem_grnd > rem_para, "REM should route more through grounding than parasympathetic"
+    def test_rem_affects_all_three_dimensions(self):
+        """REM affects mood (symp), calming need (para), and emotional stability (grnd).
+
+        Walker & van der Helm 2009: REM drives both emotional processing (grounding)
+        and positive affect (energy). All three dimensions should have nonzero weight.
+        """
+        for component in ("para", "symp", "grnd"):
+            assert abs(SIGNAL_WEIGHTS["rem_sleep_z"][component]) > 0, (
+                f"REM should have nonzero weight on {component}"
+            )
 
 
 # ---------------------------------------------------------------------------
