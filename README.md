@@ -1,20 +1,22 @@
 # Attuned
 
-Attuned reads your WHOOP data every morning and builds a Spotify playlist from your own library that's matched to how you actually feel. Not your recovery score — how you *feel*.
+Attuned connects your body to your music. It pulls your physiological data from WHOOP every morning — not just the recovery score, but the raw signals underneath it: HRV, resting heart rate, sleep stages, sleep quality, respiratory rate, multi-day trends. From those 12 signals, it builds a neurological profile of how you actually feel, then matches songs from your own Spotify library to that profile. The playlist that shows up in your Spotify is your music, chosen for where your body is today.
 
-### The problem I kept running into
+### Why recovery isn't enough
 
 I wear a WHOOP. Every morning it gives me a recovery score — a single number that answers "can I train hard today?" It's good at that question. Recovery is primarily driven by HRV, measured during your last slow-wave sleep window. That's a measurement of parasympathetic reactivation: did your autonomic nervous system bounce back overnight? HRV can reset in a single night. One good deep sleep window and recovery goes green.
 
 But most mornings, I'm not asking "can I train hard?" I'm asking "how do I feel?" And those are different questions.
 
-On April 7, my WHOOP said 81% — green, strong recovery. My HRV had bounced back overnight. But I felt terrible. Tired, worked up, low energy. When I looked at the data underneath, the reason was obvious: my REM sleep was 1.2 hours, well below my baseline. REM is when the brain processes emotions and regulates mood — I didn't get enough of it. My sleep was fragmented, with 84% efficiency and elevated respiratory rate. My autonomic system recovered, but my brain didn't get the sleep it needed. Recovery was right about readiness. It was wrong about how I felt.
+On April 7, my WHOOP said 81% — green, strong recovery. My HRV had bounced back overnight. But I felt terrible. Tired, worked up, low energy. When I looked at the data underneath, the reason was obvious: my REM sleep — the stage responsible for emotional processing and mood regulation — was 1.2 hours, well below my baseline. My sleep was fragmented, with 84% efficiency and elevated respiratory rate. My autonomic system recovered, but my brain didn't get the sleep it needed. Recovery was right about readiness. It was wrong about how I felt.
 
-The next morning — April 8 — my WHOOP said 59%, yellow. HRV dipped, recovery dropped 22 points. But I woke up happier and more energetic than I'd felt all week. The reason was the same, just inverted: REM nearly doubled to 2.1 hours, well above baseline. Sleep efficiency normalized. Consistency jumped from 72% to 83%. Respiratory rate dropped back to normal. My brain got exactly the processing it needed. Recovery was right that my HRV dipped. It was wrong about how I felt.
+The next morning, my WHOOP said 59% — yellow, recovery dropped 22 points. But I woke up happier and more energetic than I'd felt all week. REM had nearly doubled to 2.1 hours, well above baseline. Sleep efficiency normalized. Consistency jumped from 72% to 83%. Respiratory rate dropped back to normal. My brain got exactly the processing it needed. Recovery was right that my HRV dipped. It was wrong about how I felt.
 
 WHOOP may have been right about readiness both times — that's what it measures, and it measures it well. But readiness and feeling are different questions, and on these two days, they pointed in opposite directions. This isn't a WHOOP problem. It's a representation problem: any single number dominated by HRV will capture readiness but miss feeling when the two diverge. And the research says they diverge often — sleep architecture predicts next-morning subjective state roughly twice as well as HRV does (Vitale 2015, Hynynen 2011).
 
-Attuned is built for the feeling question. It reads 12 independent physiological signals — HRV, resting heart rate, sleep stages, sleep quality, accumulated debt, multi-day trends — and computes a continuous profile of your actual state. Recovery is one of 12 inputs, not the whole picture. Sleep signals outweigh autonomic signals roughly 2:1, matching what the research says about what predicts how you feel. Then it matches your songs to that profile.
+### What Attuned does differently
+
+Attuned is built for the feeling question. It reads 12 independent physiological signals and computes a continuous profile of your actual state. Recovery is one of 12 inputs, not the whole picture. Sleep signals outweigh autonomic signals roughly 2:1, matching what the research says about what predicts how you feel. Then it matches songs from your library to that profile — so the playlist you get reflects how your body actually feels, not just whether your HRV bounced back.
 
 Two modes:
 
