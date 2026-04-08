@@ -1522,7 +1522,38 @@ Old para range: [0.086, 0.696], std=0.102. New para range: [0.124, 0.626], std=0
 
 **Verdict: 4/4 checks pass.** The rebalance corrects a structural flaw validated across 828 days. One-third of historical days had recovery-sleep disagreement, and the new weights produce materially different, directionally correct profiles on every one of them, while remaining stable on agreement days.
 
+### April 8: the inverse — mediocre recovery, great sleep, feeling amazing
+
+The day after April 7 proved the same thesis from the opposite direction. WHOOP says 59% (yellow, down from 81%). But subjective state is the best it's been in days — happy, energetic, positive.
+
+**What changed overnight:**
+
+| | Apr 7 (felt terrible, recovery 81%) | Apr 8 (feeling great, recovery 59%) |
+|---|---|---|
+| REM | 1.2h (z = -1.12) | **2.1h (z = +0.83)** |
+| Sleep efficiency | 84% (z = -1.05) | **88% (z = -0.02)** |
+| Sleep consistency | 72% | **83%** |
+| Respiratory rate | 14.4 (elevated) | **13.6 (normal)** |
+| Awake time | 1.1h | **0.9h** |
+| Sleep performance | 70% | **81%** |
+| HRV | 51.9ms | 43.3ms (dropped) |
+| Recovery | 81% (green) | 59% (yellow) |
+
+HRV dropped, so WHOOP says worse day. But sleep architecture massively improved — REM nearly doubled, efficiency normalized, respiratory rate dropped back to baseline, consistency jumped 11 points. The brain got the emotional processing it needed (2.1h REM vs 1.2h) and the result is palpable.
+
+**Two consecutive days proving the same point from opposite sides:**
+- Apr 7: recovery says great, sleep says bad → felt bad. Sleep was right.
+- Apr 8: recovery says mediocre, sleep says great → felt great. Sleep was right.
+
+**Neuro profile output:**
+- Apr 7: para=0.333, symp=0.322, grnd=0.345 (balanced/grounding — correct)
+- Apr 8: para=0.355, symp=0.307, grnd=0.338 (slightly calming)
+
+The Apr 8 profile leans calmer than the subjective state suggests. The user feels energetic and positive, but the profile says "slightly calming." The deep sleep deficit (z = -1.14) is pulling para up, and while REM (z = +0.83) correctly pushes away from grounding, its weight may not be strong enough to capture how much high REM drives positive mood. Potential calibration gap: REM's contribution to positive subjective state may be underweighted relative to deep sleep's contribution to calming.
+
+This is a second calibration data point. The weight rebalance fixed the structural ratio (sleep > autonomic). The next question is whether the relative weights *within* sleep signals are correct — specifically whether REM should push more toward symp/energy given its strong correlation with positive affect.
+
 ### Status
 
-Implemented and validated across full history.
+Implemented and validated across full history. Two subjective data points (Apr 7-8) confirm the direction. Within-sleep weight tuning is a potential next step as more data points accumulate.
 
