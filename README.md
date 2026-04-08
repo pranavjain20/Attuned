@@ -6,11 +6,11 @@ WHOOP's recovery score answers one question: "can I train hard today?" It's good
 
 But "my autonomic system recovered" is a different statement from "I feel good." HRV can rebound in a single night even when your sleep architecture is terrible — fragmented sleep, minimal REM, low efficiency. Recovery resets daily. Feeling accumulates.
 
-**April 7: WHOOP says 81%, green.** But REM was 1.2 hours — more than 1 SD below baseline. Sleep efficiency was 84% — more than 1 SD below baseline. Respiratory rate was 14.4 against a 13.7-14.0 norm. I woke up pretty tired, worked up, low energy. WHOOP is right that my autonomic system recovered. It's wrong about how I feel.
+**April 7: WHOOP says 81%, green — "great day, go train hard."** HRV bounced back overnight, so recovery looks strong. But underneath that number, last night's sleep was bad. REM — the sleep stage responsible for emotional processing and mood regulation — was 1.2 hours, well below my baseline. Sleep was fragmented: 84% efficiency, meaning I was awake for a significant chunk of the night. Respiratory rate was elevated. My body's autonomic system recovered, but my brain didn't get the sleep it needed. I woke up tired, worked up, and low energy. WHOOP would have sent me to the gym. I needed to rest.
 
-**April 8: WHOOP says 59%, yellow.** But REM nearly doubled to 2.1 hours — well above baseline. Sleep efficiency normalized to 88%. Consistency jumped from 72% to 83%. Respiratory rate dropped back to 13.6. I woke up happier and more energetic than I'd felt in days. WHOOP is right that my HRV dipped. It's wrong about how I feel.
+**April 8: WHOOP says 59%, yellow — "take it easy."** HRV dipped, so recovery dropped 22 points. But last night's sleep was the best in days. REM nearly doubled to 2.1 hours — well above baseline. Sleep efficiency normalized. Consistency jumped from 72% to 83%. Respiratory rate dropped back to normal. My brain got the emotional processing it needed. I woke up happier and more energetic than I'd felt all week. WHOOP would have told me to recover. I was ready to go.
 
-Two consecutive days, same point from opposite directions. Recovery good + sleep bad = felt terrible. Recovery mediocre + sleep good = felt amazing. Sleep predicted the subjective experience both times. Recovery got it backwards both times.
+Two consecutive days, same point from opposite directions. Sleep predicted the subjective experience both times. Recovery got it backwards both times.
 
 This isn't a WHOOP problem — it's a representation problem. Any single number dominated by HRV will get the readiness question right and the feeling question wrong on days when those two things diverge. And the research says they diverge often: sleep architecture correlates with next-morning subjective state at r=0.4-0.6, while HRV correlates at r=0.2-0.3 (Vitale 2015, Hynynen 2011). Sleep predicts how you feel roughly twice as well as HRV does.
 
