@@ -4,7 +4,7 @@
 
 Day 20. 1,113 tests passing. 3 active users. LLM-direct song selection: Claude Sonnet picks songs from the full library by meaning, not neuro-profile math. WhatsApp bot live on Twilio. Conversational DJ with clarifying questions.
 
-## Last Session (Apr 7-8, 2026)
+## Last Session (Apr 7-10, 2026)
 
 **Weight rebalance — the research got lost in the refactor.** April 7 exposed a structural flaw: WHOOP said 81% recovery (green) but user felt pretty tired, worked up, low energy. The neuro profile produced para=0.26, symp=0.41 (energy playlist) — wrong.
 
