@@ -4,7 +4,7 @@ Attuned connects your body to your music. It pulls your physiological data from 
 
 ### Why recovery isn't enough
 
-I wear a WHOOP. Every morning it gives me a recovery score — a single number that answers "can I train hard today?" It's good at that question. Recovery is primarily driven by HRV, measured during your last slow-wave sleep window. That's a measurement of parasympathetic reactivation: did your autonomic nervous system bounce back overnight? HRV can reset in a single night. One good deep sleep window and recovery goes green.
+I wear a WHOOP. Every morning, it gives me a recovery score — a single number that answers "can I train hard today?" It's good at that question. Recovery is primarily driven by HRV, measured during your last slow-wave sleep window. That's a measurement of parasympathetic reactivation: did your autonomic nervous system bounce back overnight? HRV can reset in a single night. One good deep sleep window and recovery goes green.
 
 But most mornings, I'm not asking "can I train hard?" I'm asking "how do I feel?" And those are different questions.
 
