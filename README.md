@@ -1,49 +1,22 @@
 # Attuned
 
-Attuned reads the same WHOOP data as WHOOP's recovery score but answers a different question. WHOOP's recovery asks "how prepared is my body to perform?". Attuned asks "how am I likely to feel today?". It shows that answer as a 0–100 score next to WHOOP's, explains why the two differ, and builds a playlist from my own Spotify library that suits the day.
-
-See a live day: LIVE_LINK
+Attuned turns my WHOOP data into a daily score for how I'm likely to feel, and builds a playlist from my own Spotify library for that day.
 
 ## The problem
 
-I've worn a WHOOP for over three years and checked my recovery score every morning. Over time I noticed days where I felt like a green but WHOOP showed red, and days where WHOOP showed green but I felt like a red. A lot of my friends said the same.
+WHOOP's recovery score answers one question: how prepared is my body to perform today? It leans mostly on HRV (heart rate variability, a sign of whether the nervous system bounced back overnight). That's the right question for an athlete deciding how hard to train. But most people who check their recovery every morning are really asking something else: how am I going to feel today?
 
-WHOOP says its recovery score is "a daily measure of how prepared your body is to perform" and that it relies mostly on HRV (heart rate variability, how much the gap between heartbeats varies; a sign of whether your nervous system has bounced back overnight). That makes sense for the question WHOOP was built to answer: how hard should an athlete train today? But most people wearing it aren't asking that. They're asking how they'll feel.
-
-Two days made this concrete for me:
-
-- **April 7, 2026.** WHOOP said 81%, green. I felt tired, worked up and low on energy. My HRV was well above my usual, but my REM sleep was 1.2 hours, well below my normal, and my sleep was broken. My nervous system had recovered. My sleep hadn't.
-- **April 8, 2026.** WHOOP said 59%, yellow, down 22 points. I woke up happier and more energetic than I'd felt all week. My REM had nearly doubled to 2.1 hours, but my HRV had dipped.
-
-Research supports the direction: how you slept is closely tied to how you feel the next day, and HRV-led readiness scores can come apart from how people feel. The sources, and what they do and don't show, are in [docs/RESEARCH.md](docs/RESEARCH.md). The longer story is in my essay, [Why WHOOP's Recovery Score Is Wrong (For Most of Us)](https://pranavjain20.vercel.app/writing/why-whoops-recovery-score-is-wrong).
-
-A better number on its own didn't change anything for anyone, though. People don't change habits because of a score. But almost everyone already listens to music every day, so that's where Attuned acts.
+Those two questions often have different answers. HRV can bounce back after a single night even when the sleep itself was short or broken, and how you slept is closely tied to how you feel the next day. So there are mornings when WHOOP says green and you feel drained, and mornings when it says yellow and you feel great. And even a better number wouldn't change much on its own, because people don't change their day over a score. Music is different: almost everyone already listens every day, so that's where Attuned acts.
 
 ## How it works
 
-**1. A score for how you'll likely feel.** Each morning Attuned compares last night and this morning with my own usual (my last 30 days), signal by signal: sleep efficiency (share of time in bed actually asleep), deep sleep, REM, total sleep, 7-night sleep debt, deep-sleep share, HRV, resting heart rate, and their recent changes. Sleep counts for about twice as much as the heart signals. That ratio is my design choice, informed by the research, not a number any study gives. WHOOP's recovery score is not an input, so the Attuned score can't quietly become a copy of WHOOP's.
+Every morning, Attuned compares last night with my own usual over the past 30 days, signal by signal: how long I slept, how broken the sleep was, deep sleep, REM, sleep debt over the week, HRV and resting heart rate. Sleep counts for about twice as much as the heart signals, because how you slept matters more for how you feel than whether your body is ready to train. WHOOP's own recovery number is deliberately not an input.
 
-**2. Put on WHOOP's scale.** The result is mapped onto 0–100 so that, over my history, Attuned has the same share of red, yellow and green days as WHOOP. The two rings only disagree about *which* days are good or bad, which makes the disagreement the interesting part. Only earlier days are used, so a day's score never changes later.
+That comparison becomes a 0–100 score on the same scale as WHOOP's, with the same share of red, yellow and green days across my history. The two scores therefore only disagree about which days were good or bad, and those disagreements are the point: they're the days where how ready my body is and how I'll feel come apart.
 
-**3. A playlist for what's good for you today.** The playlist isn't chosen to mirror my mood. It's chosen for what should help, given how I'll likely feel:
+The score then decides the music. On a low day the playlist is built to help me settle, with slower, softer songs. On a middling day it's built to keep me level. On a high day it's built to give me a lift, with brighter, faster songs. Every song comes from my own library, each one classified from its audio and metadata (tempo, energy, mood, genre), and the playlist is picked to sound coherent and to rotate rather than repeat the same favourites.
 
-- a low score: music built to help me settle (slower, softer);
-- a middle score: music built to keep me level (steady, familiar);
-- a high score: music built to give me a lift (brighter, faster).
-
-Songs come only from my own Spotify library. Each one has been classified from its audio and its metadata (tempo, energy, mood, genre), and the playlist is picked to sound coherent together and to rotate through the library instead of repeating favourites.
-
-**4. The page.** For each day, the page shows the Attuned ring first and WHOOP's second, a plain sentence on why they differ, the signals that moved the score (with real numbers against my usual), the day's health metrics, and the playlist: what's in it, why that kind of music should help (with the sources), and one plain reason under every song.
-
-**5. The WhatsApp DJ.** I can text what I want ("something for a late-night drive", "hype me up for the gym") and get a Spotify playlist back. The request always comes first. The Attuned score only tunes it: on a low day, a vague request leans gentler; on a high day, it can lean brighter. If the request is unclear, the DJ asks one question.
-
-## What I don't claim
-
-- **It's checked against one person.** I've compared the score with my own memory of how I felt on specific days, using my own data. That is not a study, and it may not hold for anyone else. The next step is a daily "how do you feel?" check-in so the score can be tested and calibrated against real answers instead of memory.
-- **It doesn't fix every day.** April 7 moves from WHOOP's 81 to 57 on Attuned. April 8, the day I felt best, stays at 59 on both: my deep sleep was below my usual and offsets the REM.
-- **It borrows WHOOP's idea of how often days are bad.** Matching WHOOP's share of red, yellow and green days keeps the two rings comparable, but it means Attuned assumes WHOOP has the right *proportion* of bad days.
-- **The design is mine, not the literature's.** Research is cited only for the problem (sleep is tied to feeling; readiness and feeling can diverge; music changes your state). The signals, weights, thresholds and song-scoring rules are my own choices, labelled that way.
-- **The music effects are modest and general.** Studies show slower music tends to calm the body and faster music to raise heart rate. I don't claim a given playlist will change how you feel by a measurable amount.
+Each day lives on one page: the Attuned score next to WHOOP's, a sentence on why they differ, the signals that moved the score, and the day's playlist with a one-line reason under every song. There's also a WhatsApp DJ: I text what I want ("something for a late-night drive") and get a playlist back, with the day's score quietly shaping the picks.
 
 ## Running it
 
@@ -68,14 +41,9 @@ python main.py request "late night drive, dark and moody"   # the DJ from the co
 python -m whatsapp.server                        # the DJ on WhatsApp (needs Twilio)
 ```
 
-`python main.py` with no command lists the rest (syncing, classification, tempo tools). `--profile <name>` runs any command against another person's database. `scripts/daily.sh` is the morning job: sync WHOOP, then generate.
+`python main.py` with no command lists the rest (syncing, classification, tempo tools). `--profile <name>` runs any command against another person's database.
 
-## Docs
-
-- [docs/PRD.md](docs/PRD.md): the problem, who it's for, goals and non-goals, and how I'd know it works.
-- [docs/DECISIONS.md](docs/DECISIONS.md): the key decisions, including what went wrong and what changed, with before and after evidence.
-- [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md): the technical walk-through, from WHOOP sync to the page.
-- [docs/RESEARCH.md](docs/RESEARCH.md): the studies Attuned rests on, what they do and don't show, and which choices are mine.
+More detail: [PRD](docs/PRD.md) · [Key decisions](docs/DECISIONS.md) · [How it works, technically](docs/HOW_IT_WORKS.md) · [Research](docs/RESEARCH.md)
 
 ## License
 
