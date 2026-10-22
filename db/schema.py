@@ -29,6 +29,7 @@ def create_tables(conn: sqlite3.Connection) -> None:
     _migrate_add_opening_energy(conn)
     _migrate_add_availability(conn)
     _migrate_add_sleep_nap(conn)
+    _migrate_add_tempo_columns(conn)
 
 
 def _migrate_add_recent_play_ratio(conn: sqlite3.Connection) -> None:
@@ -136,6 +137,32 @@ def _migrate_add_sleep_nap(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError as e:
         if "duplicate column" not in str(e).lower():
             raise
+
+
+def _migrate_add_tempo_columns(conn: sqlite3.Connection) -> None:
+    """Add raw tempo readings and the decided tempo to song_classifications.
+
+    Raw readings (each tracker's own number, Soundcharts' tempo) are source
+    columns: written by analyze-audio / fetch-soundcharts-tempos, never derived.
+    tempo / tempo_source / tempo_confidence are decided from them by
+    classification.tempo — the only writer. bpm is left as history.
+    """
+    for col, col_type in (
+        ("essentia_bpm", "REAL"),             # RhythmExtractor2013 multifeature, unfolded
+        ("essentia_bpm_confidence", "REAL"),  # its own confidence (0-5.32)
+        ("essentia_degara_bpm", "REAL"),      # RhythmExtractor2013 degara
+        ("tempocnn_bpm", "REAL"),             # TempoCNN global estimate
+        ("soundcharts_tempo", "REAL"),        # Soundcharts audio.tempo (no-clip songs)
+        ("tempo", "REAL"),                    # the felt tempo the profiler scores with
+        ("tempo_source", "TEXT"),             # e.g. audio+llm_octave, soundcharts, manual
+        ("tempo_confidence", "TEXT"),         # high | medium | low
+    ):
+        try:
+            conn.execute(f"ALTER TABLE song_classifications ADD COLUMN {col} {col_type}")
+            conn.commit()
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
 
 
 _SCHEMA_SQL = """

@@ -18,6 +18,7 @@ from classification.llm_classifier import (
     _validate_song_result,
     classify_songs,
 )
+from classification.profiler import compute_neurological_profile
 from db import queries
 
 
@@ -727,7 +728,7 @@ class TestClassifySongs:
             )
         db_conn.commit()
 
-    def _seed_essentia_song(self, db_conn, uri="uri:ess"):
+    def _seed_essentia_song(self, db_conn, uri="uri:ess", readings=None):
         """Insert a song with Essentia-only classification."""
         queries.upsert_song(db_conn, uri, "Essentia Song", "Essentia Artist")
         db_conn.execute(
@@ -736,11 +737,13 @@ class TestClassifySongs:
         db_conn.commit()
         queries.upsert_song_classification(db_conn, {
             "spotify_uri": uri,
-            "bpm": 120, "key": "A", "mode": "minor",
+            "key": "A", "mode": "minor",
             "energy": 0.7, "acousticness": 0.3,
             "essentia_energy": 0.7, "essentia_acousticness": 0.3,
             "classification_source": "essentia",
         })
+        queries.update_tempo_readings(db_conn, uri, readings or {"essentia_bpm": 120.0})
+        db_conn.commit()
 
     def _mock_llm_response(self, prompt):
         """Generate a valid LLM response by parsing song names from the prompt."""
@@ -820,6 +823,45 @@ class TestClassifySongs:
         assert rows[0]["key"] == "A"  # Essentia key kept
         assert rows[0]["valence"] == 0.6  # LLM valence
         assert rows[0]["classification_source"] == "essentia+llm"
+        assert rows[0]["tempo"] == 120.0  # the audio number, LLM confirms the octave
+        assert rows[0]["tempo_source"] == "audio+llm_octave"
+        assert rows[0]["tempo_confidence"] == "low"  # one tracker only
+
+    @patch("classification.llm_classifier._call_openai")
+    def test_scores_double_time_ballad_at_its_felt_tempo(self, mock_call, db_conn):
+        """Tere Mast Mast Do Nain: trackers 152, LLM 80 → stored and scored at 76."""
+        self._seed_essentia_song(db_conn, readings={
+            "essentia_bpm": 152.0, "essentia_degara_bpm": 152.2, "tempocnn_bpm": 152.0,
+        })
+        mock_call.side_effect = lambda prompt: _make_llm_response([{
+            "title": "Essentia Song", "artist": "Essentia Artist", "bpm": 80,
+            "valence": 0.4, "mood_tags": ["romantic", "nostalgic"], "genre_tags": ["bollywood"],
+        }])
+
+        with patch("classification.llm_classifier.compute_neurological_profile",
+                   wraps=compute_neurological_profile) as profile:
+            classify_songs(db_conn, provider="openai")
+
+        row = queries.get_song_classifications(db_conn, ["uri:ess"])[0]
+        assert row["tempo"] == pytest.approx(76.0, abs=0.2)
+        assert row["essentia_bpm"] == 152.0  # raw reading untouched
+        assert profile.call_args.kwargs["bpm"] == pytest.approx(76.0, abs=0.2)
+
+    @patch("classification.llm_classifier._call_openai")
+    def test_reclassify_keeps_a_manual_tempo(self, mock_call, db_conn):
+        self._seed_essentia_song(db_conn)
+        db_conn.execute("""UPDATE song_classifications SET valence = 0.5, tempo = 61,
+                           tempo_source = 'manual', tempo_confidence = 'high'""")
+        db_conn.commit()
+        mock_call.side_effect = lambda prompt: _make_llm_response([{
+            "title": "Essentia Song", "artist": "Essentia Artist", "bpm": 120,
+            "valence": 0.6, "mood_tags": ["happy"], "genre_tags": ["pop"],
+        }])
+
+        classify_songs(db_conn, provider="openai", reclassify=True)
+
+        row = queries.get_song_classifications(db_conn, ["uri:ess"])[0]
+        assert (row["tempo"], row["tempo_source"]) == (61, "manual")
 
     @patch("classification.llm_classifier._call_openai")
     def test_idempotent_second_run(self, mock_call, db_conn):
@@ -1003,7 +1045,7 @@ class TestClassifySongs:
     @patch("classification.llm_classifier._call_openai")
     def test_computed_confidence_with_essentia(self, mock_call, db_conn):
         """Essentia + BPM agreement → high computed confidence."""
-        self._seed_essentia_song(db_conn)  # BPM=120
+        self._seed_essentia_song(db_conn)  # Essentia reading 120
 
         def mock_response(prompt):
             return _make_llm_response([{

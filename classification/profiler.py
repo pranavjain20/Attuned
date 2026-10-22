@@ -194,6 +194,19 @@ def compute_grounding(
     )
 
 
+def scoring_tempo(classification: dict) -> float | None:
+    """The tempo to score a song with.
+
+    tempo is the corrected felt tempo (classification.tempo decides it). Rows
+    from before that column existed fall back to the old choice: the LLM's
+    felt_tempo, else bpm.
+    """
+    for column in ("tempo", "felt_tempo", "bpm"):
+        if classification.get(column) is not None:
+            return classification[column]
+    return None
+
+
 def compute_neurological_profile(
     bpm: float | int | None,
     energy: float | None,

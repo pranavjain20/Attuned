@@ -541,7 +541,8 @@ def get_songs_needing_llm(
     - ALL eligible songs regardless of existing classification, so the LLM
       pipeline re-runs with updated prompts, new blend weights, etc.
 
-    Returns existing Essentia values (bpm, key, mode, energy, acousticness) so
+    Returns existing Essentia values (raw tempo readings, key, mode, energy,
+    acousticness) and any tempo already decided (a manual one must survive) so
     the merge logic knows what to keep. Ordered by play_count DESC.
     """
     from config import MIN_CLASSIFICATION_LISTENS
@@ -550,7 +551,10 @@ def get_songs_needing_llm(
         rows = conn.execute(
             """SELECT s.spotify_uri, s.name, s.artist, s.album, s.duration_ms,
                       s.play_count, s.engagement_score, s.release_year,
-                      sc.bpm AS essentia_bpm, sc.key AS essentia_key,
+                      sc.essentia_bpm, sc.essentia_degara_bpm, sc.tempocnn_bpm,
+                      sc.soundcharts_tempo, sc.bpm,
+                      sc.tempo, sc.tempo_source, sc.tempo_confidence,
+                      sc.key AS essentia_key,
                       sc.mode AS essentia_mode,
                       sc.essentia_energy AS essentia_energy,
                       sc.essentia_acousticness AS essentia_acousticness,
@@ -566,7 +570,10 @@ def get_songs_needing_llm(
         rows = conn.execute(
             """SELECT s.spotify_uri, s.name, s.artist, s.album, s.duration_ms,
                       s.play_count, s.engagement_score, s.release_year,
-                      sc.bpm AS essentia_bpm, sc.key AS essentia_key,
+                      sc.essentia_bpm, sc.essentia_degara_bpm, sc.tempocnn_bpm,
+                      sc.soundcharts_tempo, sc.bpm,
+                      sc.tempo, sc.tempo_source, sc.tempo_confidence,
+                      sc.key AS essentia_key,
                       sc.mode AS essentia_mode,
                       sc.essentia_energy AS essentia_energy,
                       sc.essentia_acousticness AS essentia_acousticness,
@@ -598,8 +605,9 @@ def upsert_song_classification(conn: sqlite3.Connection, data: dict[str, Any]) -
                 confidence, parasympathetic, sympathetic, grounding,
                 classification_source, raw_response, classified_at, felt_tempo,
                 essentia_energy, essentia_acousticness,
-                original_release_year, opening_energy)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                original_release_year, opening_energy,
+                tempo, tempo_source, tempo_confidence)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(spotify_uri) DO UPDATE SET
                bpm = excluded.bpm,
                key = excluded.key,
@@ -622,7 +630,10 @@ def upsert_song_classification(conn: sqlite3.Connection, data: dict[str, Any]) -
                essentia_energy = excluded.essentia_energy,
                essentia_acousticness = excluded.essentia_acousticness,
                original_release_year = excluded.original_release_year,
-               opening_energy = excluded.opening_energy""",
+               opening_energy = excluded.opening_energy,
+               tempo = excluded.tempo,
+               tempo_source = excluded.tempo_source,
+               tempo_confidence = excluded.tempo_confidence""",
         (
             data["spotify_uri"],
             data.get("bpm"),
@@ -647,9 +658,37 @@ def upsert_song_classification(conn: sqlite3.Connection, data: dict[str, Any]) -
             data.get("essentia_acousticness"),
             data.get("original_release_year"),
             data.get("opening_energy"),
+            data.get("tempo"),
+            data.get("tempo_source"),
+            data.get("tempo_confidence"),
         ),
     )
     conn.commit()
+
+
+def update_tempo_readings(
+    conn: sqlite3.Connection,
+    uri: str,
+    readings: dict[str, Any],
+) -> None:
+    """Store a song's raw tempo-tracker readings. Caller commits.
+
+    These are source columns, kept apart from upsert_song_classification so an
+    LLM re-classification can never wipe them.
+    """
+    conn.execute(
+        """UPDATE song_classifications
+           SET essentia_bpm = ?, essentia_bpm_confidence = ?,
+               essentia_degara_bpm = ?, tempocnn_bpm = ?
+           WHERE spotify_uri = ?""",
+        (
+            readings.get("essentia_bpm"),
+            readings.get("essentia_bpm_confidence"),
+            readings.get("essentia_degara_bpm"),
+            readings.get("tempocnn_bpm"),
+            uri,
+        ),
+    )
 
 
 def get_song_classifications(

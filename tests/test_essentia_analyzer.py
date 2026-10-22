@@ -7,7 +7,12 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from classification.essentia_analyzer import VALID_KEYS, analyze_all_songs, analyze_audio
+from classification.essentia_analyzer import (
+    VALID_KEYS,
+    analyze_all_songs,
+    analyze_audio,
+    measure_missing_tempo_readings,
+)
 from db import queries
 
 
@@ -18,6 +23,9 @@ from db import queries
 def _make_es_mock(
     *,
     bpm: float = 120.0,
+    degara_bpm: float = 121.0,
+    cnn_bpm: float = 60.0,
+    re_confidence: float = 0.8,
     key: str = "A",
     scale: str = "minor",
     onset_rate: float = 4.0,
@@ -36,7 +44,13 @@ def _make_es_mock(
     else:
         es.MonoLoader.return_value = MagicMock(return_value=fake_audio)
 
-    es.RhythmExtractor2013.return_value = MagicMock(return_value=(bpm, [], 0.8, [], []))
+    def _rhythm_extractor(method: str = "multifeature"):
+        reading = bpm if method == "multifeature" else degara_bpm
+        return MagicMock(return_value=(reading, [], re_confidence, [], []))
+
+    es.RhythmExtractor2013.side_effect = _rhythm_extractor
+    es.Resample.return_value = MagicMock(return_value=np.zeros(11025, dtype=np.float32))
+    es.TempoCNN.return_value = MagicMock(return_value=(cnn_bpm, [], []))
     es.KeyExtractor.return_value = MagicMock(return_value=(key, scale, 0.7))
     es.OnsetRate.return_value = MagicMock(return_value=([], onset_rate))
     es.ZeroCrossingRate.return_value = MagicMock(return_value=0.04)
@@ -74,18 +88,89 @@ class TestAnalyzeAudio:
         result = _run_analyze_with_mock(audio_path, _make_es_mock())
 
         assert result is not None
-        for key in ("bpm", "key", "mode", "energy", "acousticness",
-                     "instrumentalness", "danceability"):
+        for key in ("essentia_bpm", "essentia_bpm_confidence", "essentia_degara_bpm",
+                    "tempocnn_bpm", "key", "mode", "energy", "acousticness",
+                    "instrumentalness", "danceability"):
             assert key in result
 
-    def test_bpm_is_positive_int(self, tmp_path):
+    def test_never_returns_a_bpm_to_store(self, tmp_path):
+        """analyze-audio must not decide the tempo — only raw readings come out."""
         audio_path = tmp_path / "test.mp3"
         audio_path.write_bytes(b"fake")
 
-        result = _run_analyze_with_mock(audio_path, _make_es_mock(bpm=128.3))
+        result = _run_analyze_with_mock(audio_path, _make_es_mock())
 
-        assert isinstance(result["bpm"], int)
-        assert result["bpm"] == 128
+        assert "bpm" not in result
+        assert "tempo" not in result
+
+    def test_tracker_readings_are_kept_unfolded(self, tmp_path):
+        """A 172 BPM reading stays 172 — no folding into 60-170, no octave fix."""
+        audio_path = tmp_path / "test.mp3"
+        audio_path.write_bytes(b"fake")
+
+        model = tmp_path / "model.pb"  # TempoCNN only runs when its model file exists
+        model.write_bytes(b"model")
+
+        with patch("classification.essentia_analyzer.TEMPOCNN_MODEL_PATH", model):
+            result = _run_analyze_with_mock(
+                audio_path, _make_es_mock(bpm=172.34, degara_bpm=172.3, cnn_bpm=86.0),
+            )
+
+        assert result["essentia_bpm"] == 172.34
+        assert result["essentia_degara_bpm"] == 172.3
+        assert result["tempocnn_bpm"] == 86.0
+
+    def test_raw_rhythm_confidence_is_kept(self, tmp_path):
+        audio_path = tmp_path / "test.mp3"
+        audio_path.write_bytes(b"fake")
+
+        result = _run_analyze_with_mock(audio_path, _make_es_mock(re_confidence=3.21))
+
+        assert result["essentia_bpm_confidence"] == 3.21
+
+    def test_zero_reading_is_stored_as_missing(self, tmp_path):
+        audio_path = tmp_path / "test.mp3"
+        audio_path.write_bytes(b"fake")
+
+        result = _run_analyze_with_mock(audio_path, _make_es_mock(bpm=0.0, degara_bpm=0.0))
+
+        assert result["essentia_bpm"] is None
+        assert result["essentia_degara_bpm"] is None
+
+    def test_missing_tempocnn_model_skips_only_that_reading(self, tmp_path):
+        audio_path = tmp_path / "test.mp3"
+        audio_path.write_bytes(b"fake")
+
+        with patch("classification.essentia_analyzer.TEMPOCNN_MODEL_PATH",
+                   tmp_path / "missing.pb"):
+            result = _run_analyze_with_mock(audio_path, _make_es_mock())
+
+        assert result["tempocnn_bpm"] is None
+        assert result["essentia_bpm"] == 120.0
+
+    def test_tempocnn_failure_skips_only_that_reading(self, tmp_path):
+        """essentia builds without tensorflow have no TempoCNN."""
+        audio_path = tmp_path / "test.mp3"
+        audio_path.write_bytes(b"fake")
+        model = tmp_path / "model.pb"
+        model.write_bytes(b"model")
+        es_mock = _make_es_mock()
+        es_mock.TempoCNN.side_effect = AttributeError("no TempoCNN")
+
+        with patch("classification.essentia_analyzer.TEMPOCNN_MODEL_PATH", model):
+            result = _run_analyze_with_mock(audio_path, es_mock)
+
+        assert result["tempocnn_bpm"] is None
+        assert result["key"] == "A"
+
+    def test_percival_is_not_used(self, tmp_path):
+        audio_path = tmp_path / "test.mp3"
+        audio_path.write_bytes(b"fake")
+        es_mock = _make_es_mock()
+
+        _run_analyze_with_mock(audio_path, es_mock)
+
+        es_mock.PercivalBpmEstimator.assert_not_called()
 
     def test_key_is_valid_note(self, tmp_path):
         audio_path = tmp_path / "test.mp3"
@@ -162,7 +247,7 @@ class TestAnalyzeAudio:
         assert result["key"] is None
         assert result["mode"] is None
         # Other fields should still be present
-        assert result["bpm"] is not None
+        assert result["essentia_bpm"] is not None
         assert result["energy"] is not None
 
     def test_high_flatness_means_low_acousticness(self, tmp_path):
@@ -268,23 +353,6 @@ class TestAnalyzeAudio:
         result = _run_analyze_with_mock(audio_path, _make_es_mock(onset_rate=1.0))
         assert result["energy"] == 0.0
 
-    def test_bpm_confidence_clamped_to_1(self, tmp_path):
-        """High RhythmExtractor confidence (0-5.32) should be clamped to 1.0."""
-        audio_path = tmp_path / "high_conf.mp3"
-        audio_path.write_bytes(b"fake")
-
-        # RhythmExtractor returns 0.8 confidence, with mock producing full agreement
-        # → raw confidence = 0.8 * 1.0 = 0.8, which is fine
-        # But with re_confidence=5.0 (its actual range), that would exceed 1.0
-        es_mock = _make_es_mock()
-        # Override to return high confidence value
-        es_mock.RhythmExtractor2013.return_value = MagicMock(
-            return_value=(120.0, [], 5.0, [], [])
-        )
-
-        result = _run_analyze_with_mock(audio_path, es_mock)
-        assert result["bpm_confidence"] <= 1.0
-
 
 class TestAnalyzeAllSongs:
     def _insert_song(self, db_conn, uri, play_count=10):
@@ -302,7 +370,8 @@ class TestAnalyzeAllSongs:
         (tmp_path / uri_to_filename("uri:1")).write_bytes(b"fake audio")
 
         mock_analyze.return_value = {
-            "bpm": 120, "bpm_confidence": 2.5, "key": "A", "mode": "minor",
+            "essentia_bpm": 120, "essentia_bpm_confidence": 2.5,
+            "essentia_degara_bpm": 120, "tempocnn_bpm": None, "key": "A", "mode": "minor",
             "energy": 0.7, "acousticness": 0.3,
             "instrumentalness": 0.2, "danceability": 0.6, "opening_energy": 0.7,
         }
@@ -314,7 +383,10 @@ class TestAnalyzeAllSongs:
 
         rows = queries.get_song_classifications(db_conn, ["uri:1"])
         assert len(rows) == 1
-        assert rows[0]["bpm"] == 120
+        assert rows[0]["essentia_bpm"] == 120
+        assert rows[0]["essentia_degara_bpm"] == 120
+        assert rows[0]["bpm"] is None  # tempo is decided later, never here
+        assert rows[0]["tempo"] is None
         assert rows[0]["classification_source"] == "essentia"
 
     @patch("classification.essentia_analyzer.analyze_audio")
@@ -352,7 +424,8 @@ class TestAnalyzeAllSongs:
             (tmp_path / uri_to_filename(uri)).write_bytes(b"audio")
 
         mock_analyze.return_value = {
-            "bpm": 128, "bpm_confidence": 3.0, "key": "C", "mode": "major",
+            "essentia_bpm": 128, "essentia_bpm_confidence": 3.0,
+            "essentia_degara_bpm": 128, "tempocnn_bpm": None, "key": "C", "mode": "major",
             "energy": 0.5, "acousticness": 0.5,
             "instrumentalness": 0.5, "danceability": 0.5, "opening_energy": 0.5,
         }
@@ -368,7 +441,8 @@ class TestAnalyzeAllSongs:
         (tmp_path / uri_to_filename("uri:1")).write_bytes(b"audio")
 
         mock_analyze.return_value = {
-            "bpm": 120, "bpm_confidence": 2.5, "key": "A", "mode": "minor",
+            "essentia_bpm": 120, "essentia_bpm_confidence": 2.5,
+            "essentia_degara_bpm": 120, "tempocnn_bpm": None, "key": "A", "mode": "minor",
             "energy": 0.7, "acousticness": 0.3,
             "instrumentalness": 0.2, "danceability": 0.6, "opening_energy": 0.7,
         }
@@ -399,7 +473,8 @@ class TestAnalyzeAllSongs:
         # uri:4 — no clip
 
         mock_analyze.side_effect = [
-            {"bpm": 120, "bpm_confidence": 2.5, "key": "A", "mode": "minor",
+            {"essentia_bpm": 120, "essentia_bpm_confidence": 2.5,
+            "essentia_degara_bpm": 120, "tempocnn_bpm": None, "key": "A", "mode": "minor",
              "energy": 0.7, "acousticness": 0.3,
              "instrumentalness": 0.2, "danceability": 0.6, "opening_energy": 0.6},
             None,
@@ -430,7 +505,8 @@ class TestAnalyzeAllSongs:
 
         # With force: re-analyzed
         mock_analyze.return_value = {
-            "bpm": 120, "bpm_confidence": 2.5, "key": "A", "mode": "minor",
+            "essentia_bpm": 120, "essentia_bpm_confidence": 2.5,
+            "essentia_degara_bpm": 120, "tempocnn_bpm": None, "key": "A", "mode": "minor",
             "energy": 0.7, "acousticness": 0.3,
             "instrumentalness": 0.2, "danceability": 0.6, "opening_energy": 0.7,
         }
@@ -472,7 +548,8 @@ class TestAnalyzeAllSongs:
 
         # Essentia returns different energy/acousticness
         mock_analyze.return_value = {
-            "bpm": 122, "bpm_confidence": 2.5, "key": "C", "mode": "major",
+            "essentia_bpm": 122, "essentia_bpm_confidence": 2.5,
+            "essentia_degara_bpm": 122, "tempocnn_bpm": None, "key": "C", "mode": "major",
             "energy": 0.80, "acousticness": 0.20,
             "instrumentalness": 0.3, "danceability": 0.5, "opening_energy": 0.5,
         }
@@ -481,8 +558,11 @@ class TestAnalyzeAllSongs:
         assert stats["analyzed"] == 1
 
         rows = queries.get_song_classifications(db_conn, ["uri:llm"])
-        # BPM/key/mode should be updated from Essentia
-        assert rows[0]["bpm"] == 122
+        # Root cause of the double-time bug: re-analysis used to overwrite the
+        # LLM-merged bpm with Essentia's raw reading. Now bpm is left alone and
+        # the reading lands in its own column.
+        assert rows[0]["bpm"] == 120
+        assert rows[0]["essentia_bpm"] == 122
         assert rows[0]["key"] == "C"
         assert rows[0]["mode"] == "major"
         # Merged energy/acousticness should NOT be overwritten (preserved from LLM merge)
@@ -503,7 +583,8 @@ class TestAnalyzeAllSongs:
         (tmp_path / uri_to_filename("uri:new")).write_bytes(b"audio")
 
         mock_analyze.return_value = {
-            "bpm": 95, "bpm_confidence": 2.0, "key": "D", "mode": "minor",
+            "essentia_bpm": 95, "essentia_bpm_confidence": 2.0,
+            "essentia_degara_bpm": 95, "tempocnn_bpm": None, "key": "D", "mode": "minor",
             "energy": 0.35, "acousticness": 0.70,
             "instrumentalness": 0.1, "danceability": 0.4, "opening_energy": 0.4,
         }
@@ -538,7 +619,8 @@ class TestAnalyzeAllSongs:
 
         # New Essentia analysis returns different values
         mock_analyze.return_value = {
-            "bpm": 118, "bpm_confidence": 3.0, "key": "G", "mode": "major",
+            "essentia_bpm": 118, "essentia_bpm_confidence": 3.0,
+            "essentia_degara_bpm": 118, "tempocnn_bpm": None, "key": "G", "mode": "major",
             "energy": 0.75, "acousticness": 0.25,
             "instrumentalness": 0.2, "danceability": 0.5, "opening_energy": 0.5,
         }
@@ -553,3 +635,60 @@ class TestAnalyzeAllSongs:
         # Merged energy/acousticness preserved (LLM present)
         assert rows[0]["energy"] == 0.50
         assert rows[0]["acousticness"] == 0.55
+
+
+class TestMeasureMissingTempoReadings:
+    def _seed(self, db_conn, uri, **columns):
+        queries.upsert_song(db_conn, uri, f"Song {uri}", "Artist")
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": uri, "bpm": 154, "energy": 0.45, "valence": 0.5,
+            "classification_source": "essentia+llm",
+        })
+        if columns:
+            sets = ", ".join(f"{k} = ?" for k in columns)
+            db_conn.execute(f"UPDATE song_classifications SET {sets} WHERE spotify_uri = ?",
+                            (*columns.values(), uri))
+            db_conn.commit()
+
+    def _readings(self, bpm=152.0):
+        return {"essentia_bpm": bpm, "essentia_bpm_confidence": 3.1,
+                "essentia_degara_bpm": bpm, "tempocnn_bpm": bpm / 2}
+
+    @patch("classification.essentia_analyzer.measure_tempo_readings")
+    def test_writes_only_tracker_columns(self, mock_measure, db_conn, tmp_path):
+        from classification.audio import uri_to_filename
+        self._seed(db_conn, "uri:1")
+        (tmp_path / uri_to_filename("uri:1")).write_bytes(b"audio")
+        mock_measure.return_value = self._readings()
+
+        stats = measure_missing_tempo_readings(db_conn, tmp_path)
+
+        assert stats == {"measured": 1, "failed": 0, "skipped": 0}
+        row = queries.get_song_classifications(db_conn, ["uri:1"])[0]
+        assert (row["essentia_bpm"], row["essentia_degara_bpm"], row["tempocnn_bpm"]) == (152.0, 152.0, 76.0)
+        assert row["essentia_bpm_confidence"] == 3.1
+        assert (row["bpm"], row["energy"], row["valence"]) == (154, 0.45, 0.5)
+
+    @patch("classification.essentia_analyzer.measure_tempo_readings")
+    def test_skips_songs_that_already_have_readings(self, mock_measure, db_conn, tmp_path):
+        from classification.audio import uri_to_filename
+        self._seed(db_conn, "uri:1", tempocnn_bpm=80.0)
+        (tmp_path / uri_to_filename("uri:1")).write_bytes(b"audio")
+
+        stats = measure_missing_tempo_readings(db_conn, tmp_path)
+
+        assert stats["measured"] == 0
+        mock_measure.assert_not_called()
+
+    @patch("classification.essentia_analyzer.measure_tempo_readings")
+    def test_counts_missing_clips_and_failures(self, mock_measure, db_conn, tmp_path):
+        from classification.audio import uri_to_filename
+        self._seed(db_conn, "uri:noclip")
+        self._seed(db_conn, "uri:bad")
+        (tmp_path / uri_to_filename("uri:bad")).write_bytes(b"corrupt")
+        mock_measure.return_value = None
+
+        stats = measure_missing_tempo_readings(db_conn, tmp_path)
+
+        assert stats == {"measured": 0, "failed": 1, "skipped": 1}
+        assert queries.get_song_classifications(db_conn, ["uri:bad"])[0]["essentia_bpm"] is None

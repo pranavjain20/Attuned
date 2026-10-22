@@ -1,8 +1,9 @@
 """Essentia-based audio feature extraction.
 
-Analyzes audio clips to extract BPM, key, mode, energy, acousticness,
-instrumentalness, and danceability. Results are stored in song_classifications
-with classification_source = "essentia".
+Analyzes audio clips to extract raw tempo readings, key, mode, energy,
+acousticness, instrumentalness, and danceability. Results are stored in
+song_classifications with classification_source = "essentia". Tempo readings go
+to their own columns; this module never writes bpm or tempo.
 """
 
 import logging
@@ -12,7 +13,13 @@ from pathlib import Path
 from typing import Any
 
 from classification.audio import uri_to_filename
-from db.queries import get_unclassified_songs, upsert_song_classification
+from classification.tempo import READING_COLUMNS
+from config import TEMPOCNN_MODEL_PATH
+from db.queries import (
+    get_unclassified_songs,
+    update_tempo_readings,
+    upsert_song_classification,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,64 +27,42 @@ logger = logging.getLogger(__name__)
 VALID_KEYS = {"C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"}
 
 
-def _estimate_bpm(audio: Any, es: Any) -> tuple[int | None, float]:
-    """Multi-algorithm BPM estimation with octave-aware consensus.
+def _measure_tempo(audio: Any, es: Any) -> dict[str, float | None]:
+    """Read tempo with three independent trackers, each kept as reported.
 
-    Runs RhythmExtractor2013 + PercivalBpmEstimator + BpmHistogramDescriptors,
-    normalizes candidates to the 60-170 BPM range, and picks the consensus.
-    Returns (bpm, confidence).
+    No folding, averaging or octave correction here: these are raw source
+    readings. classification.tempo decides the scored tempo from them (the
+    trackers' agreement gives the number, the LLM's bpm picks the octave).
+    PercivalBpmEstimator is not used: on 616 real clips it returned only three
+    distinct values, so it was noise, not a vote.
     """
-    # Algorithm 1: RhythmExtractor2013 (5 outputs)
-    rhythm_ext = es.RhythmExtractor2013(method="multifeature")
-    re_bpm, _ticks, re_confidence, _estimates, bpm_intervals = rhythm_ext(audio)
-
-    # Algorithm 2: PercivalBpmEstimator (independent second opinion)
-    percival_bpm = float(es.PercivalBpmEstimator()(audio))
-
-    # Algorithm 3: BpmHistogramDescriptors peaks (from RhythmExtractor's intervals)
-    peak1_bpm, peak2_bpm = 0.0, 0.0
-    if len(bpm_intervals) >= 2:
-        peak1_bpm, _, _, peak2_bpm, _, _, _ = es.BpmHistogramDescriptors()(bpm_intervals)
-
-    # Collect all non-zero candidates
-    raw_candidates = [c for c in [re_bpm, percival_bpm, peak1_bpm, peak2_bpm] if c > 0]
-    if not raw_candidates:
-        return None, 0.0
-
-    # Normalize all candidates to the 60-170 BPM range
-    def normalize(bpm: float) -> float:
-        while bpm > 170:
-            bpm /= 2
-        while bpm < 60:
-            bpm *= 2
-        return bpm
-
-    normalized = [normalize(c) for c in raw_candidates]
-
-    # Find consensus: group candidates within 10 BPM of each other
-    best_group: list[float] = []
-    for anchor in normalized:
-        group = [n for n in normalized if abs(n - anchor) <= 10]
-        if len(group) > len(best_group):
-            best_group = group
-
-    if best_group:
-        best_bpm = sum(best_group) / len(best_group)
-    else:
-        best_bpm = normalize(re_bpm)
-
-    # Confidence: RhythmExtractor confidence (0-5.32) scaled by agreement level
-    agreement = len(best_group) / len(normalized) if normalized else 0
-    confidence = min(float(re_confidence) * agreement, 1.0)
-
-    return int(round(best_bpm)), confidence
+    re_bpm, _ticks, re_confidence, _estimates, _intervals = (
+        es.RhythmExtractor2013(method="multifeature")(audio)
+    )
+    degara_bpm = es.RhythmExtractor2013(method="degara")(audio)[0]
+    return {
+        "essentia_bpm": round(float(re_bpm), 2) if re_bpm > 0 else None,
+        "essentia_bpm_confidence": round(float(re_confidence), 3),
+        "essentia_degara_bpm": round(float(degara_bpm), 2) if degara_bpm > 0 else None,
+        "tempocnn_bpm": _measure_tempocnn(audio, es),
+    }
 
 
-def analyze_audio(audio_path: Path) -> dict[str, Any] | None:
-    """Analyze a single audio file with Essentia algorithms.
+def _measure_tempocnn(audio: Any, es: Any) -> float | None:
+    """TempoCNN's global tempo, or None when the model or essentia-tensorflow is missing."""
+    if not TEMPOCNN_MODEL_PATH.exists():
+        return None
+    try:
+        audio_11k = es.Resample(inputSampleRate=44100, outputSampleRate=11025)(audio)
+        cnn_bpm = es.TempoCNN(graphFilename=str(TEMPOCNN_MODEL_PATH))(audio_11k)[0]
+    except Exception as e:  # essentia builds without tensorflow have no TempoCNN
+        logger.warning("TempoCNN unavailable: %s", e)
+        return None
+    return round(float(cnn_bpm), 2) if cnn_bpm > 0 else None
 
-    Returns a dict of extracted features, or None if analysis fails.
-    """
+
+def _load_clip(audio_path: Path) -> tuple[Any, Any] | None:
+    """Load a clip as 44.1kHz mono. Returns (audio, essentia.standard) or None."""
     try:
         import essentia.standard as es
     except ImportError:
@@ -98,9 +83,35 @@ def analyze_audio(audio_path: Path) -> dict[str, Any] | None:
         logger.warning("Audio too short: %s", audio_path)
         return None
 
+    return audio, es
+
+
+def measure_tempo_readings(audio_path: Path) -> dict[str, float | None] | None:
+    """Only the raw tempo readings for one clip, or None if it can't be analyzed."""
+    loaded = _load_clip(audio_path)
+    if loaded is None:
+        return None
+    audio, es = loaded
     try:
-        # BPM — multi-algorithm consensus with octave correction
-        bpm, bpm_confidence = _estimate_bpm(audio, es)
+        return _measure_tempo(audio, es)
+    except Exception as e:
+        logger.warning("Tempo measurement failed for: %s — %s", audio_path, e)
+        return None
+
+
+def analyze_audio(audio_path: Path) -> dict[str, Any] | None:
+    """Analyze a single audio file with Essentia algorithms.
+
+    Returns a dict of extracted features, or None if analysis fails.
+    """
+    loaded = _load_clip(audio_path)
+    if loaded is None:
+        return None
+    audio, es = loaded
+
+    try:
+        # Tempo — raw readings from three trackers (see _measure_tempo)
+        tempo_readings = _measure_tempo(audio, es)
 
         # Key + mode
         key_extractor = es.KeyExtractor()
@@ -171,8 +182,7 @@ def analyze_audio(audio_path: Path) -> dict[str, Any] | None:
         danceability = max(0.0, min(1.0, danceability))
 
         return {
-            "bpm": bpm,
-            "bpm_confidence": round(bpm_confidence, 3),
+            **tempo_readings,
             "key": key,
             "mode": mode,
             "energy": round(energy, 4),
@@ -261,16 +271,18 @@ def analyze_all_songs(
             existing_source + "+essentia" if existing_source else "essentia"
         )
         now = datetime.now(timezone.utc).isoformat()
+        # RhythmExtractor2013 confidence runs 0-5.32; the confidence column is 0-1.
+        tracker_confidence = min(features["essentia_bpm_confidence"], 1.0)
 
         if existing:
             # UPDATE: always write raw Essentia values to essentia_* columns.
-            # When LLM has already classified, only update BPM/key/mode —
+            # When LLM has already classified, only update key/mode —
             # energy/acousticness are handled by the merge logic in llm_classifier
             # (Essentia spectral flatness is structurally wrong for acousticness).
             if "llm" in existing_source:
                 conn.execute(
                     """UPDATE song_classifications
-                       SET bpm = ?, key = ?, mode = ?,
+                       SET key = ?, mode = ?,
                            essentia_energy = ?, essentia_acousticness = ?,
                            opening_energy = ?,
                            confidence = MAX(COALESCE(confidence, 0), ?),
@@ -278,17 +290,17 @@ def analyze_all_songs(
                            classified_at = ?
                        WHERE spotify_uri = ?""",
                     (
-                        features["bpm"], features["key"], features["mode"],
+                        features["key"], features["mode"],
                         features["energy"], features["acousticness"],
                         features["opening_energy"],
-                        features["bpm_confidence"],
+                        tracker_confidence,
                         new_source, now, uri,
                     ),
                 )
             else:
                 conn.execute(
                     """UPDATE song_classifications
-                       SET bpm = ?, key = ?, mode = ?, energy = ?, acousticness = ?,
+                       SET key = ?, mode = ?, energy = ?, acousticness = ?,
                            essentia_energy = ?, essentia_acousticness = ?,
                            opening_energy = ?,
                            confidence = MAX(COALESCE(confidence, 0), ?),
@@ -296,11 +308,11 @@ def analyze_all_songs(
                            classified_at = ?
                        WHERE spotify_uri = ?""",
                     (
-                        features["bpm"], features["key"], features["mode"],
+                        features["key"], features["mode"],
                         features["energy"], features["acousticness"],
                         features["energy"], features["acousticness"],
                         features["opening_energy"],
-                        features["bpm_confidence"],
+                        tracker_confidence,
                         new_source, now, uri,
                     ),
                 )
@@ -308,7 +320,6 @@ def analyze_all_songs(
             # INSERT: new song with Essentia-only data
             upsert_song_classification(conn, {
                 "spotify_uri": uri,
-                "bpm": features["bpm"],
                 "key": features["key"],
                 "mode": features["mode"],
                 "energy": features["energy"],
@@ -318,16 +329,17 @@ def analyze_all_songs(
                 "opening_energy": features["opening_energy"],
                 "instrumentalness": features["instrumentalness"],
                 "danceability": features["danceability"],
-                "confidence": features["bpm_confidence"],
+                "confidence": tracker_confidence,
                 "classification_source": "essentia",
                 "classified_at": now,
             })
+        update_tempo_readings(conn, uri, features)
         conn.commit()
         stats["analyzed"] += 1
         logger.info(
-            "Analyzed: %s — %s (BPM=%s, key=%s %s)",
+            "Analyzed: %s — %s (essentia BPM=%s, key=%s %s)",
             song["name"], song["artist"],
-            features["bpm"], features["key"], features["mode"],
+            features["essentia_bpm"], features["key"], features["mode"],
         )
 
     total = len(unclassified)
@@ -337,5 +349,42 @@ def analyze_all_songs(
             "— check audio directory exists and contains valid clips",
             total, stats["skipped"], stats["failed"],
         )
+
+    return stats
+
+
+def measure_missing_tempo_readings(
+    conn: sqlite3.Connection,
+    audio_dir: Path,
+) -> dict[str, int]:
+    """Backfill raw tempo readings for classified songs that have none yet.
+
+    Writes only the tracker columns — nothing else about the song changes —
+    so it is safe on a fully classified library. Run update-tempos afterwards
+    to turn the readings into tempo.
+
+    Returns summary: {measured, failed, skipped}
+    """
+    stats = {"measured": 0, "failed": 0, "skipped": 0}
+    no_readings = " AND ".join(f"{c} IS NULL" for c in READING_COLUMNS)
+    rows = conn.execute(
+        f"SELECT spotify_uri FROM song_classifications WHERE {no_readings}"  # noqa: S608
+    ).fetchall()
+
+    for row in rows:
+        uri = row["spotify_uri"]
+        clip_path = audio_dir / uri_to_filename(uri)
+        if not clip_path.exists():
+            stats["skipped"] += 1
+            continue
+        readings = measure_tempo_readings(clip_path)
+        if readings is None:
+            stats["failed"] += 1
+            continue
+        update_tempo_readings(conn, uri, readings)
+        conn.commit()
+        stats["measured"] += 1
+        if stats["measured"] % 50 == 0:
+            logger.info("Tempo readings: %d measured", stats["measured"])
 
     return stats

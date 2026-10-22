@@ -12,7 +12,8 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from classification.profiler import compute_neurological_profile
+from classification.profiler import compute_neurological_profile, scoring_tempo
+from classification.tempo import resolve_tempo
 from classification.validator import validate_classification
 from config import (
     LLM_BATCH_SIZE,
@@ -389,6 +390,7 @@ def _merge_with_essentia(
 
     Rules:
     - BPM: LLM primary, Essentia for cross-validation (octave error detection)
+    - Tempo: decided by classification.tempo.resolve_tempo (a manual tempo is kept)
     - Key/Mode: Always Essentia when present
     - Energy: Essentia primary on agreement, blend on disagreement
     - Acousticness: Average on agreement, LLM wins on disagreement
@@ -401,9 +403,18 @@ def _merge_with_essentia(
         "spotify_uri": song["spotify_uri"],
     }
 
-    # BPM: LLM primary, cross-validated with Essentia
+    # BPM: LLM primary, cross-validated with Essentia (kept as history)
     essentia_bpm = song.get("essentia_bpm") if has_essentia else None
     merged["bpm"] = _pick_best_bpm(llm_result.get("bpm"), essentia_bpm)
+
+    # Tempo (what gets scored): tracker readings for the number, LLM for the octave
+    decision = resolve_tempo(
+        {**song, "genre_tags": genre_tags, "mood_tags": llm_result.get("mood_tags")},
+        llm_result.get("bpm"),
+    )
+    merged["tempo"] = decision.tempo
+    merged["tempo_source"] = decision.source
+    merged["tempo_confidence"] = decision.confidence
 
     # Key/Mode: Essentia when available
     if has_essentia:
@@ -645,12 +656,10 @@ def classify_songs(
 
             merged = _merge_with_essentia(validated, song)
 
-            # Compute neurological profile from merged values.
-            # Use felt_tempo for scoring when available (perceived tempo
-            # matters more than measured BPM for neurological impact).
-            scoring_bpm = merged.get("felt_tempo") or merged.get("bpm")
+            # Compute neurological profile from merged values, scored at the
+            # corrected felt tempo (see classification.tempo).
             neuro = compute_neurological_profile(
-                bpm=scoring_bpm,
+                bpm=scoring_tempo(merged),
                 energy=merged.get("energy"),
                 acousticness=merged.get("acousticness"),
                 instrumentalness=merged.get("instrumentalness"),
@@ -667,7 +676,7 @@ def classify_songs(
                 merged.get("llm_para_score"),
                 merged.get("llm_symp_score"),
                 merged.get("llm_grounding_score"),
-                bpm=merged.get("bpm"),
+                bpm=scoring_tempo(merged),
                 energy=merged.get("energy"),
             )
 

@@ -497,6 +497,8 @@ class TestGetSongsNeedingLlm:
             "essentia_energy": 0.7, "essentia_acousticness": 0.3,
             "classification_source": "essentia",
         })
+        queries.update_tempo_readings(db_conn, "uri:1", {"essentia_bpm": 120})
+        db_conn.commit()
         result = queries.get_songs_needing_llm(db_conn)
         assert len(result) == 1
         assert result[0]["essentia_bpm"] == 120
@@ -504,6 +506,22 @@ class TestGetSongsNeedingLlm:
         assert result[0]["essentia_mode"] == "minor"
         assert result[0]["essentia_energy"] == 0.7
         assert result[0]["essentia_acousticness"] == 0.3
+
+    def test_essentia_bpm_is_the_raw_reading_not_the_merged_bpm(self, db_conn):
+        """The merge used to read sc.bpm as if it were Essentia's — it never was after a merge."""
+        self._insert_song(db_conn, "uri:1", 10)
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1", "bpm": 77, "valence": 0.5,
+            "tempo": 76.0, "tempo_source": "manual", "tempo_confidence": "high",
+            "classification_source": "essentia+llm",
+        })
+        queries.update_tempo_readings(db_conn, "uri:1", {
+            "essentia_bpm": 154.0, "essentia_degara_bpm": 153.0, "tempocnn_bpm": 77.0,
+        })
+        db_conn.commit()
+        row = queries.get_songs_needing_llm(db_conn, reclassify=True)[0]
+        assert (row["essentia_bpm"], row["essentia_degara_bpm"], row["tempocnn_bpm"]) == (154.0, 153.0, 77.0)
+        assert (row["tempo"], row["tempo_source"], row["tempo_confidence"]) == (76.0, "manual", "high")
 
     def test_excludes_fully_classified(self, db_conn):
         """Songs with valence set should NOT be returned (fully classified)."""
@@ -620,6 +638,8 @@ class TestGetSongsNeedingLlm:
             "valence": 0.6,
             "classification_source": "essentia+llm",
         })
+        queries.update_tempo_readings(db_conn, "uri:1", {"essentia_bpm": 120})
+        db_conn.commit()
         result = queries.get_songs_needing_llm(db_conn, reclassify=True)
         assert len(result) == 1
         assert result[0]["essentia_bpm"] == 120
@@ -647,6 +667,24 @@ class TestUpsertSongClassification:
         assert rows[0]["bpm"] == 128
         assert rows[0]["key"] == "C"
         assert rows[0]["mode"] == "major"
+
+    def test_upsert_never_wipes_tracker_readings(self, db_conn):
+        """Re-classifying a song must keep its raw tempo readings (source data)."""
+        queries.upsert_song(db_conn, "uri:1", "Song", "Artist")
+        queries.upsert_song_classification(db_conn, {"spotify_uri": "uri:1", "bpm": 100})
+        queries.update_tempo_readings(db_conn, "uri:1", {
+            "essentia_bpm": 152.0, "essentia_bpm_confidence": 3.0,
+            "essentia_degara_bpm": 152.0, "tempocnn_bpm": 76.0,
+        })
+        db_conn.commit()
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1", "bpm": 80, "tempo": 76.0,
+            "tempo_source": "audio+llm_octave", "tempo_confidence": "high",
+        })
+        row = queries.get_song_classifications(db_conn, ["uri:1"])[0]
+        assert (row["essentia_bpm"], row["essentia_bpm_confidence"]) == (152.0, 3.0)
+        assert (row["essentia_degara_bpm"], row["tempocnn_bpm"]) == (152.0, 76.0)
+        assert (row["tempo"], row["tempo_source"], row["tempo_confidence"]) == (76.0, "audio+llm_octave", "high")
 
     def test_updates_existing_classification(self, db_conn):
         queries.upsert_song(db_conn, "uri:1", "Song", "Artist")

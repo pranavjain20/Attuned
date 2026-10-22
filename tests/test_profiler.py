@@ -13,6 +13,7 @@ from classification.profiler import (
     compute_parasympathetic,
     compute_sympathetic,
     gaussian,
+    scoring_tempo,
     sigmoid_decay,
     sigmoid_rise,
 )
@@ -606,3 +607,18 @@ class TestComputeMoodScore:
         score = compute_mood_score(["Energetic", "UPLIFTING"], "symp")
         # avg(0.95, 0.75) = 0.85
         assert score == pytest.approx(0.85)
+
+
+class TestScoringTempo:
+    def test_prefers_corrected_tempo_over_bpm(self):
+        assert scoring_tempo({"tempo": 76.0, "felt_tempo": None, "bpm": 154}) == 76.0
+
+    def test_corrected_tempo_beats_llm_felt_tempo(self):
+        assert scoring_tempo({"tempo": 116.0, "felt_tempo": 70, "bpm": 116}) == 116.0
+
+    def test_falls_back_to_felt_tempo_then_bpm(self):
+        assert scoring_tempo({"tempo": None, "felt_tempo": 70, "bpm": 116}) == 70
+        assert scoring_tempo({"tempo": None, "felt_tempo": None, "bpm": 116}) == 116
+
+    def test_no_tempo_at_all(self):
+        assert scoring_tempo({}) is None

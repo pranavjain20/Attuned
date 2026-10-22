@@ -13,6 +13,8 @@ load_dotenv()
 PROJECT_ROOT = Path(__file__).parent
 DB_PATH = PROJECT_ROOT / "attuned.db"
 AUDIO_CLIPS_DIR = PROJECT_ROOT / "audio_clips"
+# Essentia TempoCNN model (not in git; tempo analysis skips TempoCNN without it)
+TEMPOCNN_MODEL_PATH = PROJECT_ROOT / "scripts" / "models" / "deeptemp-k16-3.pb"
 
 
 def get_profile_db_path(profile: str | None) -> Path:
@@ -394,4 +396,18 @@ def get_anthropic_api_key() -> str:
     val = os.getenv("ANTHROPIC_API_KEY")
     if not val:
         raise RuntimeError("ANTHROPIC_API_KEY not set in environment / .env")
+    return val
+
+
+def get_soundcharts_app_id() -> str:
+    val = (os.getenv("SOUNDCHARTS_APP_ID") or "").strip()
+    if not val:
+        raise RuntimeError("SOUNDCHARTS_APP_ID not set in environment / .env")
+    return val
+
+
+def get_soundcharts_api_key() -> str:
+    val = (os.getenv("SOUNDCHARTS_API_KEY") or "").strip()
+    if not val:
+        raise RuntimeError("SOUNDCHARTS_API_KEY not set in environment / .env")
     return val

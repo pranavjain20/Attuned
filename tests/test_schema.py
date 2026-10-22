@@ -112,3 +112,24 @@ class TestGetConnection:
         row = conn.execute("SELECT nap FROM whoop_sleep WHERE sleep_id = 'old'").fetchone()
         assert row[0] is None
         conn.close()
+
+    def test_song_classifications_has_tempo_columns(self, db_conn):
+        """Raw tempo readings and the decided tempo live in their own columns."""
+        cols = {r[1] for r in db_conn.execute("PRAGMA table_info(song_classifications)").fetchall()}
+        assert {"essentia_bpm", "essentia_bpm_confidence", "essentia_degara_bpm",
+                "tempocnn_bpm", "soundcharts_tempo", "tempo", "tempo_source",
+                "tempo_confidence"} <= cols
+
+    def test_tempo_migration_keeps_existing_bpm(self):
+        """An existing database gains the tempo columns; bpm is untouched, tempo starts NULL."""
+        import sqlite3
+        from db.schema import create_tables
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE song_classifications (spotify_uri TEXT PRIMARY KEY, bpm REAL, energy REAL)")
+        conn.execute("INSERT INTO song_classifications VALUES ('uri:old', 154, 0.4)")
+        create_tables(conn)
+        row = conn.execute(
+            "SELECT bpm, tempo, essentia_bpm FROM song_classifications WHERE spotify_uri = 'uri:old'"
+        ).fetchone()
+        assert tuple(row) == (154, None, None)
+        conn.close()

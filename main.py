@@ -30,9 +30,12 @@ COMMANDS = {
     "classify-state": "Classify today's physiological state from WHOOP data",
     "download-audio": "Download audio clips (Spotify preview + yt-dlp)",
     "redownload-short-clips": "Replace short preview clips with full YouTube downloads",
-    "analyze-audio": "Run Essentia analysis on audio clips",
+    "analyze-audio": "Run Essentia analysis on audio clips (--tempo-only: just backfill tempo readings)",
     "classify-songs": "Run LLM classification on unclassified songs",
     "validate-classifications": "Validate existing classifications and flag suspicious songs",
+    "fetch-soundcharts-tempos": "Fetch Soundcharts tempo for engaged songs with no audio clip (--limit N, default 50)",
+    "update-tempos": "Decide every song's scored tempo from its stored readings (no API calls)",
+    "set-tempo": "Pin a song's tempo by hand: set-tempo <spotify_uri|title> <bpm>",
     "recompute-scores": "Recompute neuro scores from existing DB data (no API calls)",
     "match-songs": "Match songs to a physiological state (testing/preview)",
     "generate": "Generate today's playlist from WHOOP state + matched songs",
@@ -106,6 +109,12 @@ def main() -> None:
         _cmd_classify_songs(db_path)
     elif command == "validate-classifications":
         _cmd_validate_classifications(db_path)
+    elif command == "fetch-soundcharts-tempos":
+        _cmd_fetch_soundcharts_tempos(db_path)
+    elif command == "update-tempos":
+        _cmd_update_tempos(db_path)
+    elif command == "set-tempo":
+        _cmd_set_tempo(db_path)
     elif command == "recompute-scores":
         _cmd_recompute_scores(db_path)
     elif command == "sync-whoop-history":
@@ -1155,6 +1164,16 @@ def _cmd_analyze_audio(db_path: Path) -> None:
             print("No audio_clips/ directory found. Run download-audio first.")
             return
 
+        if "--tempo-only" in sys.argv:
+            from classification.essentia_analyzer import measure_missing_tempo_readings
+
+            print("Measuring tempo readings for classified songs that have none...")
+            stats = measure_missing_tempo_readings(conn, AUDIO_CLIPS_DIR)
+            print(f"\nTempo readings: {stats['measured']:,} measured, "
+                  f"{stats['failed']:,} failed, {stats['skipped']:,} without a clip")
+            print("Next: python main.py update-tempos && python main.py recompute-scores")
+            return
+
         if force:
             print("Running Essentia analysis on ALL eligible songs (--force)...")
         else:
@@ -1166,6 +1185,71 @@ def _cmd_analyze_audio(db_path: Path) -> None:
         print(f"  Failed:    {stats['failed']:,}")
         print(f"  Skipped:   {stats['skipped']:,} (no audio clip)")
         print(f"\nTotal classifications: {count_rows(conn, 'song_classifications'):,}")
+    finally:
+        conn.close()
+
+
+def _cmd_fetch_soundcharts_tempos(db_path: Path) -> None:
+    from classification.soundcharts import backfill_soundcharts_tempos, fetch_soundcharts_song
+    from config import get_soundcharts_api_key, get_soundcharts_app_id
+
+    limit_value = _flag_value("--limit") or "50"
+    if not limit_value.isdigit() or int(limit_value) < 1:
+        print(f"Error: --limit must be a positive whole number, got {limit_value!r}")
+        sys.exit(1)
+
+    app_id, api_key = get_soundcharts_app_id(), get_soundcharts_api_key()
+    conn = get_connection(db_path)
+    try:
+        stats = backfill_soundcharts_tempos(
+            conn, lambda uri: fetch_soundcharts_song(uri, app_id, api_key), int(limit_value),
+        )
+        print(f"Soundcharts: {stats['calls']:,} calls, {stats['stored']:,} tempos stored, "
+              f"{stats['no_tempo']:,} without a tempo")
+        print(f"  Quota remaining: {stats['quota_remaining']}")
+        if stats["stopped"]:
+            print(f"  Stopped early: {stats['stopped']}")
+        print("Next: python main.py update-tempos && python main.py recompute-scores")
+    finally:
+        conn.close()
+
+
+def _cmd_update_tempos(db_path: Path) -> None:
+    from classification.tempo import update_tempos
+
+    conn = get_connection(db_path)
+    try:
+        stats = update_tempos(conn)
+        print(f"Decided tempo for {stats['updated']:,} songs")
+        for label, counts in (("source", stats["by_source"]), ("confidence", stats["by_confidence"])):
+            print(f"  By {label}: " + ", ".join(f"{k} {v:,}" for k, v in sorted(counts.items())))
+        print("Next: python main.py recompute-scores")
+    finally:
+        conn.close()
+
+
+def _cmd_set_tempo(db_path: Path) -> None:
+    from classification.tempo import set_manual_tempo
+
+    if len(sys.argv) != 4:
+        print('Usage: python main.py set-tempo <spotify_uri|"exact title"> <bpm>')
+        sys.exit(1)
+    song, bpm_text = sys.argv[2], sys.argv[3]
+    try:
+        bpm = float(bpm_text)
+    except ValueError:
+        print(f"Error: bpm must be a number, got {bpm_text!r}")
+        sys.exit(1)
+
+    conn = get_connection(db_path)
+    try:
+        try:
+            match = set_manual_tempo(conn, song, bpm)[0]
+        except ValueError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        print(f"{match['name']} — {match['artist']}: tempo {match['old_tempo']} → {bpm:g} (manual)")
+        print("Next: python main.py recompute-scores")
     finally:
         conn.close()
 
@@ -1184,13 +1268,14 @@ def _cmd_recompute_scores(db_path: Path) -> None:
         _merge_acousticness,
         _merge_energy,
     )
-    from classification.profiler import compute_neurological_profile
+    from classification.llm_response import find_llm_song_result
+    from classification.profiler import compute_neurological_profile, scoring_tempo
 
     conn = get_connection(db_path)
     try:
         rows = conn.execute(
             """SELECT sc.spotify_uri, s.name, s.artist,
-                      sc.bpm, sc.felt_tempo, sc.energy, sc.acousticness,
+                      sc.tempo, sc.bpm, sc.felt_tempo, sc.energy, sc.acousticness,
                       sc.essentia_energy, sc.essentia_acousticness,
                       sc.instrumentalness, sc.valence, sc.mode, sc.danceability,
                       sc.genre_tags, sc.mood_tags, sc.raw_response,
@@ -1212,25 +1297,12 @@ def _cmd_recompute_scores(db_path: Path) -> None:
 
             # Extract LLM values from raw_response by matching title/artist.
             # Each raw_response contains a batch of ~5 songs — must match the right one.
-            llm_para, llm_symp, llm_grounding = None, None, None
-            llm_energy, llm_acousticness = None, None
-            song_name = (d.get("name") or "").lower().strip()
-            song_artist = (d.get("artist") or "").lower().strip()
-            if d.get("raw_response"):
-                try:
-                    raw = json.loads(d["raw_response"])
-                    for song_result in raw.get("songs", []):
-                        r_title = str(song_result.get("title", "")).lower().strip()
-                        r_artist = str(song_result.get("artist", "")).lower().strip()
-                        if r_title == song_name and r_artist == song_artist:
-                            llm_para = song_result.get("para_score")
-                            llm_symp = song_result.get("symp_score")
-                            llm_grounding = song_result.get("grounding_score")
-                            llm_energy = song_result.get("energy")
-                            llm_acousticness = song_result.get("acousticness")
-                            break
-                except (json.JSONDecodeError, KeyError):
-                    pass
+            llm_result = find_llm_song_result(d.get("raw_response"), d.get("name"), d.get("artist")) or {}
+            llm_para = llm_result.get("para_score")
+            llm_symp = llm_result.get("symp_score")
+            llm_grounding = llm_result.get("grounding_score")
+            llm_energy = llm_result.get("energy")
+            llm_acousticness = llm_result.get("acousticness")
 
             # Re-merge energy/acousticness for essentia+llm songs.
             # Use essentia_* columns (original Essentia values) as source,
@@ -1250,12 +1322,12 @@ def _cmd_recompute_scores(db_path: Path) -> None:
                 if essentia_a is not None:
                     acousticness = _merge_acousticness(essentia_a, _clamp01(llm_acousticness))
 
-            # Use felt_tempo for scoring when available
-            scoring_bpm = d.get("felt_tempo") or d.get("bpm")
+            # Score at the corrected tempo (written by update-tempos, never here)
+            tempo = scoring_tempo(d)
 
             # Recompute formula scores
             neuro = compute_neurological_profile(
-                bpm=scoring_bpm,
+                bpm=tempo,
                 energy=energy,
                 acousticness=acousticness,
                 instrumentalness=d.get("instrumentalness"),
@@ -1272,7 +1344,7 @@ def _cmd_recompute_scores(db_path: Path) -> None:
             # Ensemble: combine formula + LLM using structural knowledge
             blended = _blend_neuro_scores(
                 neuro, llm_para, llm_symp, llm_grounding,
-                bpm=d.get("bpm"), energy=energy,
+                bpm=tempo, energy=energy,
             )
 
             conn.execute(
