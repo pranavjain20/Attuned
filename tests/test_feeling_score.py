@@ -14,6 +14,7 @@ from intelligence.feeling_score import (
     SAME_BAND_HEADLINE,
     SIGNAL_PHRASES,
     SIGNAL_TEXT,
+    SLEEP_CHANGES,
     SLEEP_SIGNALS,
     _describe_drivers,
     _explain_direction,
@@ -25,11 +26,13 @@ from intelligence.feeling_score import (
     compute_composite,
     compute_composite_history,
     compute_feeling_score,
+    hrv_change,
     hrv_week_endpoints,
     locate_day,
     map_to_score,
     percentile_position,
     pick_drivers,
+    sleep_changes,
 )
 from intelligence.playlist_target import pick_state, profile_at
 from intelligence.signals import SIGNALS
@@ -526,7 +529,7 @@ class TestBuildPageDay:
         assert set(day["whoop"]) == {"recovery", "band"}
         assert day["whoop"] == {"recovery": 70, "band": "green"}
         assert set(day["attuned"]) == {"score", "band", "state", "state_label", "headline",
-                                       "explanation", "drivers", "reason"}
+                                       "explanation", "drivers", "reason", "sleep_changes", "hrv_change"}
         assert set(day["metrics"]) == {"hrv_ms", "rhr_bpm", "sleep_hours", "rem_hours",
                                        "deep_hours", "sleep_efficiency_pct", "sleep_debt_hours_7d"}
         assert day["metrics"]["sleep_hours"] == pytest.approx(5.0, abs=0.01)
@@ -757,3 +760,112 @@ class TestRealDays:
         text = [day["attuned"]["headline"]] + day["attuned"]["explanation"]
         assert not any("None" in line for line in text)
         assert all(d["value"] is not None and d["usual"] is not None for d in day["attuned"]["drivers"])
+
+
+# ─── Sleep changes: why the two scores differ, in plain words ────────────────
+
+
+def _z_for(contributions, value=0.5):
+    return {s: (value if c > 0 else -value) for s, c in contributions.items()}
+
+
+class TestSleepChanges:
+    """VALUES: every sleep signal is better than usual, so helped == "more" except sleep debt."""
+
+    def _changes(self, contributions, values=VALUES):
+        return sleep_changes(contributions, _z_for(contributions), values)
+
+    def test_percent_of_usual_for_hours(self):
+        texts = [c["text"] for c in self._changes({"total_sleep_z": 0.1, "deep_sleep_z": 0.05,
+                                                     "rem_sleep_z": 0.02})]
+        assert texts == ["You slept 7% more than usual.", "You got 14% more deep sleep than usual.",
+                         "Your REM sleep was 12% above usual."]
+
+    def test_efficiency_in_points_not_percent_of_usual(self):
+        [change] = self._changes({"sleep_efficiency_z": 0.1})
+        assert change["text"] == "You were asleep for 4% more of your time in bed than usual."
+
+    def test_sleep_debt_in_hours(self):
+        [change] = self._changes({"sleep_debt_z": 0.1})
+        assert change["text"] == "This week you've built up 2.5 fewer hours of sleep debt than usual."
+        assert change["effect"] == "up"
+
+    def test_whole_hours_of_debt_keep_the_decimal(self):
+        values = {**VALUES, "debt_h": 6.5, "usual_debt_h": 5.5}
+        [change] = self._changes({"sleep_debt_z": -0.1}, values)
+        assert change["text"] == "This week you've built up 1.0 more hours of sleep debt than usual."
+
+    def test_biggest_effect_first_either_direction(self):
+        values = {**VALUES, "rem_h": 1.5}
+        signals = [c["signal"] for c in self._changes({"total_sleep_z": 0.02, "rem_sleep_z": -0.09,
+                                                        "deep_sleep_z": 0.05}, values)]
+        assert signals == ["rem_sleep_z", "deep_sleep_z", "total_sleep_z"]
+
+    def test_meaning_follows_the_effect(self):
+        values = {**VALUES, "rem_h": 1.5}
+        helped, hurt = self._changes({"rem_sleep_z": 0.09}), self._changes({"rem_sleep_z": -0.09}, values)
+        assert helped[0]["meaning"] == SLEEP_CHANGES["rem_sleep_z"].good
+        assert hurt[0]["meaning"] == SLEEP_CHANGES["rem_sleep_z"].bad
+        assert hurt[0]["text"] == "Your REM sleep was 12% below usual."
+
+    def test_heart_signals_and_deep_share_left_out(self):
+        assert self._changes({"hrv_z": 0.2, "rhr_z": 0.1, "deep_ratio_z": 0.1}) == []
+
+    def test_no_effect_left_out(self):
+        """A short night caps efficiency at zero: it didn't move the score, so it isn't a reason."""
+        assert self._changes({"sleep_efficiency_z": 0.0}) == []
+
+    def test_change_that_rounds_away_left_out(self):
+        values = {**VALUES, "total_h": 7.02, "eff": 87.3, "debt_h": 5.53}
+        assert self._changes({"total_sleep_z": 0.01, "sleep_efficiency_z": 0.01,
+                              "sleep_debt_z": -0.01}, values) == []
+
+    def test_direction_disagreeing_with_effect_left_out(self):
+        """More sleep than usual can't be shown with a red arrow."""
+        assert self._changes({"total_sleep_z": -0.05}) == []
+
+    @pytest.mark.parametrize("key", ["total_h", "usual_total_h"])
+    def test_missing_numbers_left_out(self, key):
+        assert self._changes({"total_sleep_z": 0.1}, {**VALUES, key: None}) == []
+
+    def test_zero_usual_left_out(self):
+        assert self._changes({"total_sleep_z": 0.1}, {**VALUES, "usual_total_h": 0.0}) == []
+
+    def test_carries_rounded_z(self):
+        [change] = sleep_changes({"total_sleep_z": 0.1}, {"total_sleep_z": 0.4567}, VALUES)
+        assert change["z"] == 0.46
+
+    def test_every_meaning_is_a_full_sentence(self):
+        for wording in SLEEP_CHANGES.values():
+            for line in (wording.more, wording.less, wording.good, wording.bad):
+                assert line[0].isupper() and line.endswith(".")
+
+
+class TestHrvChange:
+    def test_signed_whole_percents(self):
+        assert hrv_change(VALUES) == {"vs_usual": 11, "vs_yesterday": 18}
+
+    def test_drop_is_negative(self):
+        assert hrv_change({**VALUES, "hrv_ms": 40.0})["vs_usual"] == -15
+
+    @pytest.mark.parametrize("key", ["hrv_ms", "usual_hrv_ms", "hrv_yesterday"])
+    def test_missing_is_none(self, key):
+        change = hrv_change({**VALUES, key: None})
+        assert None in change.values()
+        if key == "hrv_ms":
+            assert change == {"vs_usual": None, "vs_yesterday": None}
+
+
+class TestBuildPageDaySleepChanges:
+    def test_short_night_lists_its_changes(self, db_conn):
+        _seed_history(db_conn, TARGET, 120)
+        _insert_day(db_conn, TARGET, 1, total_ms=5 * HOUR, eff=82, hrv=48, rhr=56, recovery=70)
+        attuned = build_page_day(db_conn, TARGET)["attuned"]
+        texts = [c["text"] for c in attuned["sleep_changes"]]
+        assert any(t.startswith("You slept ") and t.endswith("% less than usual.") for t in texts)
+        assert set(attuned["hrv_change"]) == {"vs_usual", "vs_yesterday"}
+
+    def test_unscored_day_has_no_changes(self, db_conn):
+        attuned = build_page_day(db_conn, TARGET)["attuned"]
+        assert attuned["sleep_changes"] == []
+        assert attuned["hrv_change"] == {"vs_usual": None, "vs_yesterday": None}

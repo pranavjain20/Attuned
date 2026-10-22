@@ -156,6 +156,53 @@ SIGNAL_TEXT: dict[str, SignalText] = {
 SIGNAL_PHRASES: dict[str, tuple[str, str]] = {s: (t.helped, t.hurt) for s, t in SIGNAL_TEXT.items()}
 
 
+class SleepChange(NamedTuple):
+    """How one sleep signal reads when explaining a gap with WHOOP: the change, then what it means."""
+    today: str    # its key in _day_values
+    usual: str    # its usual's key in _day_values
+    more: str     # sentence when tonight had more of it; {n} is the size of the change
+    less: str     # sentence when tonight had less of it
+    good: str     # what it means for how you'll feel, when it helped
+    bad: str      # what it means, when it hurt
+
+
+# Each meaning line says only what a verified study in docs/RESEARCH.md supports:
+# total sleep and debt — Van Dongen 2003; deep and REM — Le 2025; efficiency — Pierson-Bartel 2024.
+SLEEP_CHANGES: dict[str, SleepChange] = {
+    "total_sleep_z": SleepChange(
+        "total_h", "usual_total_h",
+        "You slept {n}% more than usual.", "You slept {n}% less than usual.",
+        "That's a good sign: lost sleep makes it harder to focus, even when you don't notice it.",
+        "Even small amounts of lost sleep make it harder to focus, and they add up over days "
+        "without you noticing."),
+    "deep_sleep_z": SleepChange(
+        "deep_h", "usual_deep_h",
+        "You got {n}% more deep sleep than usual.", "You got {n}% less deep sleep than usual.",
+        "That's a good sign: people who get more deep sleep tend to wake up in a better mood.",
+        "People who get more deep sleep tend to wake up in a better mood."),
+    "rem_sleep_z": SleepChange(
+        "rem_h", "usual_rem_h",
+        "Your REM sleep was {n}% above usual.", "Your REM sleep was {n}% below usual.",
+        "That's a good sign, because nights with less REM tend to be followed by a worse mood.",
+        "Nights with less REM than usual tend to be followed by a worse mood."),
+    # Efficiency is already a percentage, so {n} is the difference in points.
+    "sleep_efficiency_z": SleepChange(
+        "eff", "usual_eff",
+        "You were asleep for {n}% more of your time in bed than usual.",
+        "You were asleep for {n}% less of your time in bed than usual.",
+        "That's a good sign: how much of the night you actually sleep matters most for how "
+        "rested you feel.",
+        "How much of the night you actually sleep matters most for how rested you feel."),
+    # Sleep debt can be near zero, so a percentage of it means little: {n} is in hours.
+    "sleep_debt_z": SleepChange(
+        "debt_h", "usual_debt_h",
+        "This week you've built up {n} more hours of sleep debt than usual.",
+        "This week you've built up {n} fewer hours of sleep debt than usual.",
+        "That's a good sign: missed sleep adds up over days, even when you don't feel it.",
+        "Missed sleep adds up over days and makes it harder to focus, even when you don't feel tired."),
+}
+
+
 # ---------------------------------------------------------------------------
 # Composite
 # ---------------------------------------------------------------------------
@@ -357,6 +404,55 @@ def hrv_week_endpoints(trend: dict) -> tuple[float, float]:
     return math.exp(trend["mean"] - half_span), math.exp(trend["mean"] + half_span)
 
 
+def _change_size(signal: str, today: float, usual: float) -> str:
+    """How big tonight's change is, as SLEEP_CHANGES words it: hours for sleep debt, points for
+    efficiency, otherwise percent of the usual. "0" when it rounds away."""
+    if signal == "sleep_debt_z":
+        hours = f"{abs(today - usual):.1f}"   # "1.0 more hours" reads right; "1 more hours" wouldn't
+        return "0" if hours == "0.0" else hours
+    if signal == "sleep_efficiency_z":
+        return str(round(abs(today - usual)))
+    return str(round(100 * abs(today / usual - 1))) if usual else "0"
+
+
+def sleep_changes(contributions: dict[str, float], z: dict[str, float | None], values: dict) -> list[dict]:
+    """Each sleep signal that moved today's score, biggest effect first, as
+    {"signal", "effect", "text", "meaning", "z"}: the change in plain words, then what it means.
+
+    Left out: signals with no effect today (missing, or capped at zero by a short night
+    or heavy sleep debt), changes too small to show, and a change whose direction
+    disagrees with its effect, so a sentence never says "more" next to a red arrow.
+    """
+    changes = []
+    for signal, c in sorted(contributions.items(), key=lambda kv: -abs(kv[1])):
+        wording = SLEEP_CHANGES.get(signal)
+        if wording is None or not c:
+            continue
+        today, usual = values[wording.today], values[wording.usual]
+        if today is None or usual is None:
+            continue
+        size = _change_size(signal, today, usual)
+        more, helped = today > usual, c > 0
+        if size == "0" or helped != (more != (signal == "sleep_debt_z")):
+            continue
+        changes.append({
+            "signal": signal, "effect": "up" if helped else "down",
+            "text": (wording.more if more else wording.less).format(n=size),
+            "meaning": wording.good if helped else wording.bad, "z": round(z[signal], 2),
+        })
+    return changes
+
+
+def _percent_change(today: float | None, before: float | None) -> int | None:
+    return None if today is None or not before else round(100 * (today / before - 1))
+
+
+def hrv_change(values: dict) -> dict:
+    """Today's HRV as a signed whole percent vs your usual and vs yesterday (None if unknown)."""
+    return {"vs_usual": _percent_change(values["hrv_ms"], values["usual_hrv_ms"]),
+            "vs_yesterday": _percent_change(values["hrv_ms"], values["hrv_yesterday"])}
+
+
 def _value_and_usual(signal: str, v: dict) -> tuple[str | None, str | None]:
     hours, pct, ms, bpm = "{:.1f} h", "{:.0f}%", "{:.0f} ms", "{:.0f} bpm"
     share = lambda x: None if x is None else f"{100 * x:.0f}%"
@@ -537,6 +633,8 @@ def build_page_day(
             "drivers": [{k: d[k] for k in ("signal", "label", "value", "usual", "z", "effect")}
                         for d in scored["drivers"]],
             "reason": scored["reason"],
+            "sleep_changes": sleep_changes(day["contributions"], day["z"], v) if scored["score"] is not None else [],
+            "hrv_change": hrv_change(v),
         },
         "metrics": {
             "hrv_ms": rounded(v["hrv_ms"]), "rhr_bpm": rounded(v["rhr"], 0),
