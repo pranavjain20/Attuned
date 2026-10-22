@@ -124,8 +124,8 @@
     .row .tw.d, .row.head .d { display: none; }
     .row .tw.m { display: block; white-space: normal; margin-top: 2px; }
     .mosaic { width: 104px; height: 104px; }
-    .sp-head { flex-wrap: wrap; }
-    .sp-head .btn { order: 3; }
+    .sp-head { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: end; gap: 14px 16px; }
+    .sp-head .btn { grid-column: 1 / -1; justify-self: start; }
   }
   .grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
   @media (min-width: 900px) {
