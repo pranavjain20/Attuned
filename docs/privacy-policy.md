@@ -1,21 +1,35 @@
 # Attuned — Privacy Policy
 
-**Last updated:** March 17, 2026
+**Last updated:** October 21, 2026
 
-Attuned is a personal, single-user application that runs locally. It is not distributed to or used by any third parties.
+Attuned is a personal project. It runs on my own computer for me and a small group of friends who connect their own WHOOP and Spotify accounts. It is not a commercial service.
 
-## Data Collected
+## Data collected
 
-- WHOOP recovery and sleep data (via WHOOP API, with user's own OAuth authorization)
-- Spotify listening history, liked songs, and top tracks (via Spotify API, with user's own OAuth authorization)
+- WHOOP recovery and sleep data, through the WHOOP API, with each person's own authorization.
+- Spotify listening history, liked songs and top tracks, through the Spotify API, with each person's own authorization.
+- Messages sent to the WhatsApp DJ, if a person uses it.
 
-## Data Usage
+## How it's used
 
-All data is stored locally in a SQLite database on the user's own machine. Data is used solely to generate personalized Spotify playlists based on the user's physiological state.
+Data is stored in a local SQLite database, one per person, on my computer. It is used only to compute each person's daily feeling score and to build playlists from their own Spotify library.
 
-## Data Sharing
+## Services that receive data
 
-No data is shared with any third party. No data leaves the user's local machine. No analytics, tracking, or telemetry of any kind.
+To do that, Attuned sends limited data to these services:
+
+- **OpenAI and Anthropic:** song names, artists and descriptive tags, to classify songs; and the text of WhatsApp DJ requests with a short plain-language summary of the day's score, to pick songs. No WHOOP account details are sent.
+- **Twilio:** WhatsApp DJ messages, which pass through Twilio to reach Attuned.
+- **Soundcharts and YouTube:** song names and artists, to look up tempo and fetch short audio clips for analysis.
+- **Spotify:** the playlists Attuned creates are saved to the person's own Spotify account.
+
+## What's public
+
+My own day-by-day page (my scores, health metrics and playlists) is published on purpose, as a demonstration. Friends' data is never published.
+
+## No tracking
+
+No analytics, advertising or tracking of any kind.
 
 ## Contact
 

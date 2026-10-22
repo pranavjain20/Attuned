@@ -74,17 +74,16 @@ In short: Recovery is built to answer "how ready is my body to take on strain to
 
 Everything in this section is a design choice. It was inspired by the reading above, but no study gives these numbers, and none of them should be described as "research-backed".
 
-- **12 signals.** Recovery, recovery change since yesterday, HRV, HRV change, HRV 7-day trend, resting heart rate, resting heart rate change, deep sleep, deep-sleep share, REM, sleep efficiency and 7-day sleep debt. Each is turned into a z-score (how many standard deviations today sits from your own 30-day average).
-- **Three states.** Every song and every day is described as a mix of rest (parasympathetic), energy (sympathetic) and grounding (emotional steadiness).
-- **Sleep weighted over autonomic signals, roughly 2:1.** The sleep signals together carry a little over twice the weight of the HRV, heart-rate and Recovery signals together. The research supports the direction (sleep matters for how you feel); the ratio is ours.
-- **REM weighting.** Low REM pushes toward grounding. This is our reading of the within-person REM result in Le et al. 2025, not something the study tested.
+- **11 signals.** Sleep efficiency, deep sleep, deep-sleep share, REM, total sleep, 7-night sleep debt, HRV, HRV change since yesterday, HRV 7-day trend, resting heart rate and resting heart rate change. Each is turned into a z-score (how many standard deviations today sits from your own 30-day average). WHOOP's Recovery score is not one of them, because it is built from these same signals.
+- **Sleep weighted over heart signals, roughly 2:1.** The sleep signals together carry about twice the weight of the HRV and heart-rate signals together. The research supports the direction (sleep matters for how you feel); the ratio is ours.
+- **Feeling score.** A daily 0–100 estimate of how Pranav is likely to feel: a weighted average of the signals, ranked among his earlier days and mapped onto his own WHOOP Recovery history so both scores have the same share of red, yellow and green days. Its form, weights and mapping are ours.
 - **Sleep-debt cap.** More than 7 hours of debt over 7 days can never count as a good sign, even if it is less debt than your usual.
-- **Restorative-sleep gate.** If last night had no deep or REM deficit, at least 85% sleep efficiency and at least 6 hours of sleep, the "accumulated fatigue" label is skipped.
-- **Thresholds.** 1.0 and 1.5 standard deviations for HRV and sleep-stage deficits, 3 days for a decline, +5 BPM for elevated resting heart rate, 15% and 20% for HRV variability, 14 days of data before personal baselines are trusted.
+- **Short-night cap.** After less than 6 hours of sleep, high sleep efficiency or a high deep-sleep share can never count as a good sign.
+- **Thresholds.** 14 days of data before personal baselines are trusted, 60 earlier scored days before the 0–100 mapping is used, z-scores clamped at ±2.5.
+- **Three states.** Every song and every day is described as a mix of rest (parasympathetic), energy (sympathetic) and grounding (emotional steadiness). A day's mix is set by where its feeling score ranks among earlier days, blended between three fixed points (calm, steady, energy) whose values are ours.
 - **Song profiler.** Song scores weight tempo most, then energy, then acousticness, instrumentalness, valence, mode and danceability, plus a mood-tag table. The weights, curve shapes and tag values are ours.
-- **BPM ranges per state.** For example, slow songs for rest and fast songs for energy. The exact ranges are ours.
+- **Tempo rule.** How audio readings and the classifier's estimate are combined into one tempo, and the 55–165 BPM window, are ours.
 - **Cohesion engine.** Playlists are built to sound coherent (genre, era, tempo, mood), using our own similarity weights and caps.
-- **Feeling score.** A daily estimate of how Pranav is likely to feel, built from the same signals. Its form and weights are ours.
 
 ---
 
