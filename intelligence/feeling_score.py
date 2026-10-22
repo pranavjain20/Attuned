@@ -50,7 +50,7 @@ from intelligence.baselines import (
     compute_sleep_debt_baseline,
     compute_sleep_efficiency_baseline,
 )
-from intelligence.continuous_profile import _safe_z, compute_z_scores, pick_state, profile_at
+from intelligence.continuous_profile import STATE_PURPOSE, _safe_z, compute_z_scores, pick_state, profile_at
 from intelligence.main_sleep import asleep_ms, is_short_night
 from intelligence.sleep_analysis import analyze_sleep
 from intelligence.trends import compute_hrv_trend
@@ -88,9 +88,9 @@ MAX_DRIVERS = 3
 
 BAND_ORDER = ("red", "yellow", "green")
 STATE_WHY = {
-    "rest": "you're likely to feel below your normal, so the music is built to help you settle",
-    "energy": "you're likely to feel better than your normal, so the music is built to give you a lift",
-    "grounding": "you're likely to feel close to your normal, so the music stays steady to keep you level",
+    "rest": f"you're likely to feel below your normal, so the music is built to {STATE_PURPOSE['rest']}",
+    "energy": f"you're likely to feel better than your normal, so the music is built to {STATE_PURPOSE['energy']}",
+    "grounding": f"you're likely to feel close to your normal, so the music stays steady to {STATE_PURPOSE['grounding']}",
 }
 SAME_BAND_HEADLINE = {
     "green": "You should feel good today",

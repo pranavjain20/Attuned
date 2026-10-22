@@ -37,7 +37,7 @@ COMMANDS = {
     "update-tempos": "Decide every song's scored tempo from its stored readings (no API calls)",
     "set-tempo": "Pin a song's tempo by hand: set-tempo <spotify_uri|title> <bpm>",
     "recompute-scores": "Recompute neuro scores from existing DB data (no API calls)",
-    "match-songs": "Match songs to a physiological state (testing/preview)",
+    "match-songs": "Preview the day's playlist songs, no Spotify (testing/preview)",
     "generate": "Generate today's playlist from WHOOP state + matched songs",
     "request": "Generate a playlist from a natural language request",
     "backfill-release-years": "Backfill release_year from Spotify for songs missing it",
@@ -826,8 +826,8 @@ def _cmd_backfill_release_years(db_path: Path) -> None:
 def _cmd_match_songs(db_path: Path) -> None:
     from datetime import date
 
-    from intelligence.state_classifier import classify_state
-    from matching.query_engine import select_songs
+    from config import MAX_PLAYLIST_SIZE
+    from matching.generator import GenerationError, select_day_songs
 
     # Support --date flag, default to today
     target_date = date.today().isoformat()
@@ -836,32 +836,17 @@ def _cmd_match_songs(db_path: Path) -> None:
         if idx + 1 < len(sys.argv):
             target_date = sys.argv[idx + 1]
 
-    # Support --state flag to override classifier
-    override_state = None
-    if "--state" in sys.argv:
-        idx = sys.argv.index("--state")
-        if idx + 1 < len(sys.argv):
-            override_state = sys.argv[idx + 1]
-
     conn = get_connection(db_path)
     try:
-        if override_state:
-            state = override_state
-            print(f"\nUsing override state: {state}")
-        else:
-            result = classify_state(conn, target_date)
-            state = result["state"]
-            print(f"\nDetected state: {state} (confidence: {result['confidence']})")
-            if result["reasoning"]:
-                for r in result["reasoning"]:
-                    print(f"  - {r}")
-
-        if state == "insufficient_data":
-            print("\nCannot match songs — insufficient WHOOP data (need 14+ days)")
+        # Same path as the daily playlist (before Spotify's availability check)
+        try:
+            _classification, match_result = select_day_songs(conn, target_date)
+        except GenerationError as e:
+            print(f"\nCannot match songs — {e}")
             return
-
-        print(f"\nMatching songs for state: {state} (date: {target_date})")
-        match_result = select_songs(conn, state, target_date)
+        position = match_result["position"]
+        print(f"\nAttuned state: {match_result['state']} "
+              f"(position: {'no score' if position is None else f'{position:.2f}'}, date: {target_date})")
 
         stats = match_result["match_stats"]
         print(f"\nMatch stats:")
@@ -877,10 +862,7 @@ def _cmd_match_songs(db_path: Path) -> None:
             if cohesion.get("relaxations", 0) > 0:
                 print(f"  Relaxations:       {cohesion['relaxations']}")
 
-        songs = match_result["songs"]
-        if not songs:
-            print("\nNo songs matched. Is the library classified?")
-            return
+        songs = match_result["songs"][:MAX_PLAYLIST_SIZE]
 
         # Show neuro profile
         profile = match_result["neuro_profile"]

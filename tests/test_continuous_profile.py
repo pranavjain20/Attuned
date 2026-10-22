@@ -4,10 +4,14 @@ import pytest
 
 from config import BASELINE_CALM_ANCHOR, BASELINE_ENERGY_ANCHOR, BASELINE_STEADY_ANCHOR
 from intelligence.continuous_profile import (
+    NAME_DEEP_SHARE,
     SLEEP_DEBT_POSITIVE_THRESHOLD,
+    STATE_PURPOSE,
+    STATES,
     Z_CLAMP,
     compute_continuous_profile,
     compute_z_scores,
+    is_top_energy_day,
     pick_state,
     profile_at,
     _safe_z,
@@ -119,6 +123,29 @@ class TestPickState:
     def test_tie_prefers_rest_then_energy(self):
         assert pick_state({"para": 0.4, "symp": 0.4, "grnd": 0.2}) == ("rest", "Rest")
         assert pick_state({"para": 0.2, "symp": 0.4, "grnd": 0.4}) == ("energy", "Energy")
+
+
+class TestStatePurpose:
+    def test_one_phrase_per_state(self):
+        assert set(STATE_PURPOSE) == {state for state, _label in STATES.values()}
+
+    def test_phrases(self):
+        assert STATE_PURPOSE == {"rest": "help you settle", "energy": "give you a lift",
+                                 "grounding": "keep you level"}
+
+
+class TestIsTopEnergyDay:
+    @pytest.mark.parametrize("state, position, expected", [
+        ("energy", 1.0, True),
+        ("energy", 1 - NAME_DEEP_SHARE + 0.001, True),
+        ("energy", 1 - NAME_DEEP_SHARE, False),     # the edge itself is not the top share
+        ("energy", 0.72, False),
+        ("energy", None, False),                    # no Attuned score → never
+        ("grounding", 0.99, False),
+        ("rest", 0.99, False),
+    ])
+    def test_energy_day_in_your_top_share(self, state, position, expected):
+        assert is_top_energy_day(state, position) is expected
 
 
 # ---------------------------------------------------------------------------

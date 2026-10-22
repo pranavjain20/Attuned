@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta as _timedelta
 import spotipy
 
 from db.queries import insert_generated_playlist
-from intelligence.continuous_profile import pick_state
+from intelligence.continuous_profile import NAME_DEEP_SHARE, STATE_PURPOSE, is_top_energy_day, pick_state
 from intelligence.state_classifier import classify_state
 from matching.query_engine import select_songs
 from spotify.playlist import (
@@ -18,10 +18,6 @@ from spotify.playlist import (
 )
 
 logger = logging.getLogger(__name__)
-
-# A rest day among your lowest NAME_DEEP_SHARE of days (energy: your highest) gets the
-# stronger name of its pair. Design choice: splits each end state roughly in half.
-NAME_DEEP_SHARE = 0.15
 
 
 def _filter_unavailable_tracks(
@@ -147,7 +143,7 @@ def _pick_name_label(
         return "Settle In"
 
     if state == "energy":
-        if position is not None and position > 1 - NAME_DEEP_SHARE:
+        if is_top_energy_day(state, position):
             return "Stay Sharp"
         return "Fuel Up"
 
@@ -159,13 +155,8 @@ def _pick_name_label(
 
 def _get_neuro_purpose(neuro_profile: dict[str, float]) -> str:
     """Human-readable phrase for what the music is doing."""
-    top_dim = max(neuro_profile, key=neuro_profile.get)
-    purposes = {
-        "para": "Built to help you settle",
-        "symp": "Built to give you a lift",
-        "grnd": "Built to keep you level",
-    }
-    return purposes.get(top_dim, "Tuned for you")
+    state, _label = pick_state(neuro_profile)
+    return f"Built to {STATE_PURPOSE[state]}"
 
 
 def _get_dominant_moods(songs: list[dict], top_n: int = 3) -> list[str]:
@@ -213,18 +204,14 @@ def format_reasoning(
 ) -> str:
     """Format full reasoning for DB storage (no size limit).
 
-    Includes state classifier reasoning + match stats.
+    The Attuned state and score position that picked the songs, WHOOP's raw
+    metrics for the record, then match stats.
     """
     lines = []
 
-    lines.append(f"State: {classification_result['state']}")
-    lines.append(f"Confidence: {classification_result['confidence']}")
-
-    if classification_result.get("reasoning"):
-        lines.append("")
-        lines.append("Classifier reasoning:")
-        for r in classification_result["reasoning"]:
-            lines.append(f"  - {r}")
+    lines.append(f"State: {match_result['state']}")
+    position = match_result.get("position")
+    lines.append(f"Attuned position: {'none (no score)' if position is None else f'{position:.2f}'}")
 
     metrics = classification_result.get("metrics", {})
     if metrics:
@@ -270,7 +257,7 @@ def select_day_songs(
     prior_playlists: dict[str, list[str]] | None = None,
     history: dict[str, dict] | None = None,
 ) -> tuple[dict, dict]:
-    """Classify the day's state and match songs to it — no Spotify, no DB writes.
+    """Match songs to the day's Attuned state — no Spotify, no DB writes.
 
     Over-selects by AVAILABILITY_BUFFER_SIZE so callers can drop unavailable
     tracks and still fill MAX_PLAYLIST_SIZE. point_in_time replays a past day
@@ -279,15 +266,15 @@ def select_day_songs(
     feeling_score.compute_composite_history) saves rescoring every earlier day
     (~3 s) when building many days; the result is the same without it.
 
-    Returns (classification, match_result). match_result["position"] is the
-    Attuned score's position (0-1, None when the day has no score).
+    Returns (classification, match_result). classification is the old WHOOP
+    classifier's output, kept only for its raw metrics; it plays no part in the
+    songs. match_result["state"] and ["position"] are the Attuned state and
+    score position (0-1, None when the day has no score).
     Raises GenerationError on insufficient WHOOP data or no matching songs.
     """
-    # 1. Classify state
+    # 1. Data check: "insufficient_data" means fewer than 14 days of HRV (no baseline yet)
     classification = classify_state(conn, date_str)
-    state = classification["state"]
-
-    if state == "insufficient_data":
+    if classification["state"] == "insufficient_data":
         raise GenerationError(
             "Cannot generate playlist — insufficient WHOOP data (need 14+ days of HRV)"
         )
@@ -295,8 +282,7 @@ def select_day_songs(
     # 1b. Playlist target, set by the Attuned score's position
     from intelligence.continuous_profile import compute_continuous_profile
     continuous = compute_continuous_profile(conn, date_str, history)
-    neuro_profile_override = continuous["profile"]
-    target_valence = continuous.get("target_valence")
+    state = continuous["state"]
 
     z_summary = {k: round(v, 2) for k, v in continuous["z_scores"].items() if v is not None}
     logger.info(
@@ -309,8 +295,9 @@ def select_day_songs(
     buffer_size = MAX_PLAYLIST_SIZE + AVAILABILITY_BUFFER_SIZE
     match_result = select_songs(
         conn, state, date_str,
-        neuro_profile_override=neuro_profile_override,
-        target_valence=target_valence,
+        neuro_profile=continuous["profile"],
+        target_valence=continuous["target_valence"],
+        position=continuous["position"],
         target_size=buffer_size,
         point_in_time=point_in_time,
         prior_playlists=prior_playlists,
@@ -321,6 +308,7 @@ def select_day_songs(
             f"No songs matched for state '{state}'. "
             "Is the library classified? Run: python main.py classify-songs"
         )
+    match_result["state"] = state
     match_result["position"] = continuous["position"]
     return classification, match_result
 
@@ -334,8 +322,8 @@ def generate_playlist(
 ) -> dict:
     """End-to-end playlist generation pipeline.
 
-    1. Classify physiological state
-    2. Match songs to state
+    1. Attuned state + target from the day's score position
+    2. Match songs to the target
     3. Create Spotify playlist (unless dry_run)
     4. Log to DB
 
@@ -359,9 +347,9 @@ def generate_playlist(
     if date_str is None:
         date_str = date.today().isoformat()
 
-    # 1-2. Classify state, compute profile, match songs
+    # 1-2. Attuned state and target, match songs
     classification, match_result = select_day_songs(conn, date_str)
-    state = classification["state"]
+    state = match_result["state"]
     songs = match_result["songs"]
 
     # 2b. Filter unavailable tracks (Spotify may have removed them), then trim to target

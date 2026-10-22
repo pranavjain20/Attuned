@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from config import BASELINE_CALM_ANCHOR, BASELINE_ENERGY_ANCHOR, BASELINE_STEADY_ANCHOR
 from db.queries import (
     get_days_since_last_appearance,
     get_recent_playlist_track_uris,
@@ -26,6 +27,8 @@ from matching.query_engine import (
     score_song,
     select_songs,
 )
+
+CALM, STEADY, LIFT = BASELINE_CALM_ANCHOR, BASELINE_STEADY_ANCHOR, BASELINE_ENERGY_ANCHOR
 
 
 # ---------------------------------------------------------------------------
@@ -415,50 +418,41 @@ class TestSelectSongs:
 
     def test_select_returns_up_to_max_playlist_size(self, db_conn):
         self._seed_songs(db_conn, count=30)
-        result = select_songs(db_conn, "baseline", "2026-03-19")
+        result = select_songs(db_conn, "grounding", "2026-03-19", STEADY)
         assert len(result["songs"]) <= 20
 
     def test_select_returns_neuro_profile(self, db_conn):
         self._seed_songs(db_conn)
-        result = select_songs(db_conn, "accumulated_fatigue", "2026-03-19")
-        assert result["state"] == "accumulated_fatigue"
+        result = select_songs(db_conn, "rest", "2026-03-19", CALM)
+        assert result["state"] == "rest"
         assert "para" in result["neuro_profile"]
 
-    def test_neuro_profile_override_used(self, db_conn):
-        """When override provided, use it instead of default state profile."""
+    def test_given_target_profile_used(self, db_conn):
+        """The caller's target is the one songs are scored against, reported back unchanged."""
         self._seed_songs(db_conn, count=30)
-        override = {"para": 0.10, "symp": 0.80, "grnd": 0.10}
-        result = select_songs(db_conn, "accumulated_fatigue", "2026-03-19",
-                              neuro_profile_override=override)
-        assert result["neuro_profile"] == override
-        # Should still report the correct state
-        assert result["state"] == "accumulated_fatigue"
+        target = {"para": 0.10, "symp": 0.80, "grnd": 0.10}
+        result = select_songs(db_conn, "energy", "2026-03-19", target)
+        assert result["neuro_profile"] == target
+        assert result["state"] == "energy"
 
-    def test_no_override_uses_default_profile(self, db_conn):
-        """Without override, should use standard state profile."""
-        self._seed_songs(db_conn, count=30)
-        result = select_songs(db_conn, "accumulated_fatigue", "2026-03-19")
-        from config import STATE_NEURO_PROFILES
-        expected = STATE_NEURO_PROFILES["accumulated_fatigue"]
-        assert result["neuro_profile"] == expected
+    def test_target_profile_required(self, db_conn):
+        """No fallback to a per-state table: a call without a target is an error."""
+        with pytest.raises(TypeError):
+            select_songs(db_conn, "grounding", "2026-03-19")
 
     def test_select_with_empty_library(self, db_conn):
-        result = select_songs(db_conn, "baseline", "2026-03-19")
+        result = select_songs(db_conn, "grounding", "2026-03-19", STEADY)
         assert result["songs"] == []
 
     def test_select_with_few_songs(self, db_conn):
         self._seed_songs(db_conn, count=5)
-        result = select_songs(db_conn, "baseline", "2026-03-19")
+        result = select_songs(db_conn, "grounding", "2026-03-19", STEADY)
         assert len(result["songs"]) == 5
-
-    def test_insufficient_data_raises(self, db_conn):
-        with pytest.raises(ValueError, match="insufficient_data"):
-            select_songs(db_conn, "insufficient_data", "2026-03-19")
 
     def test_cohesion_stats_in_match_stats(self, db_conn):
         """match_stats should include cohesion_stats with expected keys."""
         self._seed_songs(db_conn)
-        result = select_songs(db_conn, "baseline", "2026-03-19")
+        result = select_songs(db_conn, "grounding", "2026-03-19", STEADY)
         stats = result["match_stats"]
         assert "cohesion_stats" in stats
         cohesion = stats["cohesion_stats"]
@@ -498,7 +492,7 @@ class TestSelectSongs:
             })
             self._add_personal_play(db_conn, uri, 30 + i)
         db_conn.commit()
-        result = select_songs(db_conn, "accumulated_fatigue", "2026-03-19")
+        result = select_songs(db_conn, "rest", "2026-03-19", CALM)
         # Most selected songs should share the same genre cluster
         genre_counts = {}
         for s in result["songs"]:
@@ -525,20 +519,20 @@ class TestSelectSongs:
             })
             self._add_personal_play(db_conn, uri, i)
         db_conn.commit()
-        result = select_songs(db_conn, "accumulated_fatigue", "2026-03-19")
+        result = select_songs(db_conn, "rest", "2026-03-19", CALM)
         assert result["match_stats"]["total_candidates"] == 5
 
     def test_fatigue_selects_para_dominant_songs(self, db_conn):
         self._seed_songs(db_conn, count=150)
-        fatigue = select_songs(db_conn, "accumulated_fatigue", "2026-03-19")
-        peak = select_songs(db_conn, "peak_readiness", "2026-03-19")
+        fatigue = select_songs(db_conn, "rest", "2026-03-19", CALM)
+        peak = select_songs(db_conn, "energy", "2026-03-19", LIFT)
         avg_para_fatigue = sum(s.get("parasympathetic") or 0 for s in fatigue["songs"]) / max(len(fatigue["songs"]), 1)
         avg_para_peak = sum(s.get("parasympathetic") or 0 for s in peak["songs"]) / max(len(peak["songs"]), 1)
         assert avg_para_fatigue > avg_para_peak
 
     def test_selected_songs_have_required_fields(self, db_conn):
         self._seed_songs(db_conn)
-        result = select_songs(db_conn, "baseline", "2026-03-19")
+        result = select_songs(db_conn, "grounding", "2026-03-19", STEADY)
         for song in result["songs"]:
             assert "spotify_uri" in song
             assert "selection_score" in song
@@ -549,7 +543,7 @@ class TestSelectSongs:
 
     def test_selected_songs_include_cohesion_fields(self, db_conn):
         self._seed_songs(db_conn)
-        result = select_songs(db_conn, "baseline", "2026-03-19")
+        result = select_songs(db_conn, "grounding", "2026-03-19", STEADY)
         for song in result["songs"]:
             assert "genre_tags" in song
             assert "mood_tags" in song
@@ -583,7 +577,7 @@ class TestSelectSongs:
         self._seed_songs(db_conn, count=30)
         db_conn.commit()
 
-        result = select_songs(db_conn, "baseline", "2026-03-19")
+        result = select_songs(db_conn, "grounding", "2026-03-19", STEADY)
         uris = [s["spotify_uri"] for s in result["songs"]]
         names = [s["name"].lower() for s in result["songs"]]
 
@@ -665,7 +659,7 @@ class TestSelectSongs:
         self._add_personal_play(db_conn, dup_uri_b, 51)
         db_conn.commit()
 
-        result = select_songs(db_conn, "accumulated_fatigue", "2026-03-19")
+        result = select_songs(db_conn, "rest", "2026-03-19", CALM)
         uris = [s["spotify_uri"] for s in result["songs"]]
 
         # Should have exactly 20 songs (dedup removed 1, backfill added 1)
@@ -673,6 +667,54 @@ class TestSelectSongs:
 
         # The removed duplicate (lower plays) should not appear
         assert dup_uri_b not in uris
+
+
+class TestMotivationalBollywoodGate:
+    """Scene-tied motivational Bollywood anthems only on your very best days (Attuned score)."""
+
+    ANTHEM = "spotify:track:anthem"
+
+    def _library(self, conn):
+        TestSelectSongs()._seed_songs(conn, count=10)
+        upsert_song(conn, self.ANTHEM, "Chak De India", "Sukhwinder Singh",
+                    sources=["test"], last_played="2026-03-18")
+        conn.execute("UPDATE songs SET play_count = 40 WHERE spotify_uri = ?", (self.ANTHEM,))
+        upsert_song_classification(conn, {
+            "spotify_uri": self.ANTHEM, "parasympathetic": 0.05, "sympathetic": 0.95,
+            "grounding": 0.2, "confidence": 0.8, "bpm": 130.0, "energy": 0.9,
+            "genre_tags": ["bollywood"], "mood_tags": ["motivational"],
+            "classification_source": "test",
+        })
+        TestSelectSongs._add_personal_play(conn, self.ANTHEM, 99)
+        conn.commit()
+
+    def _picked(self, conn, state, profile, **kwargs):
+        uris = {s["spotify_uri"] for s in select_songs(conn, state, "2026-03-19", profile, **kwargs)["songs"]}
+        assert len(uris) > 1  # the rest of the library still plays
+        return self.ANTHEM in uris
+
+    def test_allowed_on_a_top_energy_day(self, db_conn):
+        self._library(db_conn)
+        assert self._picked(db_conn, "energy", LIFT, position=0.95)
+
+    @pytest.mark.parametrize("state, profile, position", [
+        ("energy", LIFT, 0.80),      # a good energy day, but not one of your best
+        ("energy", LIFT, None),      # no Attuned score that day
+        ("grounding", STEADY, 0.5),
+        ("rest", CALM, 0.05),
+    ])
+    def test_excluded_otherwise(self, db_conn, state, profile, position):
+        self._library(db_conn)
+        assert not self._picked(db_conn, state, profile, position=position)
+
+    def test_old_classifier_label_no_longer_unlocks(self, db_conn):
+        """"peak_readiness" (WHOOP-recovery based) used to be the only key; it now means nothing."""
+        self._library(db_conn)
+        assert not self._picked(db_conn, "peak_readiness", LIFT)
+
+    def test_explicit_request_still_allows(self, db_conn):
+        self._library(db_conn)
+        assert self._picked(db_conn, "rest", CALM, position=0.05, allow_motivational=True)
 
 
 # ---------------------------------------------------------------------------

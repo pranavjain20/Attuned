@@ -289,7 +289,7 @@ Getting audio clips for Essentia analysis:
 
 **Why this is better than the state machine:** Two days at 44% recovery with different sleep architecture, different HRV trends, and different recovery trajectories now produce genuinely different profiles. The old system mapped both to the same "poor_recovery" bucket.
 
-The static state profiles still exist as fallback targets in `state_mapper.py` (used if continuous profile computation fails), and the state classifier still runs for display labels.
+The old per-state profiles (`state_mapper.py`) are gone: every playlist is scored against the Attuned target. The old state classifier now only checks there is enough WHOOP data (14+ days of HRV) to generate at all.
 
 ### 6.2 Cosine Similarity
 
@@ -324,14 +324,14 @@ The old system only had the soft nudge, which wasn't enough — the same 12 "per
 
 ### 6.5 Bollywood Motivational Filter
 
-Bollywood motivational songs (Chak De India, Ziddi Dil, Halla Bol) are tied to specific movie scenes — training montages, sports anthems. Hearing them evokes the scene, not the mood. They're excluded from all playlists except peak_readiness, where the pump-up context fits.
+Bollywood motivational songs (Chak De India, Ziddi Dil, Halla Bol) are tied to specific movie scenes — training montages, sports anthems. Hearing them evokes the scene, not the mood. They're excluded from all playlists except your very best days — an energy day whose Attuned score sits in your top 15% of earlier days (the same days named "Stay Sharp") — where the pump-up context fits. WHOOP recovery plays no part.
 
 Detection: mood tags include "motivational" AND genre tags include any Bollywood/Punjabi variant. Plus a manual override set for songs the LLM missed tagging. English motivational songs are allowed everywhere — Western pop isn't written for a specific film scene.
 
 ### 6.6 The Selection Algorithm
 
 1. Compute continuous neuro profile from 12 physiological z-scores
-2. Exclude blocked songs: user blocklist, Bollywood motivational (if not peak_readiness), hard-cap rotation
+2. Exclude blocked songs: user blocklist, Bollywood motivational (unless a top-15% energy day), hard-cap rotation
 3. Score ALL remaining songs by `cosine_similarity × confidence × familiarity - freshness_nudge`
 4. Rank by score (unified ranking — no pools, no splitting)
 5. Take the top 60 candidates

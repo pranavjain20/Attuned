@@ -166,7 +166,7 @@ The top candidates pass through a **cohesion engine** that ensures the playlist 
 
 **Rotation:** Songs can't repeat within a minimum gap that scales with library size (log2-based). With 1,200 songs, minimum 3 days between appearances. Recently-played songs get 5 guaranteed "anchor" slots for familiarity — the rest rotate.
 
-**Context filters:** Bollywood motivational songs (Chak De India, Dangal — tied to movie training scenes) are excluded from all playlists except peak readiness, where the pump-up context fits. English motivational (Hall of Fame, Lose Yourself) passes through — no scene-specific baggage.
+**Context filters:** Bollywood motivational songs (Chak De India, Dangal — tied to movie training scenes) are excluded from all playlists except your very best days (an energy day in your top 15% by Attuned score), where the pump-up context fits. English motivational (Hall of Fame, Lose Yourself) passes through — no scene-specific baggage.
 
 ### 5. Push to Spotify
 
@@ -218,7 +218,7 @@ Attuned does something fundamentally different:
 
 **Real rotation.** Songs can't repeat within a library-size-scaled gap. Freshness uses only the latest playlist per day (not test iterations). Recently-played anchors get guaranteed slots for familiarity; the rest rotate.
 
-**Context awareness.** Bollywood motivational songs are excluded from non-peak playlists — they're tied to movie training scenes and evoke the wrong context for a recovery morning. This distinction is genre-aware: English motivational passes through because Western pop isn't written for specific film scenes.
+**Context awareness.** Bollywood motivational songs are excluded except on your very best days — they're tied to movie training scenes and evoke the wrong context for a recovery morning. This distinction is genre-aware: English motivational passes through because Western pop isn't written for specific film scenes.
 
 **Multi-user.** Each user gets their own database, own baselines, own library, own playlists. Same algorithm, personalized to their body and their music.
 

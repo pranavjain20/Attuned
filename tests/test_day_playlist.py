@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
+from config import BASELINE_CALM_ANCHOR
 from db.queries import insert_generated_playlist, upsert_song, upsert_song_classification
 from matching.day_playlist import build_day_playlist, build_day_playlists
 from matching.generator import GenerationError, select_day_songs
@@ -20,14 +21,15 @@ from matching.query_engine import (
 DAY = "2026-04-08"
 
 
-def _add_song(conn, i, plays_at, para=0.8, current_play_count=99, last_played="2026-10-20"):
+def _add_song(conn, i, plays_at, para=0.8, current_play_count=99, last_played="2026-10-20",
+              mood_tags=("romantic", "nostalgic")):
     uri = f"spotify:track:t{i:03d}"
     upsert_song(conn, uri, f"Song {i}", f"Artist {i}", sources=["test"], last_played=last_played)
     conn.execute("UPDATE songs SET play_count = ? WHERE spotify_uri = ?", (current_play_count, uri))
     upsert_song_classification(conn, {
         "spotify_uri": uri, "parasympathetic": para, "sympathetic": 0.1, "grounding": 0.3,
         "confidence": 0.8, "bpm": 80.0, "energy": 0.3, "valence": 0.4, "acousticness": 0.5,
-        "genre_tags": ["bollywood"], "mood_tags": ["romantic", "nostalgic"],
+        "genre_tags": ["bollywood"], "mood_tags": list(mood_tags),
         "classification_source": "test",
     })
     for ts in plays_at:
@@ -101,28 +103,28 @@ class TestPlayDatesBefore:
 class TestSelectSongsPointInTime:
     def test_excludes_later_discoveries(self, library):
         conn, _, later = library
-        replay = select_songs(conn, "baseline", DAY, point_in_time=True)
+        replay = select_songs(conn, "rest", DAY, BASELINE_CALM_ANCHOR, point_in_time=True)
         assert later not in {s["spotify_uri"] for s in replay["songs"]}
         assert replay["match_stats"]["total_candidates"] == 20
-        live = select_songs(conn, "baseline", DAY)
+        live = select_songs(conn, "rest", DAY, BASELINE_CALM_ANCHOR)
         assert live["match_stats"]["total_candidates"] == 21  # default behaviour unchanged
 
     def test_result_songs_carry_why_line_fields(self, library):
         conn, _, _ = library
-        song = select_songs(conn, "baseline", DAY, point_in_time=True)["songs"][0]
+        song = select_songs(conn, "rest", DAY, BASELINE_CALM_ANCHOR, point_in_time=True)["songs"][0]
         for key in ("valence", "acousticness", "felt_tempo", "original_release_year", "is_anchor",
                     "first_played"):
             assert key in song
 
     def test_anchor_flag_set_for_recent_plays(self, library):
         conn, _, _ = library
-        songs = select_songs(conn, "baseline", DAY, point_in_time=True)["songs"]
+        songs = select_songs(conn, "rest", DAY, BASELINE_CALM_ANCHOR, point_in_time=True)["songs"]
         assert any(s["is_anchor"] for s in songs)  # March plays are within 90 days of DAY
         assert all(isinstance(s["is_anchor"], bool) for s in songs)
 
     @staticmethod
     def _nudged(conn):
-        songs = select_songs(conn, "baseline", DAY, point_in_time=True)["songs"]
+        songs = select_songs(conn, "rest", DAY, BASELINE_CALM_ANCHOR, point_in_time=True)["songs"]
         return {s["spotify_uri"] for s in songs if s["breakdown"]["freshness_nudge"] > 0}
 
     def test_rotation_ignores_playlists_after_date(self, library):
@@ -143,7 +145,7 @@ class TestPriorPlaylistsChaining:
     """Replayed (never pushed) days feed rotation exactly like pushed playlists."""
 
     def _nudges(self, conn, prior):
-        songs = select_songs(conn, "baseline", DAY, point_in_time=True, prior_playlists=prior)["songs"]
+        songs = select_songs(conn, "rest", DAY, BASELINE_CALM_ANCHOR, point_in_time=True, prior_playlists=prior)["songs"]
         return {s["spotify_uri"]: s["breakdown"]["freshness_nudge"] for s in songs}
 
     def test_yesterdays_replay_nudges_its_songs(self, library):
@@ -298,13 +300,38 @@ class TestBuildDayPlaylist:
 
 
 class TestSelectDaySongs:
-    def _patches(self, state="baseline"):
+    def _patches(self, state="baseline", recovery=None, attuned_state="rest", position=0.1):
+        profile = {"rest": {"para": 0.6, "symp": 0.2, "grnd": 0.2},
+                   "energy": {"para": 0.05, "symp": 0.65, "grnd": 0.3}}[attuned_state]
         return (
-            patch("matching.generator.classify_state", return_value={"state": state, "metrics": {}}),
+            patch("matching.generator.classify_state",
+                  return_value={"state": state, "metrics": {"recovery_score": recovery}}),
             patch("intelligence.continuous_profile.compute_continuous_profile", return_value={
-                "profile": {"para": 0.6, "symp": 0.2, "grnd": 0.2}, "target_valence": None,
-                "position": 0.1, "z_scores": {}, "signals_used": 0}),
+                "profile": profile, "target_valence": None, "state": attuned_state,
+                "position": position, "z_scores": {}, "signals_used": 0}),
         )
+
+    def test_state_is_attuneds_not_the_old_classifiers(self, library):
+        conn, _, _ = library
+        a, b = self._patches(state="peak_readiness")
+        with a, b:
+            _, match = select_day_songs(conn, DAY)
+        assert match["state"] == "rest"
+
+    @pytest.mark.parametrize("old_state, recovery, attuned_state, position, allowed", [
+        ("peak_readiness", 99.0, "rest", 0.1, False),     # WHOOP's best day, Attuned low
+        ("poor_recovery", 10.0, "energy", 0.95, True),    # WHOOP red, Attuned near your best
+    ])
+    def test_motivational_follows_attuned_not_whoop(self, library, old_state, recovery,
+                                                    attuned_state, position, allowed):
+        conn, _, _ = library
+        anthem = _add_song(conn, 50, ["2026-03-02T12:00:00Z"], mood_tags=("motivational",))
+        conn.commit()
+        a, b = self._patches(state=old_state, recovery=recovery,
+                             attuned_state=attuned_state, position=position)
+        with a, b:
+            _, match = select_day_songs(conn, DAY)
+        assert (anthem in {s["spotify_uri"] for s in match["songs"]}) is allowed
 
     def test_passes_history_and_returns_position(self, library):
         conn, _, _ = library

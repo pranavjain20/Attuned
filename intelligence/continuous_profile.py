@@ -60,6 +60,14 @@ DIMENSIONS = ("para", "symp", "grnd")
 # Dominant dimension → (state, display label). Ties: rest, then energy, then grounding.
 STATES = {"para": ("rest", "Rest"), "symp": ("energy", "Energy"), "grnd": ("grounding", "Grounding")}
 
+# What the music does on each state's days, finishing "built to …". The one wording behind
+# the playlist description, the score explanation and the showcase page.
+STATE_PURPOSE = {"rest": "help you settle", "energy": "give you a lift", "grounding": "keep you level"}
+
+# A rest day among your lowest NAME_DEEP_SHARE of days (energy: your highest) gets the
+# stronger name of its pair. Design choice: splits each end state roughly in half.
+NAME_DEEP_SHARE = 0.15
+
 # z-score clamp: prevent extreme outliers from dominating
 Z_CLAMP = 2.5
 
@@ -245,6 +253,15 @@ def pick_state(profile: dict[str, float]) -> tuple[str, str]:
     """Today's state = the profile's largest dimension. Ties: rest, then energy, then grounding."""
     dominant = max(DIMENSIONS, key=lambda k: profile[k])
     return STATES[dominant]
+
+
+def is_top_energy_day(state: str, position: float | None) -> bool:
+    """An energy day among your highest NAME_DEEP_SHARE of days: your very best.
+
+    These days get the stronger energy name ("Stay Sharp") and the only ones on
+    which scene-tied motivational Bollywood songs play. No score → never.
+    """
+    return state == "energy" and position is not None and position > 1 - NAME_DEEP_SHARE
 
 
 def compute_continuous_profile(

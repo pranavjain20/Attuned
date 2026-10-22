@@ -102,25 +102,15 @@ FATIGUE_BAD_DAYS_MIN = 3       # Min bad days in window → fatigue
 RESTORATIVE_SLEEP_EFFICIENCY_MIN = 85.0    # Sleep efficiency % floor
 RESTORATIVE_SLEEP_TOTAL_MIN_MS = 6 * 3_600_000  # 6h minimum total sleep
 
-# Recovery delta modifier — adjusts neuro profile when day-over-day recovery change is extreme
-RECOVERY_DELTA_THRESHOLD_SD = 1.5   # z-score must exceed this (not equal) to trigger (non-baseline states)
-RECOVERY_DELTA_NUDGE = 0.10         # Fixed weight added to target dimension (non-baseline states)
-RECOVERY_DELTA_EXEMPT_STATES = frozenset({"accumulated_fatigue", "peak_readiness"})
-
 # Daily playlist target anchors (intelligence/continuous_profile.py). The Attuned score's
 # position among your own days picks a point on calm (lowest day) → steady (usual day) →
 # energy (best day). Design choices, not research values:
 # - calm and energy mirror each other: one dimension clearly leads (0.65), grounding 0.30;
 # - steady leads with grounding and holds calm and lift level (0.25 each).
 # With these, the label is Rest below position ~0.29, Energy above ~0.71, Grounding between.
-# (Also the ends of matching/state_mapper.py's baseline blend.)
 BASELINE_CALM_ANCHOR = {"para": 0.65, "symp": 0.05, "grnd": 0.30}
 BASELINE_STEADY_ANCHOR = {"para": 0.25, "symp": 0.25, "grnd": 0.50}
 BASELINE_ENERGY_ANCHOR = {"para": 0.05, "symp": 0.65, "grnd": 0.30}
-BASELINE_Z_CLAMP = 2.0
-BASELINE_SLEEP_WEIGHT = 0.65  # Sleep architecture vs recovery delta weight for baseline scaling
-# ~2:1 sleep over recovery delta is a design choice, not a published ratio.
-# See docs/RESEARCH.md › Our design.
 TOKEN_EXPIRY_BUFFER_SECONDS = 300  # 5-minute buffer before refresh
 
 # ---------------------------------------------------------------------------
@@ -205,17 +195,6 @@ VIBE_HARD_CAP_SIMILARITY = 0.30
 # is a vibe outlier — it sounds wrong even if genre/BPM/era match.
 ANCHOR_VIBE_OUTLIER_SD = 1.5
 ANCHOR_VIBE_OUTLIER_MIN_DIMS = 3  # Must be outlier on ALL three vibe dims to be dropped
-
-# State → neuro profile weights for dot-product scoring.
-# Each state defines the ideal blend of parasympathetic, sympathetic, and grounding.
-# Fatigue and physical recovery pushed further apart (gap 0.35 vs old 0.15).
-STATE_NEURO_PROFILES: dict[str, dict[str, float]] = {
-    "accumulated_fatigue":  {"para": 0.95, "symp": 0.00, "grnd": 0.05},
-    "poor_sleep":           {"para": 0.50, "symp": 0.05, "grnd": 0.45},
-    "poor_recovery":        {"para": 0.50, "symp": 0.10, "grnd": 0.40},
-    "baseline":             {"para": 0.15, "symp": 0.50, "grnd": 0.35},
-    "peak_readiness":       {"para": 0.00, "symp": 0.90, "grnd": 0.10},
-}
 
 # Target valence per dimension — what emotional tone each neuro state needs.
 # Para (calming) → warm/serene (0.60), not sad. Symp (energizing) → uplifting (0.75).

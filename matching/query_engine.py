@@ -27,8 +27,8 @@ from db.queries import (
     get_days_since_last_appearance,
     get_recent_playlist_track_uris,
 )
+from intelligence.continuous_profile import is_top_energy_day
 from matching.cohesion import select_cohesive_songs
-from matching.state_mapper import get_state_neuro_profile
 
 logger = logging.getLogger(__name__)
 
@@ -435,7 +435,8 @@ CONTEXT_EXCLUDE_TAGS = frozenset({"motivational", "patriotic"})
 # montages, sports anthems). Hearing them evokes the scene, not the mood.
 # English motivational songs don't carry this baggage — Western pop isn't
 # written for a specific film scene. Exclude Bollywood motivational from
-# all playlists except peak_readiness, where the pump-up context fits.
+# all playlists except your very best energy days (is_top_energy_day), where
+# the pump-up context fits.
 BOLLYWOOD_GENRE_TAGS = frozenset({
     "bollywood", "punjabi", "bhangra", "soundtrack", "inspirational",
 })
@@ -735,8 +736,9 @@ def select_songs(
     conn: sqlite3.Connection,
     state: str,
     date: str,
-    neuro_profile_override: dict[str, float] | None = None,
+    neuro_profile: dict[str, float],
     target_valence: float | None = None,
+    position: float | None = None,
     allow_motivational: bool = False,
     target_size: int | None = None,
     mood_filter: list[str] | None = None,
@@ -760,10 +762,14 @@ def select_songs(
 
     Args:
         conn: Database connection.
-        state: Detected physiological state (from classifier).
+        state: The day's Attuned state (rest / grounding / energy).
         date: Date string (YYYY-MM-DD) for freshness check.
-        neuro_profile_override: If provided, use instead of state's default profile.
+        neuro_profile: Target {para, symp, grnd} songs are scored against
+            (from intelligence/continuous_profile.py).
         target_valence: Target valence from continuous profile (0.0-1.0).
+        position: The Attuned score's position (0-1, None when no score). With
+            state, decides whether motivational Bollywood songs may play.
+        allow_motivational: Let them play regardless (explicit request).
         mood_filter: If provided, restrict to songs with at least one matching mood tag.
         genre_filter: If provided, restrict to songs with at least one matching genre tag.
         era_filter: If provided, restrict to songs from that era (e.g. "1990s").
@@ -775,8 +781,6 @@ def select_songs(
     Returns:
         Dict with keys: songs, state, neuro_profile, match_stats.
     """
-    neuro_profile = neuro_profile_override if neuro_profile_override is not None else get_state_neuro_profile(state)
-
     all_songs = get_all_classified_songs(conn)
     if point_in_time:
         all_songs = rewind_songs_to_date(conn, all_songs, date)
@@ -793,8 +797,8 @@ def select_songs(
     # Exclude user-blocklisted songs
     all_songs = [s for s in all_songs if s.get("spotify_uri") not in _USER_BLOCKLIST]
 
-    # Exclude Bollywood motivational songs unless peak_readiness or explicitly allowed
-    if state != "peak_readiness" and not allow_motivational:
+    # Exclude Bollywood motivational songs unless a top energy day or explicitly allowed
+    if not (allow_motivational or is_top_energy_day(state, position)):
         before_count = len(all_songs)
         all_songs = [s for s in all_songs if not is_context_specific_bollywood(s)]
         excluded = before_count - len(all_songs)

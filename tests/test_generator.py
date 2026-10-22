@@ -194,7 +194,7 @@ class TestGetNeuroPurpose:
 # ---------------------------------------------------------------------------
 
 class TestFormatReasoning:
-    def test_includes_state_and_confidence(self):
+    def test_includes_attuned_state_and_match_details(self):
         classification = {
             "state": "accumulated_fatigue",
             "confidence": "high",
@@ -202,6 +202,8 @@ class TestFormatReasoning:
             "metrics": {"recovery_score": 35.0},
         }
         match_result = {
+            "state": "rest",
+            "position": 0.05,
             "match_stats": {"total_candidates": 500, "selected": 18,
                             "cohesion_stats": {
                                 "pool_size": 60, "mean_similarity": 0.42,
@@ -210,9 +212,9 @@ class TestFormatReasoning:
             "neuro_profile": {"para": 0.95, "symp": 0.00, "grnd": 0.05},
         }
         reasoning = format_reasoning(classification, match_result)
-        assert "State: accumulated_fatigue" in reasoning
-        assert "Confidence: high" in reasoning
-        assert "Multi-day stress pattern" in reasoning
+        assert "State: rest" in reasoning
+        assert "Attuned position: 0.05" in reasoning
+        assert "recovery_score: 35.0" in reasoning  # WHOOP metrics kept for the record
         assert "Candidates: 500" in reasoning
         assert "Selected: 18" in reasoning
         assert "Para: 0.95" in reasoning
@@ -220,36 +222,22 @@ class TestFormatReasoning:
         assert "Mean similarity: 0.4200" in reasoning
         assert "Dominant genre: rock" in reasoning
 
-    def test_empty_reasoning_list(self):
-        classification = {
-            "state": "baseline",
-            "confidence": "medium",
-            "reasoning": [],
-            "metrics": {},
-        }
-        match_result = {
-            "match_stats": {"total_candidates": 100, "selected": 20,
-                            "cohesion_stats": {}},
-            "neuro_profile": {"para": 0.15, "symp": 0.50, "grnd": 0.35},
-        }
-        reasoning = format_reasoning(classification, match_result)
-        assert "State: baseline" in reasoning
-        # Should not have the "Classifier reasoning:" header with empty list
-        assert "Classifier reasoning:" not in reasoning
+    def test_old_classifier_state_and_reasoning_left_out(self):
+        classification = {"state": "accumulated_fatigue", "confidence": "high",
+                          "reasoning": ["Multi-day stress pattern"], "metrics": {}}
+        reasoning = format_reasoning(classification, {"state": "energy", "position": 0.9,
+                                                      "match_stats": {}, "neuro_profile": {}})
+        assert "accumulated_fatigue" not in reasoning
+        assert "Multi-day stress pattern" not in reasoning
+        assert "Confidence" not in reasoning
 
-    def test_no_metrics(self):
-        classification = {
-            "state": "baseline",
-            "confidence": "medium",
-            "reasoning": [],
-            "metrics": {},
-        }
-        match_result = {
-            "match_stats": {},
-            "neuro_profile": {},
-        }
+    def test_no_score_no_metrics(self):
+        classification = {"state": "baseline", "confidence": "medium", "reasoning": [], "metrics": {}}
+        match_result = {"state": "grounding", "position": None, "match_stats": {}, "neuro_profile": {}}
         reasoning = format_reasoning(classification, match_result)
-        assert "State: baseline" in reasoning
+        assert "State: grounding" in reasoning
+        assert "Attuned position: none" in reasoning
+        assert "Metrics:" not in reasoning
 
 
 # ---------------------------------------------------------------------------
@@ -452,7 +440,7 @@ class TestGeneratePlaylist:
         assert result["dry_run"] is True
         assert result["playlist_id"] is None
         assert result["playlist_url"] is None
-        assert result["state"] == "baseline"
+        assert result["state"] == "grounding"  # no Attuned score → steady target
         assert len(result["songs"]) == 18
         assert "Mar 19" in result["name"]
         assert "Fuel Up" in result["name"]  # symp-dominant, no Attuned score → plain energy name
@@ -468,12 +456,16 @@ class TestGeneratePlaylist:
                                                   position, profile, recovery, name, db_conn):
         mock_classify.return_value = _make_classification(metrics={"recovery_score": recovery})
         mock_select.side_effect = lambda *a, **kw: {**_make_match_result(),
-                                                    "neuro_profile": kw["neuro_profile_override"]}
+                                                    "neuro_profile": kw["neuro_profile"]}
         continuous = {"profile": profile, "target_valence": 0.5, "position": position,
+                      "state": pick_state(profile)[0],
                       "z_scores": {}, "signals_used": 0}
         with patch("intelligence.continuous_profile.compute_continuous_profile", return_value=continuous):
             result = generate_playlist(db_conn, sp=None, date_str="2026-03-19", dry_run=True)
         assert result["name"] == name
+        assert result["state"] == pick_state(profile)[0]  # Attuned's state, whatever WHOOP says
+        row = db_conn.execute("SELECT detected_state FROM generated_playlists").fetchone()
+        assert row["detected_state"] == pick_state(profile)[0]
 
     @patch("matching.generator.select_songs")
     @patch("matching.generator.classify_state")
@@ -489,7 +481,7 @@ class TestGeneratePlaylist:
         row = conn.execute("SELECT * FROM generated_playlists").fetchone()
         assert row is not None
         assert row["date"] == "2026-03-19"
-        assert row["detected_state"] == "baseline"
+        assert row["detected_state"] == "grounding"  # the Attuned state, not the old classifier's
         assert row["spotify_playlist_id"] is None
         conn.close()
 

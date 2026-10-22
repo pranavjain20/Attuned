@@ -20,6 +20,7 @@ from datetime import date as date_cls, timedelta
 from pathlib import Path
 
 from db.queries import get_recoveries_in_range, get_song, get_song_classifications
+from intelligence.continuous_profile import STATE_PURPOSE
 from intelligence.feeling_score import HEART_SIGNALS, band, build_page_day, compute_composite_history
 from matching.day_playlist import build_day_playlist, build_day_playlists
 from matching.generator import GenerationError
@@ -64,17 +65,17 @@ MOOD_WORD = {"green": "good", "yellow": "middling", "red": "low"}
 BERNARDI_2006 = ["Bernardi 2006", "https://doi.org/10.1136/hrt.2005.064600"]
 PLAN = {
     "rest": {
-        "does": "built to help you settle", "kinds": "Slower, softer",
+        "does": f"built to {STATE_PURPOSE['rest']}", "kinds": "Slower, softer",
         "why": "Studies find slower music tends to bring heart rate down and calm the body.",
         "cites": [BERNARDI_2006, ["Ooishi 2017", "https://doi.org/10.1371/journal.pone.0189075"]],
     },
     "energy": {
-        "does": "built to give you a lift", "kinds": "Brighter, faster",
+        "does": f"built to {STATE_PURPOSE['energy']}", "kinds": "Brighter, faster",
         "why": "Studies find faster music tends to raise heart rate and breathing, in step with the tempo.",
         "cites": [BERNARDI_2006],
     },
     "grounding": {
-        "does": "built to keep you level", "kinds": "Steady, familiar",
+        "does": f"built to {STATE_PURPOSE['grounding']}", "kinds": "Steady, familiar",
         "why": "Studies find music you love triggers the brain's reward system, "
                "so familiar songs land harder emotionally.",
         "cites": [["Salimpoor 2011", "https://doi.org/10.1038/nn.2726"],
