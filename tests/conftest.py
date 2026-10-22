@@ -1,6 +1,7 @@
 """Shared test fixtures for Attuned."""
 
 import json
+import socket
 import sqlite3
 from pathlib import Path
 
@@ -9,6 +10,38 @@ import pytest
 from db.schema import get_connection
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+_REAL_CONNECT = socket.socket.connect
+_REAL_CONNECT_EX = socket.socket.connect_ex
+_INTERNET = (socket.AF_INET, socket.AF_INET6)
+
+
+class NetworkBlockedError(RuntimeError):
+    """A test tried to reach the network (Spotify, WHOOP, an LLM, ...): mock the call instead."""
+
+
+@pytest.fixture(autouse=True)
+def _no_network(monkeypatch):
+    """Every test runs offline: an internet socket connect or DNS lookup raises.
+
+    Local (Unix) sockets still work, so in-process servers and event loops are fine.
+    """
+    def connect(sock, address):
+        if sock.family in _INTERNET:
+            raise NetworkBlockedError(f"test tried to connect to {address!r}")
+        return _REAL_CONNECT(sock, address)
+
+    def connect_ex(sock, address):
+        if sock.family in _INTERNET:
+            raise NetworkBlockedError(f"test tried to connect to {address!r}")
+        return _REAL_CONNECT_EX(sock, address)
+
+    def getaddrinfo(host, *args, **kwargs):
+        raise NetworkBlockedError(f"test tried to look up {host!r}")
+
+    monkeypatch.setattr(socket.socket, "connect", connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", connect_ex)
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
 
 
 @pytest.fixture
