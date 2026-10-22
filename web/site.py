@@ -37,6 +37,7 @@ WEB_DIR = Path(__file__).parent
 TEMPLATE_PATH = WEB_DIR / "template.html"
 ART_CACHE_PATH = WEB_DIR / ".art_cache.json"
 PUBLISHED_PATH = WEB_DIR / "published.json"
+PLAYLISTS_PATH = WEB_DIR / "playlists.json"   # every day's playlist, decided once
 DATA_PLACEHOLDER = "__ATTUNED_DATA__"
 
 SHORTCUT_DAYS = 3             # the most recent days get a shortcut chip above the rings
@@ -349,12 +350,34 @@ def load_published(path: Path = PUBLISHED_PATH) -> dict[str, dict]:
     return published
 
 
-def save_published(published: dict[str, dict], path: Path = PUBLISHED_PATH) -> None:
-    """Write the published mapping atomically, so an interrupted run never leaves half a file."""
+def _write_json_atomically(data: dict, path: Path) -> None:
+    """Write via a temp file, so an interrupted run never leaves half a file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(published, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
     tmp.replace(path)
+
+
+def save_published(published: dict[str, dict], path: Path = PUBLISHED_PATH) -> None:
+    """Write the published mapping atomically."""
+    _write_json_atomically(published, path)
+
+
+def load_frozen(path: Path = PLAYLISTS_PATH) -> dict[str, dict]:
+    """{date: playlist} for every day already decided; {} when the file is absent."""
+    if not path.exists():
+        return {}
+    frozen = json.loads(path.read_text())
+    if not isinstance(frozen, dict) or not all(
+            isinstance(k, str) and isinstance(v, dict) and isinstance(v.get("tracks"), list)
+            for k, v in frozen.items()):
+        raise ValueError(f"{path} must map date strings to playlists with a tracks list")
+    return frozen
+
+
+def save_frozen(frozen: dict[str, dict], path: Path = PLAYLISTS_PATH) -> None:
+    """Write the decided playlists atomically."""
+    _write_json_atomically(frozen, path)
 
 
 def open_link(record: dict | None, tracks: list[dict]) -> dict | None:
@@ -409,20 +432,26 @@ def window_dates(conn: sqlite3.Connection, end_date: str, n_days: int) -> list[s
 
 
 def replay_playlists(conn: sqlite3.Connection, dates: list[str],
-                     history: dict[str, dict] | None = None) -> dict[str, dict | None]:
-    """The days' playlists (build_day_playlist's dict, or None), replayed as one chain.
+                     history: dict[str, dict] | None = None,
+                     frozen: dict[str, dict] | None = None) -> dict[str, dict | None]:
+    """The days' playlists (build_day_playlist's dict, or None).
 
-    The chain starts at dates[0], so rotation carries over from day to day and
-    the page and publish-playlists (which both call this on window_dates) get
-    the same songs.
+    A day's playlist is decided once, like a real morning: days already in
+    `frozen` are reused, and only new days are built, chained after every frozen
+    day so rotation carries over. Newly built days are added to `frozen` (the
+    caller saves it); a day that couldn't be built isn't, so it's retried.
+    Without this, the window sliding forward a day would change past days.
     """
-    playlists: dict[str, dict | None] = {}
-    if dates:
-        for result in build_day_playlists(conn, dates[0], dates[-1], history=history):
+    frozen = {} if frozen is None else frozen
+    missing = [d for d in dates if d not in frozen]
+    if missing:
+        fixed = {d: [track_uri(t) for t in pl["tracks"]] for d, pl in frozen.items() if d <= dates[-1]}
+        for result in build_day_playlists(conn, missing[0], dates[-1], history=history, fixed=fixed):
             if result["error"]:
                 logger.warning("No playlist for %s: %s", result["date"], result["error"])
-            playlists[result["date"]] = result["playlist"]
-    return playlists
+            elif result["playlist"]:
+                frozen[result["date"]] = result["playlist"]
+    return {d: frozen.get(d) for d in dates}
 
 
 def build_site_days(
@@ -431,8 +460,11 @@ def build_site_days(
     n_days: int,
     art_lookup: ArtLookup,
     published: dict[str, dict] | None = None,
+    frozen: dict[str, dict] | None = None,
 ) -> list[dict]:
     """Page days, oldest first: every WHOOP day in the n_days ending end_date.
+
+    frozen: load_frozen's playlists (see replay_playlists); new days are added to it.
 
     Each day is build_page_day's contract plus attuned.compare, a playlist
     (None when one can't be built) with name/state/summary/total_time, enriched
@@ -448,7 +480,7 @@ def build_site_days(
     # between the scores and the playlists.
     next_day = (date_cls.fromisoformat(end_date) + timedelta(days=1)).isoformat()
     history = compute_composite_history(conn, next_day)
-    playlists = replay_playlists(conn, dates, history)
+    playlists = replay_playlists(conn, dates, history, frozen)
 
     days = []
     for date in dates:

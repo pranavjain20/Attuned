@@ -576,7 +576,7 @@ def recoveries(db_conn):
 
 @pytest.fixture
 def stubbed(monkeypatch):
-    calls = {"range": [], "history": [], "histories": []}
+    calls = {"range": [], "fixed": [], "history": [], "histories": []}
     shared = {"history": "shared"}
 
     def history(conn, before):
@@ -589,10 +589,11 @@ def stubbed(monkeypatch):
         return _page_day(conn, date, history)
     monkeypatch.setattr(site, "build_page_day", page_day)
 
-    def range_playlists(conn, start, end, history=None):
+    def range_playlists(conn, start, end, history=None, fixed=None):
         calls["range"].append((start, end))
+        calls["fixed"].append(dict(fixed or {}))
         calls["histories"].append(("range", history))
-        return _range_playlists(conn, start, end)
+        return [r for r in _range_playlists(conn, start, end) if r["date"] not in (fixed or {})]
     monkeypatch.setattr(site, "build_day_playlists", range_playlists)
     calls["shared"] = shared
     return calls
@@ -691,6 +692,41 @@ class TestBuildSiteDays:
     def test_rejects_non_positive_days(self, db_conn):
         with pytest.raises(ValueError):
             build_site_days(db_conn, "2026-10-21", 0, art_lookup=lambda u: None)
+
+
+class TestFrozenPlaylists:
+    """A day's playlist is decided once; later builds reuse it instead of replaying from a sliding start."""
+
+    def test_new_days_are_built_and_added_to_frozen(self, recoveries, stubbed):
+        frozen = {}
+        playlists = site.replay_playlists(recoveries, ["2026-10-18", "2026-10-20"], frozen=frozen)
+        assert stubbed["range"] == [("2026-10-18", "2026-10-20")]
+        assert set(frozen) == {"2026-10-18", "2026-10-20"}  # Oct 19 failed: not frozen, retried later
+        assert playlists["2026-10-18"] is frozen["2026-10-18"]
+
+    def test_frozen_days_are_reused_not_rebuilt(self, recoveries, stubbed):
+        kept = {"name": "Kept", "tracks": [{"spotify_url": "https://open.spotify.com/track/k1"}]}
+        frozen = {"2026-10-18": kept}
+        playlists = site.replay_playlists(recoveries, ["2026-10-18", "2026-10-20", "2026-10-21"], frozen=frozen)
+        assert playlists["2026-10-18"] is kept
+        assert stubbed["range"] == [("2026-10-20", "2026-10-21")]
+        assert stubbed["fixed"] == [{"2026-10-18": ["spotify:track:k1"]}]
+
+    def test_earlier_frozen_days_outside_the_window_still_count_for_rotation(self, recoveries, stubbed):
+        frozen = {"2026-10-10": {"tracks": [{"spotify_url": "https://open.spotify.com/track/old"}]}}
+        site.replay_playlists(recoveries, ["2026-10-20"], frozen=frozen)
+        assert stubbed["fixed"] == [{"2026-10-10": ["spotify:track:old"]}]
+
+    def test_everything_frozen_builds_nothing(self, recoveries, stubbed):
+        frozen = {"2026-10-20": PLAYLIST}
+        assert site.replay_playlists(recoveries, ["2026-10-20"], frozen=frozen) == {"2026-10-20": PLAYLIST}
+        assert stubbed["range"] == []
+
+    def test_frozen_file_round_trip(self, tmp_path):
+        path = tmp_path / "playlists.json"
+        assert site.load_frozen(path) == {}
+        site.save_frozen({"2026-10-20": PLAYLIST}, path)
+        assert site.load_frozen(path) == {"2026-10-20": PLAYLIST}
 
 
 class TestBuildSiteDaysIntegration:
@@ -854,6 +890,20 @@ class TestBuildSiteCommand:
         assert build.call_args.args[1:3] == ("2026-10-21", 7)
         html = (out / "index.html").read_text()
         assert '"date": "2026-10-21"' in html and DATA_PLACEHOLDER not in html
+
+    def test_saves_newly_decided_playlists(self, monkeypatch, capsys, db_path, tmp_path):
+        def build(conn, end, n, art_lookup, published, frozen):
+            frozen["2026-10-21"] = PLAYLIST
+            return [{"date": "2026-10-21", "playlist": PLAYLIST}]
+        with patch("web.site.build_site_days", side_effect=build):
+            self._run(monkeypatch, db_path, "--end", "2026-10-21", "--out", str(tmp_path / "dist"))
+        assert site.load_frozen(site.PLAYLISTS_PATH) == {"2026-10-21": PLAYLIST}
+
+    def test_reuses_saved_playlists(self, monkeypatch, capsys, db_path, tmp_path):
+        site.save_frozen({"2026-10-20": PLAYLIST}, site.PLAYLISTS_PATH)
+        with patch("web.site.build_site_days", return_value=[]) as build:
+            self._run(monkeypatch, db_path, "--out", str(tmp_path / "dist"))
+        assert build.call_args.kwargs["frozen"] == {"2026-10-20": PLAYLIST}
 
     def test_defaults_to_30_days(self, monkeypatch, capsys, db_path, tmp_path):
         with patch("web.site.build_site_days", return_value=[]) as build:

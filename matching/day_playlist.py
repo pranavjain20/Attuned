@@ -52,8 +52,12 @@ def build_day_playlists(
     start: str,
     end: str,
     history: dict[str, dict] | None = None,
+    fixed: dict[str, list[str]] | None = None,
 ) -> list[dict]:
     """Replay every day from start to end (inclusive), oldest first, chaining rotation.
+
+    fixed: days whose playlists were already decided ({date: track URIs}). They are
+    not rebuilt and get no result; they count for rotation as if pushed.
 
     history: the Attuned score history, built up to at least end; computed once
     here when not given, so scoring each day doesn't replay every earlier day.
@@ -67,11 +71,14 @@ def build_day_playlists(
     if history is None:
         history = compute_composite_history(conn, (last + timedelta(days=1)).isoformat())
 
-    prior: dict[str, list[str]] = {}
+    prior: dict[str, list[str]] = dict(fixed or {})
     results = []
     day = first
     while day <= last:
         date_str = day.isoformat()
+        if fixed and date_str in fixed:
+            day += timedelta(days=1)
+            continue
         try:
             page, uris = _build(conn, date_str, prior, history)
         except GenerationError as e:

@@ -507,8 +507,10 @@ def _cmd_build_site(db_path: Path) -> None:
     art = site.OembedArtCache()
     conn = get_connection(db_path)
     try:
+        frozen = site.load_frozen(site.PLAYLISTS_PATH)
         days = site.build_site_days(conn, end_date, n_days, art_lookup=art,
-                                    published=site.load_published())
+                                    published=site.load_published(), frozen=frozen)
+        site.save_frozen(frozen, site.PLAYLISTS_PATH)
     finally:
         conn.close()
         art.save()
@@ -552,7 +554,9 @@ def _cmd_publish_playlists(db_path: Path) -> None:
     conn = get_connection(db_path)
     try:
         dates = site.window_dates(conn, end_date, n_days)
-        playlists = site.replay_playlists(conn, dates)
+        frozen = site.load_frozen(site.PLAYLISTS_PATH)
+        playlists = site.replay_playlists(conn, dates, frozen=frozen)
+        site.save_frozen(frozen, site.PLAYLISTS_PATH)
         days = [{"date": date, "playlist": playlists.get(date)} for date in dates]
         published = site.load_published(site.PUBLISHED_PATH)
         sp, unavailable = None, set()

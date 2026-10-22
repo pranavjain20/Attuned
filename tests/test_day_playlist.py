@@ -226,6 +226,16 @@ class TestBuildDayPlaylists:
         assert sorted(calls[2][1]) == ["2026-10-01"]
         assert results[2]["playlist"]
 
+    def test_fixed_days_are_not_rebuilt_but_count_for_rotation(self, db_conn):
+        calls = []
+        fixed = {"2026-10-01": ["spotify:track:kept1", "spotify:track:kept2"]}
+        with patch("matching.day_playlist.select_day_songs", side_effect=self._fake(calls)):
+            results = build_day_playlists(db_conn, "2026-10-01", "2026-10-03", fixed=fixed)
+        assert [c[0] for c in calls] == ["2026-10-02", "2026-10-03"]
+        assert calls[0][1] == {"2026-10-01": ["spotify:track:kept1", "spotify:track:kept2"]}
+        assert sorted(calls[1][1]) == ["2026-10-01", "2026-10-02"]
+        assert [r["date"] for r in results] == ["2026-10-02", "2026-10-03"]
+
     def test_single_day_range(self, db_conn):
         with patch("matching.day_playlist.select_day_songs", side_effect=self._fake([])):
             assert len(build_day_playlists(db_conn, DAY, DAY)) == 1

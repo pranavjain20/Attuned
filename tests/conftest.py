@@ -44,6 +44,13 @@ def _no_network(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
 
 
+@pytest.fixture(autouse=True)
+def _isolated_site_files(monkeypatch, tmp_path):
+    """Commands read web/playlists.json by path at run time; never let a test touch the real one."""
+    from web import site
+    monkeypatch.setattr(site, "PLAYLISTS_PATH", tmp_path / "playlists.json")
+
+
 @pytest.fixture
 def db_conn(tmp_path):
     """Fresh in-memory database with schema created."""
