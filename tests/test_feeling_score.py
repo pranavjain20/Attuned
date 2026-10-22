@@ -273,6 +273,12 @@ class TestHeadline:
     def test_same_band(self):
         assert _headline("yellow", "yellow", [], short_night=True) == "A middle-of-the-road day"
 
+    def test_below_whoop_with_no_drivers_does_not_invent_a_cause(self):
+        assert _headline("yellow", "green", []) == "An ordinary night for you, and WHOOP rated it higher"
+
+    def test_above_whoop_with_no_drivers_does_not_invent_a_cause(self):
+        assert _headline("yellow", "red", []) == "An ordinary night for you, and WHOOP rated it lower"
+
     def test_below_a_green_whoop_says_ready_but(self):
         assert _headline("yellow", "green", [{"signal": "rem_sleep_z"}]) == \
             "WHOOP says ready, but your sleep says go easy"

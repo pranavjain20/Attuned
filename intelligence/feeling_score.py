@@ -274,8 +274,11 @@ def _headline(attuned_band: str, whoop_band: str | None, drivers: list[dict],
     """
     if whoop_band is None or attuned_band == whoop_band:
         return SAME_BAND_HEADLINE[attuned_band]
+    below_whoop = BAND_ORDER.index(attuned_band) < BAND_ORDER.index(whoop_band)
+    if not drivers and attuned_band == "yellow":  # an ordinary night: the gap is WHOOP's, not ours
+        return f"An ordinary night for you, and WHOOP rated it {'higher' if below_whoop else 'lower'}"
     led_by_sleep = bool(drivers) and drivers[0]["signal"] in SLEEP_SIGNALS
-    if BAND_ORDER.index(attuned_band) < BAND_ORDER.index(whoop_band):
+    if below_whoop:
         cause = "your sleep" if led_by_sleep else "your body"
         # Only a green WHOOP ring says "ready"; below a yellow one, compare the numbers.
         if whoop_band == "green":

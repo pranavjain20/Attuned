@@ -176,6 +176,10 @@ def compare_copy(attuned: dict, whoop: dict) -> dict:
     elif not worse and heart_bad and sleep_good:
         line = (f"You had {join_and(heart_bad)}, which pulls WHOOP down. But you also had "
                 f"{join_and(sleep_good)}, which Attuned weighs more for how you'll feel.")
+    elif attuned.get("drivers") == [] and band(attuned["score"]) == "yellow":
+        # An ordinary night that lands Attuned in the middle: the gap is WHOOP's, so don't invent a cause.
+        line = ("Your sleep and heart signals were all close to your usual, so Attuned puts today "
+                f"in the middle. WHOOP rated it {'higher' if worse else 'lower'}.")
     else:
         line = reason_line(attuned, whoop)
     return {"title": title, "line": line, "note": note}

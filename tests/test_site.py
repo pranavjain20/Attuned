@@ -42,6 +42,27 @@ def _attuned(score, drivers=(), state="grounding", band=None, reason=None):
 # ─── join_and ────────────────────────────────────────────────────────────────
 
 
+class TestNoDriverGap:
+    """An ordinary night that WHOOP scored well above or below the usual: say so, don't invent a cause."""
+
+    def test_below_whoop_explains_the_ordinary_night(self):
+        copy = compare_copy(_attuned(64), {"recovery": 79})
+        assert copy["title"] == "Why you'll likely feel worse than WHOOP says"
+        assert copy["line"] == ("Your sleep and heart signals were all close to your usual, "
+                                "so Attuned puts today in the middle. WHOOP rated it higher.")
+
+    def test_above_whoop_explains_the_ordinary_night(self):
+        copy = compare_copy(_attuned(60), {"recovery": 30})
+        assert copy["line"] == ("Your sleep and heart signals were all close to your usual, "
+                                "so Attuned puts today in the middle. WHOOP rated it lower.")
+
+    def test_red_day_with_no_drivers_keeps_the_general_line(self):
+        assert compare_copy(_attuned(20), {"recovery": 80})["line"] == "A night close to your usual."
+
+    def test_agreeing_day_keeps_the_short_line(self):
+        assert compare_copy(_attuned(60), {"recovery": 62})["line"] == "A night close to your usual."
+
+
 class TestJoinAnd:
     def test_empty_is_empty_string(self):
         assert join_and([]) == ""
