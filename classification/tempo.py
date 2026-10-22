@@ -17,6 +17,9 @@ So the rule is:
 4. Energetic songs are never halved: halving is where the rule is least
    reliable (Can't Hold Us, Sooraj Ki Baahon Mein), so they keep the tempo they
    were scored at before (bpm), flagged low confidence for a manual check.
+   When that kept tempo is itself half of the level the trackers or Soundcharts
+   report (Blinding Lights 88 vs 172), the reported level is used instead, up to
+   185 BPM, at medium confidence (low when only one tracker reading backs it).
 5. A tempo set by hand (set-tempo) is never overwritten.
 
 `resolve_tempo` is the rule; `update_tempos` is the only code that writes the
@@ -53,6 +56,9 @@ _CLEAR_OCTAVE_MARGIN = 0.20
 # Halving into this zone is a judgment call: a listener could defensibly clap
 # the double (Is This Love 62 vs 125, Chaandaniya 57 vs 114).
 _VERY_SLOW_BPM = 65.0
+# A kept tempo counts as half-time when it is within 8% of half the reported
+# level (the same ±8% used to call a tempo right).
+_HALF_TIME_TOLERANCE = 0.08
 
 LISTED_TEMPO_GENRES = frozenset({"hip-hop", "hip hop", "rap", "trap"})
 FAST_MOODS = frozenset({
@@ -83,6 +89,7 @@ class TrackerConsensus:
     total: int                # how many readings there were
     reported: float           # the octave most agreeing readings reported it at
     reported_unanimous: bool  # every agreeing reading reported that same octave
+    reported_by: int          # how many readings reported that octave
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +165,7 @@ def find_tracker_consensus(readings: list[float | None]) -> TrackerConsensus | N
         total=len(raw),
         reported=tempo * 2 ** level,
         reported_unanimous=len(levels) == 1,
+        reported_by=top_count,
     )
 
 
@@ -178,31 +186,45 @@ def _is_energetic(moods: set[str]) -> bool:
     return bool(moods & FAST_MOODS) and not (moods & SLOW_MOODS)
 
 
+def _unhalved(fallback: TempoDecision, listed: TempoDecision) -> TempoDecision:
+    """An energetic song's fallback tempo, unless it is half the listed level.
+
+    Then the listed level is used instead, when it is in range.
+    """
+    low, high = LISTED_TEMPO_RANGE_BPM
+    half_time = abs(2 * fallback.tempo / listed.tempo - 1) <= _HALF_TIME_TOLERANCE
+    return listed if half_time and low <= listed.tempo <= high else fallback
+
+
 def _decide_octave(
     number: float,
-    reported: float,
     llm_bpm: float | None,
     moods: set[str],
     agreeing: int,
     source: str,
     plain_source: str,
+    listed: TempoDecision,
     current_bpm: float | None,
 ) -> TempoDecision:
     """Apply the LLM-octave rule to a precise number, with the energetic guard.
 
     current_bpm is the tempo the song was scored at before this rule existed
-    (the bpm column, history); the guard keeps it rather than halving.
+    (the bpm column, history); the guard keeps it rather than halving, unless
+    it is itself half the listed level. listed is the level the readings
+    report, as a decision.
     """
+    reported = listed.tempo
+    energetic = _is_energetic(moods)
+    plain = TempoDecision(_into_range(reported, *TEMPO_RANGE_BPM), plain_source, "low")
     if llm_bpm is None:
-        return TempoDecision(_into_range(reported, *TEMPO_RANGE_BPM), plain_source, "low")
+        return _unhalved(plain, listed) if energetic else plain
 
     tempo, margin = _nearest_octave(number, llm_bpm)
     steps = _octave_steps(tempo, reported)
-    if _is_energetic(moods) and steps != 0:
+    if energetic and steps != 0:
         if steps < 0:  # never halve an energetic song: keep its current tempo
-            if current_bpm is not None:
-                return TempoDecision(float(current_bpm), "kept_bpm", "low")
-            return TempoDecision(_into_range(reported, *TEMPO_RANGE_BPM), plain_source, "low")
+            kept = plain if current_bpm is None else TempoDecision(float(current_bpm), "kept_bpm", "low")
+            return _unhalved(kept, listed)
         return TempoDecision(tempo, source, "low")
 
     if (agreeing < 2 or margin < _AMBIGUOUS_OCTAVE_MARGIN
@@ -250,9 +272,13 @@ def _resolve_tempo(song: dict[str, Any], llm_bpm: float | None) -> TempoDecision
         if listed_genre:
             tempo = _into_range(consensus.reported, *LISTED_TEMPO_RANGE_BPM)
             return TempoDecision(tempo, "audio_listed", _listed_confidence(consensus))
+        # The level the trackers report; trusted to medium only when 2+ readings back it.
+        listed = TempoDecision(
+            consensus.reported, "audio_listed", "medium" if consensus.reported_by >= 2 else "low",
+        )
         return _decide_octave(
-            consensus.tempo, consensus.reported, llm_bpm, moods,
-            consensus.agreeing, "audio+llm_octave", "audio", song.get("bpm"),
+            consensus.tempo, llm_bpm, moods,
+            consensus.agreeing, "audio+llm_octave", "audio", listed, song.get("bpm"),
         )
 
     soundcharts = song.get("soundcharts_tempo")
@@ -261,8 +287,9 @@ def _resolve_tempo(song: dict[str, Any], llm_bpm: float | None) -> TempoDecision
             tempo = _into_range(float(soundcharts), *LISTED_TEMPO_RANGE_BPM)
             return TempoDecision(tempo, "soundcharts", "medium")
         decision = _decide_octave(
-            float(soundcharts), float(soundcharts), llm_bpm, moods,
-            2, "soundcharts+llm_octave", "soundcharts", song.get("bpm"),
+            float(soundcharts), llm_bpm, moods,
+            2, "soundcharts+llm_octave", "soundcharts",
+            TempoDecision(float(soundcharts), "soundcharts", "medium"), song.get("bpm"),
         )
         # One outside source is never "high", however clear the octave.
         if decision.confidence == "high":

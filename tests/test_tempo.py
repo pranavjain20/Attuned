@@ -62,6 +62,7 @@ class TestFindTrackerConsensus:
         consensus = find_tracker_consensus([163.1, 163.1, 81.0])
         assert consensus.reported == pytest.approx(163.1, abs=0.5)
         assert consensus.reported_unanimous is False
+        assert consensus.reported_by == 2
 
     def test_reported_level_unanimous_when_all_trackers_match(self):
         consensus = find_tracker_consensus([150.2, 150.2, 150.0])
@@ -231,7 +232,7 @@ class TestResolveTempoEnergeticGuard:
         )
         assert decision.tempo == pytest.approx(125.0, abs=0.1)
         assert decision.source == "audio"
-        assert decision.confidence == "low"
+        assert decision.confidence == "low"  # 125 is not a halving of anything: unchanged
 
     def test_energetic_guard_keeps_the_current_tempo(self):
         """Sakhiyaan: stored 164, trackers 165/165/83, LLM 120 would halve to 83 — keep 164."""
@@ -241,20 +242,110 @@ class TestResolveTempoEnergeticGuard:
         )
         assert decision == TempoDecision(164.0, "kept_bpm", "low")
 
-    def test_energetic_guard_never_speeds_a_song_up(self):
-        """Kar Har Maidaan Fateh: stored 88, trackers report 172 — keep 88, not 172."""
+    def test_kept_half_time_tempo_is_replaced_by_the_listed_level(self):
+        """Kar Har Maidaan Fateh: stored 88 is half of the 172 trackers report → 172."""
         decision = resolve_tempo(
             _song(essentia=172.3, degara=172.3, cnn=84.0, bpm=88,
-                  moods=["motivational", "inspirational"]), 88,
+                  moods=["motivational", "inspirational"]), 120,
         )
-        assert decision == TempoDecision(88.0, "kept_bpm", "low")
+        assert decision == TempoDecision(172.3, "audio_listed", "medium")
 
-    def test_energetic_guard_without_current_bpm_keeps_the_reading(self):
+    def test_listed_level_above_the_felt_window(self):
+        """Blinding Lights: LLM 171, trackers 85.6/172.3/171 — 171 is above the 165
+        window so the octave rule picks 86; the stored 88 is the same half-time."""
+        decision = resolve_tempo(
+            _song(essentia=85.55, degara=172.27, cnn=171.0, bpm=88,
+                  moods=["energetic", "uplifting"], genres=["pop", "synthwave"]), 171,
+        )
+        assert decision.tempo == pytest.approx(171.6, abs=0.7)
+        assert decision.source == "audio_listed"
+        assert decision.confidence == "medium"
+
+    def test_two_agreeing_trackers_are_enough_for_medium(self):
+        """Bulleya: 178.2/178.2/123, stored 89 → 178.2."""
+        decision = resolve_tempo(
+            _song(essentia=178.21, degara=178.21, cnn=123.0, bpm=89,
+                  moods=["energetic", "powerful"]), 120,
+        )
+        assert decision == TempoDecision(178.2, "audio_listed", "medium")
+
+    def test_one_tracker_alone_is_low_confidence(self):
+        """No two readings agree: the listed level is still preferred, but flagged."""
+        decision = resolve_tempo(
+            _song(essentia=171.0, degara=123.0, cnn=101.0, bpm=88, moods=["energetic"]), 88,
+        )
+        assert decision == TempoDecision(171.0, "audio_listed", "low")
+
+    def test_listed_level_from_a_one_one_tracker_split_is_low_confidence(self):
+        """Tera Yaar Hoon Main: 164.8 and 84 agree up to octave but split on the level,
+        so only one reading backs the fast level."""
+        decision = resolve_tempo(
+            _song(essentia=164.79, degara=111.38, cnn=84.0, bpm=88,
+                  moods=["friendly", "celebratory"]), 85,
+        )
+        assert decision.source == "audio_listed"
+        assert decision.tempo == pytest.approx(166.4, abs=1.0)
+        assert decision.confidence == "low"
+
+    def test_soundcharts_listed_level_replaces_half_time(self):
+        """Bye Bye Bye: Soundcharts 172.6, stored 91 → 172.6."""
+        decision = resolve_tempo(
+            _song(soundcharts=172.64, bpm=91, moods=["energetic", "fun"], genres=["pop"]), 92,
+        )
+        assert decision == TempoDecision(172.6, "soundcharts", "medium")
+
+    def test_listed_level_above_185_keeps_the_current_tempo(self):
+        """Chunky: Soundcharts 202 is out of range, so the stored 100 stays."""
+        decision = resolve_tempo(
+            _song(soundcharts=202.1, bpm=100, moods=["fun", "party"], genres=["pop"]), 100,
+        )
+        assert decision == TempoDecision(100.0, "kept_bpm", "low")
+
+    def test_listed_level_at_185_is_in_range(self):
+        decision = resolve_tempo(_song(soundcharts=185.0, bpm=92, moods=["energetic"]), 92)
+        assert decision == TempoDecision(185.0, "soundcharts", "medium")
+
+    def test_current_tempo_not_an_octave_of_the_listed_level_is_kept(self):
+        """Attention: Soundcharts 148 vs stored 99 (a 3:2 gap, not half-time) → keep 99."""
+        decision = resolve_tempo(
+            _song(soundcharts=148.0, bpm=99, moods=["confident", "seductive"], genres=["pop"]), 100,
+        )
+        assert decision == TempoDecision(99.0, "kept_bpm", "low")
+
+    @pytest.mark.parametrize("bpm, listed", [(80.0, True), (92.0, True), (93.5, False), (78.0, False)])
+    def test_half_time_means_within_8_percent_of_half(self, bpm, listed):
+        """172/2 = 86; 80 and 92 are within 8% of it, 78 and 93.5 are not."""
+        decision = resolve_tempo(_song(soundcharts=172.0, bpm=bpm, moods=["energetic"]), 92)
+        assert decision.source == ("soundcharts" if listed else "kept_bpm")
+
+    def test_energetic_guard_without_current_bpm_uses_the_listed_level(self):
+        """No stored tempo: halving 172 to 86 is still halving, so 172 is used."""
         decision = resolve_tempo(
             _song(essentia=172.3, degara=172.3, cnn=84.0, moods=["motivational"]), 88,
         )
-        assert decision.tempo == pytest.approx(86.1, abs=0.5)
+        assert decision == TempoDecision(172.3, "audio_listed", "medium")
+
+    def test_energetic_without_current_bpm_above_185_falls_back_to_the_reading(self):
+        decision = resolve_tempo(_song(essentia=190.0, degara=190.0, cnn=95.0, moods=["party"]), 95)
+        assert decision.tempo == pytest.approx(95.0, abs=0.1)
         assert decision.source == "audio"
+        assert decision.confidence == "low"
+
+    def test_energetic_song_without_llm_is_not_halved(self):
+        decision = resolve_tempo(_song(essentia=172.0, degara=172.0, cnn=172.0, moods=["energetic"]), None)
+        assert decision == TempoDecision(172.0, "audio_listed", "medium")
+
+    def test_calm_song_without_llm_is_still_folded_into_the_window(self):
+        decision = resolve_tempo(_song(essentia=172.0, degara=172.0, cnn=172.0, moods=["calm"]), None)
+        assert decision == TempoDecision(86.0, "audio", "low")
+
+    def test_listed_level_is_stable_when_rerun(self):
+        """The decision reads bpm (history), never tempo, so a rerun gives the same answer."""
+        song = _song(essentia=172.3, degara=172.3, cnn=84.0, bpm=88, moods=["motivational"])
+        first = resolve_tempo(song, 120)
+        rerun = resolve_tempo({**song, "tempo": first.tempo, "tempo_source": first.source,
+                               "tempo_confidence": first.confidence}, 120)
+        assert rerun == first
 
     def test_energetic_song_that_matches_llm_octave_is_untouched(self):
         decision = resolve_tempo(
