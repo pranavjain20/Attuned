@@ -9,9 +9,9 @@ import pytest
 
 import main
 from db.queries import upsert_song, upsert_song_classification, upsert_whoop_recovery
-from matching.generator import GenerationError
 from web import site
 from web.site import (
+    SHORTCUT_DAYS,
     DATA_PLACEHOLDER,
     OembedArtCache,
     build_site_days,
@@ -427,7 +427,7 @@ def _range_playlists(conn, start, end):
 
 @pytest.fixture
 def recoveries(db_conn):
-    """WHOOP recoveries on Oct 18–21 (Oct 17 missing), plus the two notable April days."""
+    """WHOOP recoveries on Oct 18–21 (Oct 17 missing), plus older days outside the window."""
     for i, d in enumerate(["2026-04-07", "2026-04-08", "2026-10-16", "2026-10-18",
                            "2026-10-19", "2026-10-20", "2026-10-21"]):
         upsert_whoop_recovery(db_conn, cycle_id=i + 1, date=d, recovery_score=60,
@@ -438,7 +438,7 @@ def recoveries(db_conn):
 
 @pytest.fixture
 def stubbed(monkeypatch):
-    calls = {"single": [], "range": [], "history": [], "histories": []}
+    calls = {"range": [], "history": [], "histories": []}
     shared = {"history": "shared"}
 
     def history(conn, before):
@@ -456,42 +456,31 @@ def stubbed(monkeypatch):
         calls["histories"].append(("range", history))
         return _range_playlists(conn, start, end)
     monkeypatch.setattr(site, "build_day_playlists", range_playlists)
-
-    def single(conn, date, history=None):
-        calls["single"].append(date)
-        calls["histories"].append(("single", history))
-        if date == "2026-04-07":
-            raise GenerationError("too little data")
-        return PLAYLIST
-    monkeypatch.setattr(site, "build_day_playlist", single)
     calls["shared"] = shared
     return calls
 
 
 def _build(conn, **kw):
-    kw.setdefault("notable_dates", ("2026-04-07", "2026-04-08"))
     return build_site_days(conn, "2026-10-21", 4, art_lookup=lambda u: None, **kw)
 
 
 class TestBuildSiteDays:
-    def test_includes_recovery_days_in_window_plus_notable_sorted(self, recoveries, stubbed):
+    def test_includes_only_recovery_days_in_window_sorted(self, recoveries, stubbed):
         dates = [d["date"] for d in _build(recoveries)]
-        assert dates == ["2026-04-07", "2026-04-08", "2026-10-18", "2026-10-19", "2026-10-20", "2026-10-21"]
+        assert dates == ["2026-10-18", "2026-10-19", "2026-10-20", "2026-10-21"]
 
-    def test_marks_only_notable_days(self, recoveries, stubbed):
-        notable = {d["date"]: d.get("notable", False) for d in _build(recoveries)}
-        assert notable == {"2026-04-07": True, "2026-04-08": True, "2026-10-18": False,
-                           "2026-10-19": False, "2026-10-20": False, "2026-10-21": False}
+    def test_marks_the_most_recent_days_as_shortcuts(self, recoveries, stubbed):
+        notable = {d["date"]: d["notable"] for d in _build(recoveries)}
+        assert notable == {"2026-10-18": False, "2026-10-19": True, "2026-10-20": True, "2026-10-21": True}
+        assert SHORTCUT_DAYS == 3
 
-    def test_notable_day_inside_window_is_marked_not_duplicated(self, recoveries, stubbed):
-        days = _build(recoveries, notable_dates=("2026-10-20",))
-        assert [d["date"] for d in days].count("2026-10-20") == 1
-        assert next(d for d in days if d["date"] == "2026-10-20")["notable"] is True
+    def test_fewer_days_than_shortcuts_marks_them_all(self, recoveries, stubbed):
+        days = build_site_days(recoveries, "2026-10-21", 1, art_lookup=lambda u: None)
+        assert [(d["date"], d["notable"]) for d in days] == [("2026-10-21", True)]
 
-    def test_range_replayed_once_and_notable_days_singly(self, recoveries, stubbed):
+    def test_range_replayed_once(self, recoveries, stubbed):
         _build(recoveries)
         assert stubbed["range"] == [("2026-10-18", "2026-10-21")]
-        assert stubbed["single"] == ["2026-04-07", "2026-04-08"]
 
     def test_history_computed_once(self, recoveries, stubbed):
         _build(recoveries)
@@ -500,17 +489,12 @@ class TestBuildSiteDays:
     def test_one_history_shared_by_scores_and_playlists(self, recoveries, stubbed):
         _build(recoveries)
         kinds = {kind for kind, _ in stubbed["histories"]}
-        assert kinds == {"page", "range", "single"}
+        assert kinds == {"page", "range"}
         assert all(h is stubbed["shared"] for _, h in stubbed["histories"])
-
-    def test_history_covers_a_notable_day_after_the_window(self, recoveries, stubbed):
-        _build(recoveries, notable_dates=("2026-11-02",))
-        assert stubbed["history"] == ["2026-11-03"]
 
     def test_failed_playlist_is_none(self, recoveries, stubbed):
         days = {d["date"]: d for d in _build(recoveries)}
         assert days["2026-10-19"]["playlist"] is None
-        assert days["2026-04-07"]["playlist"] is None
 
     def test_attaches_copy_and_enriched_playlist(self, recoveries, stubbed):
         day = next(d for d in _build(recoveries) if d["date"] == "2026-10-21")
@@ -539,9 +523,8 @@ class TestBuildSiteDays:
         assert days["2026-10-21"]["playlist"]["open"] == {
             "label": "Play on Spotify", "url": TRACK["spotify_url"]}
 
-    def test_no_recoveries_in_window_still_builds_notable(self, db_conn, stubbed):
-        days = _build(db_conn)
-        assert [d["date"] for d in days] == ["2026-04-07", "2026-04-08"]
+    def test_no_recoveries_in_window_builds_nothing(self, db_conn, stubbed):
+        assert _build(db_conn) == []
         assert stubbed["range"] == []
 
     def test_rejects_non_positive_days(self, db_conn):
@@ -553,10 +536,8 @@ class TestBuildSiteDaysIntegration:
     """Real scoring + playlist code on a sparse DB: too little data to score or generate."""
 
     def test_sparse_db_yields_unscored_days_without_playlists(self, recoveries):
-        days = build_site_days(recoveries, "2026-10-21", 4, notable_dates=("2026-04-08",),
-                               art_lookup=lambda u: None)
-        assert [d["date"] for d in days] == ["2026-04-08", "2026-10-18", "2026-10-19",
-                                             "2026-10-20", "2026-10-21"]
+        days = build_site_days(recoveries, "2026-10-21", 4, art_lookup=lambda u: None)
+        assert [d["date"] for d in days] == ["2026-10-18", "2026-10-19", "2026-10-20", "2026-10-21"]
         assert all(d["attuned"]["score"] is None for d in days)
         assert all(d["attuned"]["compare"]["title"] == "No Attuned score today" for d in days)
         assert all(d["playlist"] is None for d in days)
@@ -567,7 +548,7 @@ class TestBuildSiteDaysIntegration:
         assert "Not saved to Spotify yet" not in template and "btn-note" not in template
 
     def test_renders_into_real_template(self, recoveries):
-        days = build_site_days(recoveries, "2026-10-21", 2, notable_dates=(), art_lookup=lambda u: None)
+        days = build_site_days(recoveries, "2026-10-21", 2, art_lookup=lambda u: None)
         html = render(site.TEMPLATE_PATH.read_text(), days)
         assert DATA_PLACEHOLDER not in html and "2026-10-21" in html
 

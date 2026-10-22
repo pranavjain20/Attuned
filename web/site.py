@@ -22,8 +22,7 @@ from pathlib import Path
 from db.queries import get_recoveries_in_range, get_song, get_song_classifications
 from intelligence.continuous_profile import STATE_PURPOSE
 from intelligence.feeling_score import HEART_SIGNALS, band, build_page_day, compute_composite_history
-from matching.day_playlist import build_day_playlist, build_day_playlists
-from matching.generator import GenerationError
+from matching.day_playlist import build_day_playlists
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +32,7 @@ ART_CACHE_PATH = WEB_DIR / ".art_cache.json"
 PUBLISHED_PATH = WEB_DIR / "published.json"
 DATA_PLACEHOLDER = "__ATTUNED_DATA__"
 
-NOTABLE_DATES = ("2026-04-07", "2026-04-08")
+SHORTCUT_DAYS = 3             # the most recent days get a shortcut chip above the rings
 AGREE_WITHIN_POINTS = 10      # a smaller gap reads as "roughly agree"
 BIG_GAP_POINTS = 20           # a gap this big gets called out under the rings
 MAX_MOODS_PER_TRACK = 3
@@ -343,21 +342,15 @@ def _site_playlist(conn: sqlite3.Connection, playlist: dict, attuned: dict,
     return enriched
 
 
-def _playlists_by_date(conn: sqlite3.Connection, recent: list[str], others: list[str],
+def _playlists_by_date(conn: sqlite3.Connection, dates: list[str],
                        history: dict[str, dict]) -> dict[str, dict | None]:
-    """Recent days replayed as one chain (rotation carries over); other days on their own."""
+    """The days replayed as one chain, so rotation carries over from day to day."""
     playlists: dict[str, dict | None] = {}
-    if recent:
-        for result in build_day_playlists(conn, recent[0], recent[-1], history=history):
+    if dates:
+        for result in build_day_playlists(conn, dates[0], dates[-1], history=history):
             if result["error"]:
                 logger.warning("No playlist for %s: %s", result["date"], result["error"])
             playlists[result["date"]] = result["playlist"]
-    for date in others:
-        try:
-            playlists[date] = build_day_playlist(conn, date, history=history)
-        except GenerationError as e:
-            logger.warning("No playlist for %s: %s", date, e)
-            playlists[date] = None
     return playlists
 
 
@@ -366,14 +359,13 @@ def build_site_days(
     end_date: str,
     n_days: int,
     art_lookup: ArtLookup,
-    notable_dates: tuple[str, ...] = NOTABLE_DATES,
     published: dict[str, dict] | None = None,
 ) -> list[dict]:
-    """Page days, oldest first: every WHOOP day in the n_days ending end_date, plus notable_dates.
+    """Page days, oldest first: every WHOOP day in the n_days ending end_date.
 
     Each day is build_page_day's contract plus attuned.compare, a playlist
     (None when one can't be built) with summary/total_time, enriched tracks and
-    open (the header button: {label, url}), and notable: True on notable dates.
+    open (the header button: {label, url}), and notable: True on the SHORTCUT_DAYS most recent days.
     published is load_published's mapping. art_lookup maps a track URL to album art
     (main.py passes an OembedArtCache and saves it afterwards).
     """
@@ -383,15 +375,12 @@ def build_site_days(
 
     end = date_cls.fromisoformat(end_date)
     start = (end - timedelta(days=n_days - 1)).isoformat()
-    recent = [row["date"] for row in get_recoveries_in_range(conn, start, end_date)]
-    others = sorted(set(notable_dates) - set(recent))
-
-    dates = sorted(recent + others)
-    # Scoring a day replays every earlier day; compute that history once, up to the
-    # latest day shown, and share it between the scores and the playlists.
-    last = date_cls.fromisoformat(max([end_date, *dates]))
-    history = compute_composite_history(conn, (last + timedelta(days=1)).isoformat())
-    playlists = _playlists_by_date(conn, recent, others, history)
+    dates = sorted(row["date"] for row in get_recoveries_in_range(conn, start, end_date))
+    shortcuts = set(dates[-SHORTCUT_DAYS:])
+    # Scoring a day replays every earlier day; compute that history once and share it
+    # between the scores and the playlists.
+    history = compute_composite_history(conn, (end + timedelta(days=1)).isoformat())
+    playlists = _playlists_by_date(conn, dates, history)
 
     days = []
     for date in dates:
@@ -402,7 +391,7 @@ def build_site_days(
             spotify_url = published[date]["url"] if date in published else playlist.get("spotify_url")
             playlist = _site_playlist(conn, playlist, day["attuned"], art_lookup, spotify_url)
         day["playlist"] = playlist
-        day["notable"] = date in notable_dates
+        day["notable"] = date in shortcuts
         days.append(day)
     return days
 
