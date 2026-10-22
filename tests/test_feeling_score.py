@@ -20,7 +20,9 @@ from intelligence.feeling_score import (
     compute_feeling_score,
     compute_feeling_signals,
     hrv_week_endpoints,
+    locate_day,
     map_to_score,
+    percentile_position,
     pick_drivers,
     pick_state,
 )
@@ -156,6 +158,24 @@ class TestMapToScore:
 
     def test_score_is_int(self):
         assert isinstance(map_to_score(0.1, [0.0, 1.0], [33.0, 70.0]), int)
+
+
+class TestPercentilePosition:
+    def test_below_every_reference_is_zero(self):
+        assert percentile_position(-9.0, [0.0, 1.0, 2.0]) == 0.0
+
+    def test_above_every_reference_is_one(self):
+        assert percentile_position(9.0, [0.0, 1.0, 2.0]) == 1.0
+
+    def test_middle(self):
+        assert percentile_position(1.5, [0.0, 1.0, 2.0, 3.0]) == 0.5
+
+    def test_ties_count_half(self):
+        assert percentile_position(0.0, [0.0, 0.0, 0.0, 0.0]) == 0.5
+
+    def test_is_the_rank_map_to_score_uses(self):
+        refs, recoveries = [0.0, 1.0, 2.0, 3.0], [10.0, 20.0, 30.0, 40.0]
+        assert map_to_score(1.5, refs, recoveries) == 25  # recovery at position 0.5
 
 
 class TestBand:
@@ -304,24 +324,24 @@ class TestComputeFeelingSignals:
     def test_drops_whoop_recovery_and_adds_total_sleep(self, db_conn):
         _seed_history(db_conn, TARGET, 40)
         _insert_day(db_conn, TARGET, 1, total_ms=7 * HOUR, eff=88, hrv=48, rhr=56, recovery=55)
-        z = compute_feeling_signals(db_conn, TARGET)["z"]
+        z = compute_feeling_signals(db_conn, TARGET)
         assert "recovery_z" not in z and "recovery_delta_z" not in z
         assert z["total_sleep_z"] is not None
 
     def test_short_night_gives_strongly_negative_total_sleep(self, db_conn):
         _seed_history(db_conn, TARGET, 40)
         _insert_day(db_conn, TARGET, 1, total_ms=3.9 * HOUR, eff=92, hrv=48, rhr=56, recovery=55)
-        assert compute_feeling_signals(db_conn, TARGET)["z"]["total_sleep_z"] < -2.0
+        assert compute_feeling_signals(db_conn, TARGET)["total_sleep_z"] < -2.0
 
     def test_nap_does_not_change_signals(self, db_conn):
         """A nap the same day leaves every sleep signal exactly as the night alone gives."""
         _seed_history(db_conn, TARGET, 40)
         _insert_day(db_conn, TARGET, 1, total_ms=5 * HOUR, eff=82, hrv=48, rhr=56, recovery=55)
-        before = compute_feeling_signals(db_conn, TARGET)["z"]
+        before = compute_feeling_signals(db_conn, TARGET)
         upsert_whoop_sleep(db_conn, sleep_id="nap-today", date=TARGET, nap=True,
                            deep_sleep_ms=2 * HOUR, rem_sleep_ms=0, light_sleep_ms=0,
                            sleep_efficiency=99.0)
-        after = compute_feeling_signals(db_conn, TARGET)["z"]
+        after = compute_feeling_signals(db_conn, TARGET)
         for s in ("deep_sleep_z", "rem_sleep_z", "total_sleep_z", "sleep_efficiency_z", "deep_ratio_z"):
             assert after[s] == pytest.approx(before[s])
 
@@ -329,24 +349,24 @@ class TestComputeFeelingSignals:
         """Naps (~99% efficiency) in the baseline window must not raise 'usual'."""
         _seed_history(db_conn, TARGET, 40)
         _insert_day(db_conn, TARGET, 1, total_ms=7 * HOUR, eff=88, hrv=48, rhr=56, recovery=55)
-        before = compute_feeling_signals(db_conn, TARGET)["z"]["sleep_efficiency_z"]
+        before = compute_feeling_signals(db_conn, TARGET)["sleep_efficiency_z"]
         start = date_cls.fromisoformat(TARGET)
         for i in range(1, 31):
             upsert_whoop_sleep(db_conn, sleep_id=f"nap-{i}", date=(start - timedelta(days=i)).isoformat(),
                                nap=True, deep_sleep_ms=1, rem_sleep_ms=1, light_sleep_ms=1,
                                sleep_efficiency=99.0)
-        after = compute_feeling_signals(db_conn, TARGET)["z"]["sleep_efficiency_z"]
+        after = compute_feeling_signals(db_conn, TARGET)["sleep_efficiency_z"]
         assert after == pytest.approx(before)
 
     def test_no_recovery_row_returns_empty(self, db_conn):
-        assert compute_feeling_signals(db_conn, TARGET) == {"z": {}, "profile": None}
+        assert compute_feeling_signals(db_conn, TARGET) == {}
 
     def test_shares_the_playlist_profiles_sleep_signals(self, db_conn):
         """One place computes efficiency (baseline + short-night cap): the profile."""
         from intelligence.continuous_profile import compute_z_scores
         _seed_history(db_conn, TARGET, 40)
         _insert_day(db_conn, TARGET, 1, total_ms=2.5 * HOUR, eff=99, hrv=48, rhr=56, recovery=55)
-        z = compute_feeling_signals(db_conn, TARGET)["z"]
+        z = compute_feeling_signals(db_conn, TARGET)
         profile_z = compute_z_scores(db_conn, TARGET)
         assert z["sleep_efficiency_z"] == profile_z["sleep_efficiency_z"] == 0.0
         for s in ("deep_sleep_z", "rem_sleep_z", "deep_ratio_z", "sleep_debt_z", "hrv_z"):
@@ -454,9 +474,52 @@ class TestComputeFeelingScore:
         assert "unbroken" not in text
         assert all(d["signal"] != "sleep_efficiency_z" for d in result["drivers"])
 
+    def test_position_and_state_follow_the_score(self, db_conn):
+        """Low score → rest, high → energy; the state is the playlist's (profile_at(position))."""
+        from intelligence.continuous_profile import profile_at
+        self._ready(db_conn, total_ms=3.9 * HOUR, eff=78, hrv=40, rhr=60)
+        low = compute_feeling_score(db_conn, TARGET)
+        _insert_day(db_conn, TARGET, 1, total_ms=9.0 * HOUR, eff=95, hrv=55, rhr=53, recovery=55)
+        high = compute_feeling_score(db_conn, TARGET)
+        assert 0.0 <= low["position"] < high["position"] <= 1.0
+        assert (low["state"], high["state"]) == ("rest", "energy")
+        assert low["state"] == pick_state(profile_at(low["position"]))[0]
+        assert low["explanation"][-1] == (
+            "So today leans rest: you're likely to feel below your normal, "
+            "so the music is built to help you settle.")
+
+    def test_unscored_day_has_no_position(self, db_conn):
+        self._ready(db_conn, days=40)
+        result = compute_feeling_score(db_conn, TARGET)
+        assert result["position"] is None and result["state"] is None
+
     def test_extreme_day_stays_in_range(self, db_conn):
         self._ready(db_conn, total_ms=12 * HOUR, eff=100, hrv=120, rhr=40)
         assert 0 <= compute_feeling_score(db_conn, TARGET)["score"] <= 100
+
+
+class TestLocateDay:
+    def test_matches_the_score(self, db_conn):
+        _seed_history(db_conn, TARGET, 120)
+        _insert_day(db_conn, TARGET, 1, total_ms=6 * HOUR, eff=85, hrv=45, rhr=57, recovery=40)
+        day = locate_day(db_conn, TARGET)
+        scored = compute_feeling_score(db_conn, TARGET)
+        assert (day["score"], day["position"], day["composite"]) == \
+            (scored["score"], scored["position"], scored["composite"])
+        assert day["position"] == percentile_position(day["composite"], day["ref_composites"])
+        assert day["whoop_recovery"] == 40 and day["reason"] is None
+
+    def test_no_whoop_row(self, db_conn):
+        day = locate_day(db_conn, TARGET)
+        assert day["position"] is None and day["z"] == {} and "No WHOOP data" in day["reason"]
+
+    def test_ignores_history_on_or_after_the_date(self, db_conn):
+        _seed_history(db_conn, TARGET, 120)
+        _insert_day(db_conn, TARGET, 1, total_ms=6 * HOUR, eff=85, hrv=45, rhr=57, recovery=40)
+        history = compute_composite_history(db_conn, TARGET)
+        polluted = dict(history, **{TARGET: {"composite": 99.0, "recovery": 1.0},
+                                    "2026-06-02": {"composite": -99.0, "recovery": 99.0}})
+        assert locate_day(db_conn, TARGET, polluted) == locate_day(db_conn, TARGET, history)
 
 
 class TestBuildPageDay:

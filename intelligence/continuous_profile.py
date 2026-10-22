@@ -1,26 +1,53 @@
-"""Continuous neuro profile from physiological metrics.
+"""Daily neuro profile: the playlist target, set by the Attuned feeling score.
 
-Replaces the state-machine → static-profile → modifier chain with a single
-weighted function. Every metric contributes continuously to the parasympathetic,
-sympathetic, and grounding components. No thresholds, no cliffs, no gates.
+Two jobs:
 
-The state classifier still runs for display labels ("Rest & Repair" vs
-"Fuel Up") but does NOT drive the neuro profile.
+1. compute_z_scores: today's physiological signals as "vs my normal" z-scores
+   (how far today sits from your own last-30-day average, in units of your usual
+   day-to-day wobble). The feeling score (intelligence/feeling_score.py) is built
+   from these.
+
+2. compute_continuous_profile: the playlist target (para = calming, symp =
+   energising, grnd = grounding). It follows the Attuned score. The score's
+   position is where today sits among your own earlier days (0 = below every
+   earlier day, 1 = above every one), and the position picks a point on one line:
+
+       position 0.0  BASELINE_CALM_ANCHOR    low day: built to help you settle
+       position 0.5  BASELINE_STEADY_ANCHOR  usual day: steady, keeps you level
+       position 1.0  BASELINE_ENERGY_ANCHOR  high day: built to give you a lift
+
+   Between anchors it blends the two nearest in a straight line, so a lower
+   score always gives a calmer target, with no thresholds or jumps. WHOOP
+   recovery is not an input: the score leaves it out.
+
+   The day's label is the target's largest dimension. Because the target is a
+   fixed function of the position, the label is too: with the anchors in
+   config.py it is Rest below position ~0.29, Energy above ~0.71, Grounding in
+   between. A near-tie only happens right at those two points and is settled by
+   the position, never by day-to-day noise.
+
+   A day with no score (no night's sleep recorded, or fewer than
+   MIN_CALIBRATION_DAYS of scored history) gets the steady anchor.
 """
 
 import logging
 import sqlite3
 from typing import Any
 
+from config import (
+    BASELINE_CALM_ANCHOR,
+    BASELINE_ENERGY_ANCHOR,
+    BASELINE_STEADY_ANCHOR,
+    VALENCE_TARGET_GRND,
+    VALENCE_TARGET_PARA,
+    VALENCE_TARGET_SYMP,
+)
 from intelligence.baselines import (
     compute_hrv_baseline,
-    compute_recovery_delta,
-    compute_recovery_delta_baseline,
     compute_rhr_baseline,
     compute_sleep_debt,
     compute_sleep_debt_baseline,
     compute_sleep_efficiency_baseline,
-    compute_sleep_stage_baselines,
 )
 from intelligence.main_sleep import is_short_night
 from intelligence.sleep_analysis import analyze_sleep
@@ -28,55 +55,13 @@ from intelligence.trends import compute_hrv_trend
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Weight table: design choice, sleep-dominant
-#
-# Aggregate sleep:autonomic weight ratio targets ~2:1. This is a design choice,
-# not a published ratio — inspired by research showing sleep is tied to how you
-# feel (see docs/RESEARCH.md › The problem), which supports the direction only.
-#
-# Previous table had this inverted (2.5:1 autonomic over sleep) because the
-# Day 10 sleep dampener was architecturally bypassed by the Day 12 continuous
-# profile. See PRODUCT_DECISIONS.md "Day 20: Weight Rebalance" for full history.
-#
-# Each signal's z-score pushes the profile. Negative weight on para means
-# a negative z (bad metric) INCREASES para (calming). Double negative = calming.
-# ---------------------------------------------------------------------------
+DIMENSIONS = ("para", "symp", "grnd")
 
-SIGNAL_WEIGHTS: dict[str, dict[str, float]] = {
-    #                          para    symp    grnd
-    "recovery_z":            {"para": -0.07, "symp":  0.07, "grnd":  0.00},
-    "recovery_delta_z":      {"para": -0.04, "symp":  0.04, "grnd":  0.00},
-    "hrv_z":                 {"para": -0.05, "symp":  0.05, "grnd":  0.00},
-    "hrv_delta_z":           {"para": -0.02, "symp":  0.02, "grnd":  0.00},
-    "rhr_z":                 {"para": -0.04, "symp":  0.04, "grnd":  0.00},
-    "rhr_delta_z":           {"para": -0.02, "symp":  0.02, "grnd":  0.00},
-    "deep_sleep_z":          {"para": -0.15, "symp":  0.10, "grnd": -0.05},
-    "deep_ratio_z":          {"para":  0.00, "symp":  0.00, "grnd": -0.09},
-    "rem_sleep_z":           {"para": -0.10, "symp":  0.10, "grnd": -0.10},
-    "sleep_efficiency_z":    {"para": -0.18, "symp":  0.18, "grnd":  0.00},
-    "sleep_debt_z":          {"para": -0.10, "symp":  0.06, "grnd": -0.04},
-    "hrv_trend_z":           {"para": -0.03, "symp":  0.03, "grnd":  0.00},
-}
-
-# Interaction bonuses: when multiple signals are simultaneously bad
-INTERACTION_THRESHOLD = -1.0
-INTERACTION_PARA_BOOST = 0.05
-
-# Neutral starting point
-NEUTRAL_PROFILE = {"para": 0.33, "symp": 0.34, "grnd": 0.33}
+# Dominant dimension → (state, display label). Ties: rest, then energy, then grounding.
+STATES = {"para": ("rest", "Rest"), "symp": ("energy", "Energy"), "grnd": ("grounding", "Grounding")}
 
 # z-score clamp: prevent extreme outliers from dominating
 Z_CLAMP = 2.5
-
-# Global sensitivity: scales all weights. 1.0 = full sensitivity (too aggressive
-# when many signals align). 0.2 = moderate sensitivity, tested across scenarios:
-# - Great day (85% recovery): Para ~0.22, Symp ~0.44 (energetic)
-# - Okay day (54%): Para ~0.34, Symp ~0.33 (balanced, slightly calm)
-# - Bad day (44%): Para ~0.37, Symp ~0.29 (noticeably calmer)
-# - Terrible day (15%): Para ~0.53, Symp ~0.08 (deep rest, more grounded)
-# - Divergence (81% recovery, bad sleep): Para ~0.33, Symp ~0.32 (balanced, not energy)
-WEIGHT_SENSITIVITY = 0.20
 
 # Sleep debt z-score cap: debt above this threshold (7-day rolling hours) cannot
 # produce a positive z-score. "Less debt than your chronic pattern" ≠ "good."
@@ -98,6 +83,9 @@ def compute_z_scores(
 ) -> dict[str, float | None]:
     """Compute all physiological z-scores for a given date.
 
+    WHOOP's recovery score is not among them: it is built from HRV, resting
+    heart rate and sleep, which are already here (see feeling_score.py).
+
     Returns dict of signal_name → z_score (or None if data unavailable).
     """
     from db.queries import get_recovery_by_date
@@ -108,29 +96,14 @@ def compute_z_scores(
         logger.warning("No recovery data for %s", date)
         return {}
 
-    recovery = today.get("recovery_score")
     ln_rmssd = today.get("ln_rmssd")
     rhr = today.get("resting_heart_rate")
 
     # --- Baselines ---
     hrv_bl = compute_hrv_baseline(conn, date)
     rhr_bl = compute_rhr_baseline(conn, date)
-    sleep_bl = compute_sleep_stage_baselines(conn, date)
     debt_bl = compute_sleep_debt_baseline(conn, date)
-    delta_bl = compute_recovery_delta_baseline(conn, date)
     hrv_trend = compute_hrv_trend(conn, date)
-
-    # --- Recovery baselines (from recovery scores, not HRV) ---
-    from intelligence.baselines import _date_range
-    from db.queries import get_recoveries_in_range
-    from config import BASELINE_WINDOW_DAYS, MIN_BASELINE_DAYS
-    import numpy as np
-
-    start, end = _date_range(date, BASELINE_WINDOW_DAYS)
-    recs = get_recoveries_in_range(conn, start, end)
-    rec_values = [r["recovery_score"] for r in recs if r["recovery_score"] is not None]
-    rec_mean = float(np.mean(rec_values)) if len(rec_values) >= MIN_BASELINE_DAYS else None
-    rec_sd = float(np.std(rec_values, ddof=1)) if len(rec_values) >= MIN_BASELINE_DAYS else None
 
     # --- Sleep data ---
     sleep = analyze_sleep(conn, date)
@@ -154,9 +127,6 @@ def compute_z_scores(
     # --- Debt ---
     debt = compute_sleep_debt(conn, date)
 
-    # --- Recovery delta ---
-    delta = compute_recovery_delta(conn, date)
-
     # --- Yesterday's metrics for day-over-day deltas ---
     from datetime import datetime, timedelta
     d = datetime.strptime(date, "%Y-%m-%d")
@@ -167,15 +137,6 @@ def compute_z_scores(
 
     # --- Compute z-scores ---
     scores: dict[str, float | None] = {}
-
-    # Recovery z
-    scores["recovery_z"] = _safe_z(recovery, rec_mean, rec_sd) if rec_mean else None
-
-    # Recovery delta z
-    if delta is not None and delta_bl:
-        scores["recovery_delta_z"] = _safe_z(delta, delta_bl["mean"], delta_bl["sd"])
-    else:
-        scores["recovery_delta_z"] = None
 
     # HRV z
     scores["hrv_z"] = _safe_z(ln_rmssd, hrv_bl["mean"], hrv_bl["sd"]) if hrv_bl else None
@@ -211,10 +172,15 @@ def compute_z_scores(
         scores["deep_sleep_z"] = None
 
     # Deep ratio z
+    # Cap: after a short night (under RESTORATIVE_SLEEP_TOTAL_MIN_MS asleep) a high
+    # deep-sleep share cannot produce a positive z. Deep sleep comes early in the
+    # night, so a short night is mostly deep sleep by default: a big share there is
+    # a sign of the night being cut short, not good news. Same cap as efficiency.
     if deep_ratio is not None and sleep_baselines:
-        scores["deep_ratio_z"] = _safe_z(
-            deep_ratio, sleep_baselines["deep_ratio"]["mean"], sleep_baselines["deep_ratio"]["sd"]
-        )
+        z = _safe_z(deep_ratio, sleep_baselines["deep_ratio"]["mean"], sleep_baselines["deep_ratio"]["sd"])
+        if z is not None and is_short_night(last_night):
+            z = min(z, 0.0)
+        scores["deep_ratio_z"] = z
     else:
         scores["deep_ratio_z"] = None
 
@@ -261,64 +227,60 @@ def compute_z_scores(
     return scores
 
 
+def profile_at(position: float) -> dict[str, float]:
+    """Playlist target for a score position (0 = lowest day so far, 1 = highest).
+
+    Straight-line blend calm → steady over [0, 0.5] and steady → energy over
+    [0.5, 1]. Positions outside [0, 1] are clamped. Sums to 1.
+    """
+    p = max(0.0, min(1.0, position))
+    if p <= 0.5:
+        start, end, t = BASELINE_CALM_ANCHOR, BASELINE_STEADY_ANCHOR, p / 0.5
+    else:
+        start, end, t = BASELINE_STEADY_ANCHOR, BASELINE_ENERGY_ANCHOR, (p - 0.5) / 0.5
+    return {k: start[k] + t * (end[k] - start[k]) for k in DIMENSIONS}
+
+
+def pick_state(profile: dict[str, float]) -> tuple[str, str]:
+    """Today's state = the profile's largest dimension. Ties: rest, then energy, then grounding."""
+    dominant = max(DIMENSIONS, key=lambda k: profile[k])
+    return STATES[dominant]
+
+
 def compute_continuous_profile(
     conn: sqlite3.Connection,
     date: str,
+    history: dict[str, dict] | None = None,
 ) -> dict[str, Any]:
-    """Compute continuous neuro profile from physiological metrics.
+    """Playlist target for `date`, set by the day's Attuned score position.
+
+    `history` (from feeling_score.compute_composite_history) can be passed to
+    avoid recomputing every earlier day (~3 s on three years of data).
 
     Returns dict with:
         profile: {para, symp, grnd} summing to 1.0
-        z_scores: all computed z-scores
-        signals_used: count of non-None signals
-        interactions: list of triggered interaction terms
+        target_valence: emotional tone that fits the profile (0-1)
+        state, state_label: the profile's dominant dimension (see STATES)
+        score: the Attuned 0-100 score (None when the day can't be scored)
+        position: where the score sits among earlier days, 0-1 (None likewise)
+        z_scores: the feeling-score signals behind the score
+        signals_used: count of those signals present
+        interactions: always [] (kept for callers; the score has no interaction terms)
     """
-    z_scores = compute_z_scores(conn, date)
+    # Imported here, not at the top: feeling_score builds on this module's z-scores.
+    from intelligence.feeling_score import locate_day
 
-    profile = dict(NEUTRAL_PROFILE)
-    interactions: list[str] = []
-
-    # Apply weighted z-scores
-    signals_used = 0
-    for signal_name, weights in SIGNAL_WEIGHTS.items():
-        z = z_scores.get(signal_name)
-        if z is None:
-            continue
-        signals_used += 1
-        for component in ("para", "symp", "grnd"):
-            profile[component] += z * weights[component] * WEIGHT_SENSITIVITY
-
-    # Interaction terms: multiplicative stress signals
-    hrv_z = z_scores.get("hrv_z")
-    rhr_z = z_scores.get("rhr_z")
-    deep_z = z_scores.get("deep_sleep_z")
-    rem_z = z_scores.get("rem_sleep_z")
-
-    if hrv_z is not None and rhr_z is not None:
-        if hrv_z < INTERACTION_THRESHOLD and rhr_z < INTERACTION_THRESHOLD:
-            profile["para"] += INTERACTION_PARA_BOOST
-            interactions.append(f"HRV+RHR both stressed (hrv_z={hrv_z:.2f}, rhr_z={rhr_z:.2f})")
-
-    if deep_z is not None and rem_z is not None:
-        if deep_z < INTERACTION_THRESHOLD and rem_z < INTERACTION_THRESHOLD:
-            profile["para"] += INTERACTION_PARA_BOOST
-            interactions.append(f"Deep+REM both deficit (deep_z={deep_z:.2f}, rem_z={rem_z:.2f})")
-
-    # Clamp to [0, 1]
-    for k in profile:
-        profile[k] = max(0.0, profile[k])
-
-    # Normalize to sum to 1.0
-    total = sum(profile.values())
-    if total > 0:
-        for k in profile:
-            profile[k] = round(profile[k] / total, 4)
+    day = locate_day(conn, date, history)
+    position = day["position"]
+    if position is None:
+        profile = dict(BASELINE_STEADY_ANCHOR)
+        logger.info("No Attuned score for %s (%s) — steady profile", date, day["reason"])
     else:
-        profile = dict(NEUTRAL_PROFILE)
+        profile = profile_at(position)
+    state, state_label = pick_state(profile)
 
-    # Compute target valence — what emotional tone fits this body state.
+    # Target valence — what emotional tone fits this body state.
     # Weighted sum: each neuro dimension targets a different valence.
-    from config import VALENCE_TARGET_PARA, VALENCE_TARGET_SYMP, VALENCE_TARGET_GRND
     target_valence = (
         profile["para"] * VALENCE_TARGET_PARA
         + profile["symp"] * VALENCE_TARGET_SYMP
@@ -326,15 +288,20 @@ def compute_continuous_profile(
     )
 
     logger.info(
-        "Continuous profile: para=%.2f symp=%.2f grnd=%.2f (target_valence=%.2f, %d signals, %d interactions)",
-        profile["para"], profile["symp"], profile["grnd"],
-        target_valence, signals_used, len(interactions),
+        "Profile from Attuned score %s (position %s): para=%.2f symp=%.2f grnd=%.2f → %s",
+        day["score"], None if position is None else f"{position:.2f}",
+        profile["para"], profile["symp"], profile["grnd"], state,
     )
 
+    z_scores = day["z"]
     return {
         "profile": profile,
         "target_valence": target_valence,
+        "state": state,
+        "state_label": state_label,
+        "score": day["score"],
+        "position": position,
         "z_scores": z_scores,
-        "signals_used": signals_used,
-        "interactions": interactions,
+        "signals_used": sum(v is not None for v in z_scores.values()),
+        "interactions": [],
     }
