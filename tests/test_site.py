@@ -22,9 +22,11 @@ from web.site import (
     join_and,
     kinds_line,
     load_published,
+    open_link,
     playlist_summary,
     reason_line,
     render,
+    save_published,
 )
 
 
@@ -334,8 +336,46 @@ class TestLoadPublished:
 
     def test_reads_mapping(self, tmp_path):
         path = tmp_path / "published.json"
-        path.write_text(json.dumps({"2026-04-08": "https://open.spotify.com/playlist/p"}))
-        assert load_published(path) == {"2026-04-08": "https://open.spotify.com/playlist/p"}
+        record = {"url": "https://open.spotify.com/playlist/p", "track_uris": ["spotify:track:a"]}
+        path.write_text(json.dumps({"2026-04-08": record}))
+        assert load_published(path) == {"2026-04-08": record}
+
+    @pytest.mark.parametrize("bad", [
+        [],
+        {"2026-04-08": "https://open.spotify.com/playlist/p"},
+        {"2026-04-08": {"url": "u"}},
+        {"2026-04-08": {"url": 1, "track_uris": []}},
+        {"2026-04-08": {"url": "u", "track_uris": "spotify:track:a"}},
+        {"2026-04-08": {"url": "u", "track_uris": [1]}},
+    ])
+    def test_rejects_malformed(self, tmp_path, bad):
+        path = tmp_path / "published.json"
+        path.write_text(json.dumps(bad))
+        with pytest.raises(ValueError):
+            load_published(path)
+
+    def test_save_round_trips_and_leaves_no_temp_file(self, tmp_path):
+        path = tmp_path / "web" / "published.json"
+        published = {"2026-10-21": {"url": "https://open.spotify.com/playlist/p", "track_uris": ["spotify:track:a"]}}
+        save_published(published, path)
+        assert load_published(path) == published
+        assert [f.name for f in path.parent.iterdir()] == ["published.json"]
+
+
+class TestOpenLink:
+    TRACKS = [{"spotify_url": "https://open.spotify.com/track/first"},
+              {"spotify_url": "https://open.spotify.com/track/second"}]
+
+    def test_published_playlist_opens_the_playlist(self):
+        assert open_link("https://open.spotify.com/playlist/p", self.TRACKS) == {
+            "label": "Open in Spotify", "url": "https://open.spotify.com/playlist/p"}
+
+    def test_unpublished_plays_the_first_song(self):
+        assert open_link(None, self.TRACKS) == {
+            "label": "Play on Spotify", "url": "https://open.spotify.com/track/first"}
+
+    def test_no_tracks_no_link(self):
+        assert open_link(None, []) is None
 
 
 # ─── render ──────────────────────────────────────────────────────────────────
@@ -486,9 +526,18 @@ class TestBuildSiteDays:
 
     def test_published_url_used_when_mapped(self, recoveries, stubbed):
         url = "https://open.spotify.com/playlist/p"
-        days = {d["date"]: d for d in _build(recoveries, published={"2026-10-20": url})}
+        published = {"2026-10-20": {"url": url, "track_uris": ["spotify:track:abc"]}}
+        days = {d["date"]: d for d in _build(recoveries, published=published)}
         assert days["2026-10-20"]["playlist"]["spotify_url"] == url
         assert days["2026-10-21"]["playlist"]["spotify_url"] is None
+
+    def test_open_link_is_playlist_when_published_else_first_song(self, recoveries, stubbed):
+        url = "https://open.spotify.com/playlist/p"
+        published = {"2026-10-20": {"url": url, "track_uris": ["spotify:track:abc"]}}
+        days = {d["date"]: d for d in _build(recoveries, published=published)}
+        assert days["2026-10-20"]["playlist"]["open"] == {"label": "Open in Spotify", "url": url}
+        assert days["2026-10-21"]["playlist"]["open"] == {
+            "label": "Play on Spotify", "url": TRACK["spotify_url"]}
 
     def test_no_recoveries_in_window_still_builds_notable(self, db_conn, stubbed):
         days = _build(db_conn)
@@ -511,6 +560,11 @@ class TestBuildSiteDaysIntegration:
         assert all(d["attuned"]["score"] is None for d in days)
         assert all(d["attuned"]["compare"]["title"] == "No Attuned score today" for d in days)
         assert all(d["playlist"] is None for d in days)
+
+    def test_template_drives_the_button_from_open_and_has_no_unsaved_note(self):
+        template = site.TEMPLATE_PATH.read_text()
+        assert "pl.open.url" in template and "pl.open.label" in template
+        assert "Not saved to Spotify yet" not in template and "btn-note" not in template
 
     def test_renders_into_real_template(self, recoveries):
         days = build_site_days(recoveries, "2026-10-21", 2, notable_dates=(), art_lookup=lambda u: None)

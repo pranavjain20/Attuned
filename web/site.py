@@ -296,15 +296,38 @@ class OembedArtCache:
         tmp.replace(self.path)
 
 
-def load_published(path: Path = PUBLISHED_PATH) -> dict[str, str]:
-    """{date: Spotify playlist URL} for days really pushed to Spotify; {} when the file is absent."""
+def _is_published_record(record) -> bool:
+    return (isinstance(record, dict) and isinstance(record.get("url"), str)
+            and isinstance(record.get("track_uris"), list)
+            and all(isinstance(uri, str) for uri in record["track_uris"]))
+
+
+def load_published(path: Path = PUBLISHED_PATH) -> dict[str, dict]:
+    """{date: {"url", "track_uris"}} for days really pushed to Spotify; {} when the file is absent."""
     if not path.exists():
         return {}
     published = json.loads(path.read_text())
     if not isinstance(published, dict) or not all(
-            isinstance(k, str) and isinstance(v, str) for k, v in published.items()):
-        raise ValueError(f"{path} must map date strings to playlist URL strings")
+            isinstance(k, str) and _is_published_record(v) for k, v in published.items()):
+        raise ValueError(f'{path} must map date strings to {{"url": str, "track_uris": [str]}}')
     return published
+
+
+def save_published(published: dict[str, dict], path: Path = PUBLISHED_PATH) -> None:
+    """Write the published mapping atomically, so an interrupted run never leaves half a file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(published, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
+    tmp.replace(path)
+
+
+def open_link(spotify_url: str | None, tracks: list[dict]) -> dict | None:
+    """The playlist header's green button: the real playlist when published, else the first song."""
+    if spotify_url:
+        return {"label": "Open in Spotify", "url": spotify_url}
+    if tracks:
+        return {"label": "Play on Spotify", "url": tracks[0]["spotify_url"]}
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -314,8 +337,8 @@ def load_published(path: Path = PUBLISHED_PATH) -> dict[str, str]:
 def _site_playlist(conn: sqlite3.Connection, playlist: dict, attuned: dict,
                    art_lookup: ArtLookup, spotify_url: str | None) -> dict:
     tracks = [enrich_track(conn, track, art_lookup) for track in playlist["tracks"]]
-    enriched = {**playlist, "spotify_url": spotify_url, "tracks": tracks,
-                "total_time": format_total_time(tracks)}
+    enriched = {**playlist, "spotify_url": spotify_url, "open": open_link(spotify_url, tracks),
+                "tracks": tracks, "total_time": format_total_time(tracks)}
     enriched["summary"] = playlist_summary(enriched, attuned)
     return enriched
 
@@ -344,13 +367,14 @@ def build_site_days(
     n_days: int,
     art_lookup: ArtLookup,
     notable_dates: tuple[str, ...] = NOTABLE_DATES,
-    published: dict[str, str] | None = None,
+    published: dict[str, dict] | None = None,
 ) -> list[dict]:
     """Page days, oldest first: every WHOOP day in the n_days ending end_date, plus notable_dates.
 
     Each day is build_page_day's contract plus attuned.compare, a playlist
-    (None when one can't be built) with summary/total_time and enriched tracks,
-    and notable: True on notable dates. art_lookup maps a track URL to album art
+    (None when one can't be built) with summary/total_time, enriched tracks and
+    open (the header button: {label, url}), and notable: True on notable dates.
+    published is load_published's mapping. art_lookup maps a track URL to album art
     (main.py passes an OembedArtCache and saves it afterwards).
     """
     if n_days < 1:
@@ -374,8 +398,10 @@ def build_site_days(
         day = build_page_day(conn, date, history)
         day["attuned"]["compare"] = compare_copy(day["attuned"], day["whoop"])
         playlist = playlists.get(date)
-        day["playlist"] = None if playlist is None else _site_playlist(
-            conn, playlist, day["attuned"], art_lookup, published.get(date, playlist.get("spotify_url")))
+        if playlist is not None:
+            spotify_url = published[date]["url"] if date in published else playlist.get("spotify_url")
+            playlist = _site_playlist(conn, playlist, day["attuned"], art_lookup, spotify_url)
+        day["playlist"] = playlist
         day["notable"] = date in notable_dates
         days.append(day)
     return days

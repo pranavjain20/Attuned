@@ -49,3 +49,15 @@ def create_playlist(
 
     except spotipy.SpotifyException as e:
         raise SpotifyPlaylistError(f"Failed to create playlist: {e}") from e
+
+
+def replace_playlist_tracks(sp: spotipy.Spotify, playlist_id: str, track_uris: list[str]) -> None:
+    """Set an existing playlist's tracks to exactly track_uris, in order.
+
+    Raises SpotifyPlaylistError on API failure.
+    """
+    try:
+        sp.playlist_replace_items(playlist_id, track_uris)
+        logger.info("Replaced tracks of playlist %s (%d tracks)", playlist_id, len(track_uris))
+    except spotipy.SpotifyException as e:
+        raise SpotifyPlaylistError(f"Failed to replace tracks: {e}") from e

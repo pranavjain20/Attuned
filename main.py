@@ -45,6 +45,7 @@ COMMANDS = {
     "feeling-score": "Attuned 0-100 feeling score for a day (--date YYYY-MM-DD, --json)",
     "playlist-json": "Playlist + why-lines as JSON, read-only (--date D, or --from A --to B --out DIR)",
     "build-site": "Write the showcase page, read-only (--days 30, --end YYYY-MM-DD, --out web/dist)",
+    "publish-playlists": "Make public Spotify playlists for the page's latest days (--recent 3, max 3; --dry-run)",
 }
 
 
@@ -125,6 +126,8 @@ def main() -> None:
         _cmd_playlist_json(db_path)
     elif command == "build-site":
         _cmd_build_site(db_path)
+    elif command == "publish-playlists":
+        _cmd_publish_playlists(db_path)
     elif command == "backfill-release-years":
         _cmd_backfill_release_years(db_path)
     elif command == "match-songs":
@@ -480,6 +483,15 @@ def _cmd_playlist_json(db_path: Path) -> None:
         sys.exit(1)
 
 
+def _site_window_flags() -> tuple[int, str]:
+    """(--days, default 30; --end, default today): the page's window, shared so publishing sees the same days."""
+    raw_days = _flag_value("--days") or "30"
+    if not raw_days.isdigit() or int(raw_days) < 1:
+        print(f"Error: --days must be a whole number of at least 1, got {raw_days!r}")
+        sys.exit(1)
+    return int(raw_days), _parse_date_flag("--end")
+
+
 def _cmd_build_site(db_path: Path) -> None:
     """Write OUT/index.html: the showcase page for every WHOOP day in the last --days up to --end.
 
@@ -490,11 +502,7 @@ def _cmd_build_site(db_path: Path) -> None:
 
     from web import site
 
-    raw_days = _flag_value("--days") or "30"
-    if not raw_days.isdigit() or int(raw_days) < 1:
-        print(f"Error: --days must be a whole number of at least 1, got {raw_days!r}")
-        sys.exit(1)
-    end_date = _parse_date_flag("--end")
+    n_days, end_date = _site_window_flags()
     out_dir = Path(_flag_value("--out") or site.WEB_DIR / "dist")
 
     started = time.monotonic()
@@ -502,7 +510,7 @@ def _cmd_build_site(db_path: Path) -> None:
     art = site.OembedArtCache()
     conn = get_connection(db_path)
     try:
-        days = site.build_site_days(conn, end_date, int(raw_days), art_lookup=art,
+        days = site.build_site_days(conn, end_date, n_days, art_lookup=art,
                                     published=site.load_published())
     finally:
         conn.close()
@@ -514,6 +522,55 @@ def _cmd_build_site(db_path: Path) -> None:
     with_playlist = sum(1 for day in days if day["playlist"])
     print(f"Wrote {out_path}: {len(days)} days, {with_playlist} with playlists "
           f"({time.monotonic() - started:.0f}s)")
+
+
+def _cmd_publish_playlists(db_path: Path) -> None:
+    """Create public Spotify playlists for the page's --recent latest days (default and max 3).
+
+    Uses the same --days/--end window as build-site, so each playlist is exactly
+    what the page shows. Records them in web/published.json; re-running never
+    makes a second playlist for a recorded day, it only replaces changed tracks.
+    --dry-run prints the plan without logging in to Spotify or writing anything.
+    """
+    from spotify.auth import SpotifyRateLimitError, get_spotify_client
+    from spotify.playlist import SpotifyPlaylistError
+    from web import publish, site
+
+    raw_recent = _flag_value("--recent") or str(publish.MAX_RECENT)
+    if not raw_recent.isdigit():
+        print(f"Error: --recent must be a whole number, got {raw_recent!r}")
+        sys.exit(1)
+    n_recent, allow_more = int(raw_recent), "--allow-more" in sys.argv
+    try:
+        publish.check_recent(n_recent, allow_more)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    n_days, end_date = _site_window_flags()
+    dry_run = "--dry-run" in sys.argv
+
+    logging.getLogger().setLevel(logging.WARNING)
+    conn = get_connection(db_path)
+    try:
+        days = site.build_site_days(conn, end_date, n_days, art_lookup=lambda url: None)
+        published = site.load_published(site.PUBLISHED_PATH)
+        steps = publish.plan_publish(days, published, n_recent, allow_more)
+        for step in steps:
+            print(f"  {step['date']}  {step['action']:<9}  {step['name']} ({len(step['track_uris'])} songs)")
+        if dry_run:
+            print("Dry run: nothing written, Spotify not contacted.")
+            return
+        if all(step["action"] == "unchanged" for step in steps):
+            print("Nothing to publish.")
+            return
+        published = publish.publish_steps(get_spotify_client(conn), steps, published, site.PUBLISHED_PATH)
+    except (SpotifyRateLimitError, SpotifyPlaylistError) as e:
+        print(f"Error: {e}\nStopped; {site.PUBLISHED_PATH} lists what was published. Re-run to finish.")
+        sys.exit(1)
+    finally:
+        conn.close()
+    for step in steps:
+        print(f"  {step['date']}  {published[step['date']]['url']}")
 
 
 def _cmd_feeling_score(db_path: Path) -> None:

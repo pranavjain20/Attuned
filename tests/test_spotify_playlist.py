@@ -9,6 +9,7 @@ from spotify.playlist import (
     SPOTIFY_DESCRIPTION_MAX_LENGTH,
     SpotifyPlaylistError,
     create_playlist,
+    replace_playlist_tracks,
 )
 
 
@@ -94,3 +95,21 @@ class TestCreatePlaylist:
         )
         with pytest.raises(SpotifyPlaylistError, match="Failed to create playlist"):
             create_playlist(mock_sp, "Name", "Desc", ["spotify:track:1"])
+
+
+# ---------------------------------------------------------------------------
+# replace_playlist_tracks
+# ---------------------------------------------------------------------------
+
+class TestReplacePlaylistTracks:
+    def test_replaces_tracks_in_order(self, mock_sp):
+        uris = ["spotify:track:2", "spotify:track:1"]
+        replace_playlist_tracks(mock_sp, "pl_abc", uris)
+        mock_sp.playlist_replace_items.assert_called_once_with("pl_abc", uris)
+
+    def test_raises_on_failure(self, mock_sp):
+        mock_sp.playlist_replace_items.side_effect = spotipy.SpotifyException(
+            http_status=404, code=-1, msg="Not found"
+        )
+        with pytest.raises(SpotifyPlaylistError, match="Failed to replace tracks"):
+            replace_playlist_tracks(mock_sp, "pl_abc", ["spotify:track:1"])
