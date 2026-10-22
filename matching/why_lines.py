@@ -14,6 +14,8 @@ Tempo is never a raw number, only a plain word ("slow", "mid-tempo",
 
 from datetime import date as date_cls, timedelta
 
+from matching.cohesion import release_year
+
 MAX_WHY_LENGTH = 79  # strictly under 80
 
 # "One you play a lot" = top 10% of the library by plays, never under 10 plays.
@@ -99,12 +101,22 @@ def _percentile(values: list[float], pct: float) -> float | None:
     return vals[min(len(vals) - 1, int(pct * len(vals)))]
 
 
+# "a"/"an" follows the first sound, not the first letter.
+_VOWEL_SOUND_STARTS = ("r&b", "hour", "honest", "heir")       # consonant letter, vowel sound
+_CONSONANT_SOUND_STARTS = ("eu", "one", "unique", "universal")  # vowel letter, consonant sound
+
+
 def _with_article(phrase: str) -> str:
-    return ("an " if phrase[0].lower() in "aeiou" else "a ") + phrase
+    """'a romantic song', 'an R&B song', 'a euphoric song'."""
+    lower = phrase.lower()
+    vowel_sound = lower.startswith(_VOWEL_SOUND_STARTS) or (
+        lower[:1] in "aeiou" and not lower.startswith(_CONSONANT_SOUND_STARTS))
+    return ("an " if vowel_sound else "a ") + phrase
 
 
-def _cap(text: str) -> str:
-    return text[0].upper() + text[1:] if text else text
+def capitalize_first(text: str) -> str:
+    """Upper-case the first letter only ('less REM' -> 'Less REM'); str.capitalize would lower the rest."""
+    return text[:1].upper() + text[1:]
 
 
 def _days_since(timestamp: str | None, ref: date_cls) -> int | None:
@@ -196,12 +208,12 @@ def _main_sentences(song: dict, noun: str, verb: str) -> list[tuple[str, str]]:
     """(shape, sentence) options for describing the song and its job in the mix."""
     options = []
     for adj in _adjective_phrases(song):
-        options.append(("adj_noun", f"{_cap(adj)}, {noun}."))
-        options.append(("noun_adj", f"{_cap(noun)}, {adj}."))
+        options.append(("adj_noun", f"{capitalize_first(adj)}, {noun}."))
+        options.append(("noun_adj", f"{capitalize_first(noun)}, {adj}."))
     for np in _noun_phrases(song):
-        options.append(("np_verb", f"{_cap(np)} that {verb}."))
+        options.append(("np_verb", f"{capitalize_first(np)} that {verb}."))
     if not options:
-        options.append(("bare", f"{_cap(noun)}."))
+        options.append(("bare", f"{capitalize_first(noun)}."))
     return options
 
 
@@ -244,7 +256,7 @@ def _personal_facts(song: dict, ctx: dict) -> list[str]:
     elif last_days is not None and last_days >= REDISCOVERY_MIN_DAYS and ctx["history_complete"]:
         facts.append("rediscovery")
 
-    year = song.get("original_release_year") or song.get("release_year")
+    year = release_year(song)
     if year and year <= CLASSIC_MAX_YEAR:
         facts.append("classic")
     elif year and year >= ref.year - 1:
@@ -326,7 +338,7 @@ def _explain(song: dict, state: str, ctx: dict, uses: dict[str, int], seen: set[
 
     facts = sorted(_personal_facts(song, ctx), key=lambda f: uses.get(f, 0))
     fact = facts[0] if facts else None
-    second = _FACTS[fact].format(year=song.get("original_release_year") or song.get("release_year")) if fact else ""
+    second = _FACTS[fact].format(year=release_year(song)) if fact else ""
 
     mains = []  # (main sentence, purpose_index, shape), preferred first
     for noun, verb in _rotated(str(purpose_key), purposes, uses):
@@ -338,7 +350,7 @@ def _explain(song: dict, state: str, ctx: dict, uses: dict[str, int], seen: set[
                   if second and len(f"{main} {second}") <= MAX_WHY_LENGTH]
     candidates += [(main, idx, shape, False) for main, idx, shape in mains
                    if len(main) <= MAX_WHY_LENGTH]
-    candidates.append((f"{_cap(purposes[0][0])}.", 0, "bare", False))  # always fits
+    candidates.append((f"{capitalize_first(purposes[0][0])}.", 0, "bare", False))  # always fits
     line, idx, shape, used_fact = next((c for c in candidates if c[0] not in seen), candidates[0])
 
     uses[str(purpose_key)] = idx + 1

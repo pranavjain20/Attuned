@@ -21,7 +21,7 @@ from config import (
     VALENCE_TARGET_SYMP,
 )
 from intelligence.feeling_score import locate_day
-from intelligence.playlist_target import STATE_PURPOSE, pick_state, profile_at  # noqa: F401 (re-exported)
+from intelligence.playlist_target import pick_state, profile_at
 
 logger = logging.getLogger(__name__)
 

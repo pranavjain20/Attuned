@@ -70,6 +70,16 @@ class TestRewindSongsToDate:
         assert rewind_songs_to_date(db_conn, get_all_classified_songs(db_conn), DAY) == []
         assert uri
 
+    def test_cutoff_is_utc_midnight_not_local(self, db_conn):
+        """Pinned on purpose: plays are stored in UTC and the local offset per day isn't, so a
+        play at 23:00 New York time on the 7th (03:00 UTC on the 8th) counts as the 8th."""
+        late_local = _add_song(db_conn, 1, [f"{DAY}T03:00:00Z"])
+        before_midnight_utc = _add_song(db_conn, 2, ["2026-04-07T23:59:59Z"])
+        from db.queries import get_all_classified_songs
+        kept = {s["spotify_uri"] for s in rewind_songs_to_date(db_conn, get_all_classified_songs(db_conn), DAY)}
+        assert kept == {before_midnight_utc}
+        assert late_local not in kept
+
     def test_short_plays_ignored(self, db_conn):
         uri = _add_song(db_conn, 1, [])
         db_conn.execute("INSERT INTO listening_history (spotify_uri, played_at, ms_played, platform) "
@@ -113,14 +123,15 @@ class TestSelectSongsPointInTime:
         conn, _, _ = library
         song = select_songs(conn, "rest", DAY, BASELINE_CALM_ANCHOR, point_in_time=True)["songs"][0]
         for key in ("valence", "acousticness", "tempo", "tempo_confidence",
-                    "original_release_year", "is_anchor", "first_played"):
+                    "original_release_year", "first_played"):
             assert key in song
 
-    def test_anchor_flag_set_for_recent_plays(self, library):
-        conn, _, _ = library
-        songs = select_songs(conn, "rest", DAY, BASELINE_CALM_ANCHOR, point_in_time=True)["songs"]
-        assert any(s["is_anchor"] for s in songs)  # March plays are within 90 days of DAY
-        assert all(isinstance(s["is_anchor"], bool) for s in songs)
+    def test_given_library_used_instead_of_the_db(self, library):
+        conn, uris, later = library
+        from db.queries import get_all_classified_songs
+        only = [s for s in get_all_classified_songs(conn) if s["spotify_uri"] == later]
+        replay = select_songs(conn, "rest", DAY, BASELINE_CALM_ANCHOR, library=only)
+        assert [s["spotify_uri"] for s in replay["songs"]] == [later]
 
     @staticmethod
     def _nudged(conn):
@@ -183,16 +194,16 @@ class TestMergeDaysAgo:
 
 class TestBuildDayPlaylists:
     def _fake(self, calls, fail_on=(), histories=None):
-        def fake(conn, date_str, point_in_time, prior_playlists=None, history=None):
+        def fake(conn, date_str, prior_playlists=None, history=None, library=None):
             calls.append((date_str, {d: list(u) for d, u in (prior_playlists or {}).items()}))
             if histories is not None:
                 histories.append(history)
             if date_str in fail_on:
                 raise GenerationError("insufficient WHOOP data")
-            classification, match = _fake_selection()
+            match = _fake_selection()
             for s in match["songs"]:
                 s["spotify_uri"] = f"spotify:track:{date_str}-{s['spotify_uri'].split(':')[-1]}"
-            return classification, match
+            return match
         return fake
 
     def test_chains_oldest_first(self, db_conn):
@@ -254,42 +265,53 @@ def _fake_selection(n=25):
               "mood_tags": ["romantic"], "genre_tags": ["bollywood"], "play_count": 5,
               "engagement_score": None, "last_played": None, "energy": 0.4}
              for i in range(n)]
-    classification = {"state": "poor_recovery", "metrics": {"recovery_score": 30.0}}
-    match = {"songs": songs, "neuro_profile": {"para": 0.7, "symp": 0.1, "grnd": 0.2}, "position": 0.05}
-    return classification, match
+    return {"songs": songs, "state": "rest", "neuro_profile": {"para": 0.7, "symp": 0.1, "grnd": 0.2},
+            "position": 0.05}
 
 
 class TestBuildDayPlaylist:
     def test_page_shape(self, db_conn):
         with patch("matching.day_playlist.select_day_songs", return_value=_fake_selection()) as sel:
             page = build_day_playlist(db_conn, DAY)
-        sel.assert_called_once_with(db_conn, DAY, point_in_time=True, prior_playlists=None, history=None)
+        sel.assert_called_once_with(db_conn, DAY, prior_playlists=None, history=None, library=[])
+        assert set(page) == {"name", "state", "tracks", "spares"}
         assert page["name"] == "Apr 8 — Rest & Repair"
-        assert page["spotify_url"] is None
         assert page["state"] == "rest"
-        assert len(page["tracks"]) == 20  # trimmed from the 25-song buffer
+        assert len(page["tracks"]) == 20  # the playlist itself
+        assert len(page["spares"]) == 5   # the buffer, kept to stand in for songs Spotify no longer plays
         track = page["tracks"][0]
         assert set(track) == {"title", "artist", "spotify_url", "why"}
         assert track["spotify_url"] == "https://open.spotify.com/track/id0"
-        assert track["why"]
+        assert track["why"] and all(t["why"] for t in page["spares"])
+        assert page["spares"][0]["spotify_url"] == "https://open.spotify.com/track/id20"
         json.dumps(page)  # serialisable
 
-    @pytest.mark.parametrize("profile,state", [
-        ({"para": 0.1, "symp": 0.7, "grnd": 0.2}, "energy"),
-        ({"para": 0.1, "symp": 0.2, "grnd": 0.7}, "grounding"),
-    ])
-    def test_state_from_profile(self, db_conn, profile, state):
-        classification, match = _fake_selection()
-        match["neuro_profile"] = profile
-        with patch("matching.day_playlist.select_day_songs", return_value=(classification, match)):
-            assert build_day_playlist(db_conn, DAY)["state"] == state
+    def test_short_selection_has_no_spares(self, db_conn):
+        with patch("matching.day_playlist.select_day_songs", return_value=_fake_selection(n=12)):
+            page = build_day_playlist(db_conn, DAY)
+        assert (len(page["tracks"]), page["spares"]) == (12, [])
+
+    def test_why_lines_for_the_20_are_unchanged_by_the_spares(self, db_conn):
+        """Lines are written down the list, so the first 20 read the same with or without spares."""
+        with patch("matching.day_playlist.select_day_songs", return_value=_fake_selection(n=25)):
+            with_spares = build_day_playlist(db_conn, DAY)["tracks"]
+        with patch("matching.day_playlist.select_day_songs", return_value=_fake_selection(n=20)):
+            without = build_day_playlist(db_conn, DAY)["tracks"]
+        assert with_spares == without
+
+    def test_state_is_the_selections(self, db_conn):
+        """The page states the state the songs were picked for, not a recomputed one."""
+        match = _fake_selection()
+        match["state"] = "grounding"  # profile says rest; the selection's state wins
+        with patch("matching.day_playlist.select_day_songs", return_value=match):
+            assert build_day_playlist(db_conn, DAY)["state"] == "grounding"
 
     def test_name_follows_attuned_position_not_whoop(self, db_conn):
         """WHOOP recovery 30 used to force "Rest & Repair"; a rest day near the top of the
         rest range is "Settle In" whatever WHOOP says."""
-        classification, match = _fake_selection()
+        match = _fake_selection()
         match["position"] = 0.25
-        with patch("matching.day_playlist.select_day_songs", return_value=(classification, match)):
+        with patch("matching.day_playlist.select_day_songs", return_value=match):
             assert build_day_playlist(db_conn, DAY)["name"] == "Apr 8 — Settle In"
 
     def test_history_passed_through(self, db_conn):
@@ -298,39 +320,51 @@ class TestBuildDayPlaylist:
             build_day_playlist(db_conn, DAY, history=history)
         assert sel.call_args.kwargs["history"] is history
 
+    def test_library_rewound_once_per_day(self, library):
+        """The why-lines and the selection share one rewound library."""
+        conn, _, _ = library
+        a, b = TestSelectDaySongs()._patches()
+        import matching.day_playlist as day_playlist
+        import matching.query_engine as query_engine
+        with a, b, patch.object(day_playlist, "rewind_songs_to_date", wraps=rewind_songs_to_date) as outer, \
+                patch.object(query_engine, "rewind_songs_to_date", wraps=rewind_songs_to_date) as inner:
+            build_day_playlists(conn, DAY, "2026-04-09", history={})
+        assert outer.call_count + inner.call_count == 2  # two days, one rewind each
+
 
 class TestSelectDaySongs:
-    def _patches(self, state="baseline", recovery=None, attuned_state="rest", position=0.1):
+    def _patches(self, has_baseline=True, attuned_state="rest", position=0.1):
         profile = {"rest": {"para": 0.6, "symp": 0.2, "grnd": 0.2},
                    "energy": {"para": 0.05, "symp": 0.65, "grnd": 0.3}}[attuned_state]
         return (
-            patch("matching.generator.classify_state",
-                  return_value={"state": state, "metrics": {"recovery_score": recovery}}),
+            patch("matching.generator.compute_hrv_baseline",
+                  return_value={"mean": 3.9, "sd": 0.2} if has_baseline else None),
             patch("intelligence.continuous_profile.compute_continuous_profile", return_value={
                 "profile": profile, "target_valence": None, "state": attuned_state,
                 "position": position, "z_scores": {}, "signals_used": 0}),
         )
 
-    def test_state_is_attuneds_not_the_old_classifiers(self, library):
+    def test_state_is_attuneds(self, library):
         conn, _, _ = library
-        a, b = self._patches(state="peak_readiness")
+        a, b = self._patches()
         with a, b:
-            _, match = select_day_songs(conn, DAY)
+            match = select_day_songs(conn, DAY)
         assert match["state"] == "rest"
 
-    @pytest.mark.parametrize("old_state, recovery, attuned_state, position, allowed", [
-        ("peak_readiness", 99.0, "rest", 0.1, False),     # WHOOP's best day, Attuned low
-        ("poor_recovery", 10.0, "energy", 0.95, True),    # WHOOP red, Attuned near your best
+    @pytest.mark.parametrize("recovery, attuned_state, position, allowed", [
+        (99.0, "rest", 0.1, False),     # WHOOP's best day, Attuned low
+        (10.0, "energy", 0.95, True),   # WHOOP red, Attuned near your best
     ])
-    def test_motivational_follows_attuned_not_whoop(self, library, old_state, recovery,
-                                                    attuned_state, position, allowed):
+    def test_motivational_follows_attuned_not_whoop(self, library, recovery, attuned_state, position, allowed):
         conn, _, _ = library
+        from db.queries import upsert_whoop_recovery
+        upsert_whoop_recovery(conn, cycle_id=1, date=DAY, recovery_score=recovery,
+                              hrv_rmssd_milli=50, resting_heart_rate=55)
         anthem = _add_song(conn, 50, ["2026-03-02T12:00:00Z"], mood_tags=("motivational",))
         conn.commit()
-        a, b = self._patches(state=old_state, recovery=recovery,
-                             attuned_state=attuned_state, position=position)
+        a, b = self._patches(attuned_state=attuned_state, position=position)
         with a, b:
-            _, match = select_day_songs(conn, DAY)
+            match = select_day_songs(conn, DAY)
         assert (anthem in {s["spotify_uri"] for s in match["songs"]}) is allowed
 
     def test_passes_history_and_returns_position(self, library):
@@ -338,7 +372,7 @@ class TestSelectDaySongs:
         a, b = self._patches()
         history = {}
         with a, b as profile:
-            _, match = select_day_songs(conn, DAY, point_in_time=True, history=history)
+            match = select_day_songs(conn, DAY, point_in_time=True, history=history)
         profile.assert_called_once_with(conn, DAY, history)
         assert match["position"] == 0.1
 
@@ -346,15 +380,31 @@ class TestSelectDaySongs:
         conn, _, _ = library
         a, b = self._patches()
         with a, b:
-            _, match = select_day_songs(conn, DAY, point_in_time=True)
+            match = select_day_songs(conn, DAY, point_in_time=True)
         assert match["songs"]
         assert conn.execute("SELECT COUNT(*) FROM generated_playlists").fetchone()[0] == 0
 
-    def test_insufficient_data_raises(self, library):
+    def test_no_hrv_baseline_raises(self, library):
         conn, _, _ = library
-        a, b = self._patches(state="insufficient_data")
-        with a, b, pytest.raises(GenerationError):
+        a, b = self._patches(has_baseline=False)
+        with a, b, pytest.raises(GenerationError, match="insufficient WHOOP data"):
             select_day_songs(conn, DAY)
+
+    def test_real_data_check_needs_14_days_of_hrv(self, library):
+        """No patches on the data check: 13 days of HRV is too few, 14 is enough."""
+        conn, _, _ = library
+        from datetime import date, timedelta
+        from db.queries import upsert_whoop_recovery
+        for i in range(1, 14):
+            upsert_whoop_recovery(conn, cycle_id=i, date=(date.fromisoformat(DAY) - timedelta(days=i)).isoformat(),
+                                  recovery_score=60, hrv_rmssd_milli=50, resting_heart_rate=55)
+        _, b = self._patches()
+        with b, pytest.raises(GenerationError, match="insufficient WHOOP data"):
+            select_day_songs(conn, DAY)
+        upsert_whoop_recovery(conn, cycle_id=14, date=(date.fromisoformat(DAY) - timedelta(days=14)).isoformat(),
+                              recovery_score=60, hrv_rmssd_milli=50, resting_heart_rate=55)
+        with b:
+            assert select_day_songs(conn, DAY)["songs"]
 
     def test_no_songs_raises(self, db_conn):
         a, b = self._patches()

@@ -24,14 +24,12 @@ class TestScopes:
 class TestGeneratePlaylistPublic:
     def _run(self, **kwargs):
         from matching import generator
-        selection = (
-            {"state": "baseline", "confidence": "high", "metrics": {"recovery_score": 60.0}},
-            {"songs": [{"spotify_uri": "spotify:track:1", "name": "S", "artist": "A"}],
-             "neuro_profile": {"para": 0.6, "symp": 0.2, "grnd": 0.2}, "state": "rest", "position": 0.1,
-             "match_stats": {"cohesion_stats": {}}},
-        )
+        selection = {"songs": [{"spotify_uri": "spotify:track:1", "name": "S", "artist": "A"}],
+                     "neuro_profile": {"para": 0.6, "symp": 0.2, "grnd": 0.2}, "state": "rest", "position": 0.1,
+                     "match_stats": {"cohesion_stats": {}}}
         with patch.object(generator, "select_day_songs", return_value=selection), \
-             patch.object(generator, "_filter_unavailable_tracks", side_effect=lambda sp, s, conn: s), \
+             patch.object(generator, "whoop_metrics", return_value={"recovery_score": 60.0}), \
+             patch.object(generator, "filter_unavailable_tracks", side_effect=lambda sp, s, conn: s), \
              patch.object(generator, "insert_generated_playlist"), \
              patch.object(generator, "create_playlist",
                           return_value={"playlist_id": "p", "playlist_url": "u"}) as create:

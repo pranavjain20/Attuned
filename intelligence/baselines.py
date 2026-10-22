@@ -9,7 +9,7 @@ import sqlite3
 import numpy as np
 
 from config import BASELINE_WINDOW_DAYS, MIN_BASELINE_DAYS, ROLLING_WINDOW_DAYS
-from db.queries import get_recoveries_in_range, get_recovery_by_date, get_sleeps_in_range
+from db.queries import get_recoveries_in_range, get_sleeps_in_range
 from intelligence.dates import shift_date
 from intelligence.main_sleep import asleep_ms, is_nap, main_sleep_by_date
 
@@ -227,23 +227,3 @@ def compute_sleep_debt_baseline(
     mean = float(np.mean(arr))
     sd = float(np.std(arr, ddof=1))
     return {"mean": mean, "sd": sd, "count": len(debt_values)}
-
-
-def compute_recovery_delta(
-    conn: sqlite3.Connection,
-    date: str,
-) -> float | None:
-    """Compute today's recovery minus yesterday's recovery.
-
-    Returns float delta, or None if either day's recovery is missing.
-    """
-    today_rec = get_recovery_by_date(conn, date)
-    yesterday_rec = get_recovery_by_date(conn, shift_date(date, -1))
-
-    if today_rec is None or yesterday_rec is None:
-        return None
-    today_score = today_rec["recovery_score"]
-    yesterday_score = yesterday_rec["recovery_score"]
-    if today_score is None or yesterday_score is None:
-        return None
-    return float(today_score - yesterday_score)

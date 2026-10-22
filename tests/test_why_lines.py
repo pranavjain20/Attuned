@@ -5,7 +5,14 @@ from datetime import date, timedelta
 
 import pytest
 
-from matching.why_lines import MAX_WHY_LENGTH, build_context, explain_playlist, history_is_complete
+from matching.why_lines import (
+    MAX_WHY_LENGTH,
+    _with_article,
+    build_context,
+    capitalize_first,
+    explain_playlist,
+    history_is_complete,
+)
 
 DATE = "2026-10-21"
 
@@ -27,7 +34,6 @@ def _song(**overrides):
         "original_release_year": 2011, "release_year": 2011,
         "play_count": 6, "engagement_score": 0.40,
         "first_played": "2025-01-01T10:00:00Z", "last_played": "2026-03-01T10:00:00Z",
-        "is_anchor": False,
     }
     song.update(overrides)
     return song
@@ -146,6 +152,25 @@ class TestDescription:
                                 "rest", build_context(_library(), DATE))
         assert any("An uplifting indie song" in l or "an indie song with a joyful feel" in l.lower()
                    for l in line), line
+
+    @pytest.mark.parametrize("phrase, expected", [
+        ("R&B song", "an R&B song"),          # consonant letter, vowel sound
+        ("r&b song", "an r&b song"),
+        ("EDM song", "an EDM song"),
+        ("hour-long song", "an hour-long song"),
+        ("upbeat song", "an upbeat song"),
+        ("euphoric song", "a euphoric song"),  # vowel letter, consonant sound
+        ("unique song", "a unique song"),
+        ("one-of-a-kind song", "a one-of-a-kind song"),
+        ("romantic song", "a romantic song"),
+        ("happy song", "a happy song"),
+    ])
+    def test_article_follows_the_sound_not_the_letter(self, phrase, expected):
+        assert _with_article(phrase) == expected
+
+    def test_r_and_b_genre_line_reads_an(self, ctx):
+        line = _one(_song(mood_tags=["romantic"], genre_tags=["r&b"], energy=0.5, acousticness=0.3), context=ctx)
+        assert "a R&B" not in line and "A R&B" not in line
 
     def test_no_em_dash(self, ctx):
         lines = explain_playlist([_song(spotify_uri=str(i)) for i in range(10)], "energy", ctx)
@@ -298,3 +323,10 @@ class TestPlaylistLevel:
 
     def test_empty_playlist(self, ctx):
         assert explain_playlist([], "rest", ctx) == []
+
+
+class TestCapitalizeFirst:
+    @pytest.mark.parametrize("text, expected", [("", ""), ("a", "A"), ("less REM", "Less REM"),
+                                                ("R&B", "R&B")])
+    def test_only_the_first_letter_changes(self, text, expected):
+        assert capitalize_first(text) == expected

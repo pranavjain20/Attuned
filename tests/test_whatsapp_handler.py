@@ -1,8 +1,26 @@
 """Tests for whatsapp/handler.py — conversational DJ over WhatsApp."""
 
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _fresh_state():
+    """Each test starts with no pending clarifications and no cached body context."""
+    from whatsapp import handler
+    handler._conversations.clear()
+    handler._context_cache.clear()
+    yield
+    handler._conversations.clear()
+    handler._context_cache.clear()
+
+
+class _FrozenDate(date):
+    @classmethod
+    def today(cls):
+        return cls(2026, 10, 22)
 
 
 class TestHandleMessage:
@@ -134,20 +152,17 @@ class TestBodyContext:
     def test_todays_context_is_passed_to_the_dj(
         self, mock_conn, mock_context, mock_get_songs, mock_select,
     ):
-        from datetime import date
+        from whatsapp.handler import handle_message
 
-        from whatsapp.handler import handle_message, _conversations
-
-        _conversations.clear()
         conn = MagicMock()
         mock_conn.return_value = conn
         mock_select.return_value = {"needs_clarification": True, "clarifying_question": "Mellow?"}
 
-        handle_message("+1111", "something chill")
+        with patch("whatsapp.handler.date", _FrozenDate):  # a run across midnight can't flake
+            handle_message("+1111", "something chill")
 
-        mock_context.assert_called_once_with(conn, date.today().isoformat())
+        mock_context.assert_called_once_with(conn, "2026-10-22")
         assert mock_select.call_args.args[2] == "BODY CONTEXT"
-        _conversations.clear()
 
     @patch("whatsapp.handler.threading")
     @patch("whatsapp.handler.PHONE_TO_PROFILE", {"+1111": "testuser"})
@@ -200,18 +215,113 @@ class TestBodyContext:
     @patch("whatsapp.handler.get_all_classified_songs", return_value=[])
     @patch("whatsapp.handler.attuned_context", side_effect=TypeError("bad call"))
     @patch("whatsapp.handler.get_connection")
-    def test_context_error_is_not_turned_into_no_data(
+    def test_context_error_is_logged_loudly_and_the_request_still_answered(
         self, mock_conn, mock_context, mock_get_songs, mock_select, caplog,
     ):
-        from whatsapp.handler import handle_message
+        """The request comes first: a broken body context mustn't cost the reply, but it
+        must never pass silently either (full traceback in the log)."""
+        from whatsapp.handler import NO_BODY_CONTEXT, handle_message
 
         mock_conn.return_value = MagicMock()
+        mock_select.return_value = {"needs_clarification": True, "clarifying_question": "Mellow?"}
 
         reply = handle_message("+1111", "something chill")
 
-        mock_select.assert_not_called()  # never picks blind
-        assert "Something went wrong" in reply
+        assert reply == "🎵 Mellow?"
+        assert mock_select.call_args.args[2] == NO_BODY_CONTEXT
+        assert "no body data today" in NO_BODY_CONTEXT.lower()
+        record = next(r for r in caplog.records if "body context" in r.getMessage())
+        assert record.levelname == "ERROR" and record.exc_info is not None
         assert "bad call" in caplog.text
+
+    @patch("whatsapp.handler.PHONE_TO_PROFILE", {"+1111": "testuser"})
+    @patch("whatsapp.handler.select_songs_nl")
+    @patch("whatsapp.handler.get_all_classified_songs", return_value=[])
+    @patch("whatsapp.handler.attuned_context", side_effect=[TypeError("bad call"), "BODY CONTEXT"])
+    @patch("whatsapp.handler.get_connection")
+    def test_failed_context_is_not_cached(self, mock_conn, mock_context, mock_get_songs, mock_select):
+        from whatsapp.handler import handle_message
+
+        mock_conn.return_value = MagicMock()
+        mock_select.return_value = {"needs_clarification": True, "clarifying_question": "Mellow?"}
+
+        handle_message("+1111", "something chill")
+        handle_message("+1111", "still chill")
+
+        assert mock_context.call_count == 2
+        assert mock_select.call_args.args[2] == "BODY CONTEXT"
+
+
+class TestContextCache:
+    """Building the context replays the score history (~3 s): once per profile and day, not per message."""
+
+    def _message(self, mock_select, phone, text):
+        """A fresh request that gets a clarifying question back (no playlist thread)."""
+        from whatsapp.handler import _conversations, handle_message
+        _conversations.clear()
+        mock_select.return_value = {"needs_clarification": True, "clarifying_question": "Mellow?"}
+        return handle_message(phone, text)
+
+    @patch("whatsapp.handler.PHONE_TO_PROFILE", {"+1111": "testuser", "+2222": "other"})
+    @patch("whatsapp.handler.select_songs_nl")
+    @patch("whatsapp.handler.get_all_classified_songs", return_value=[])
+    @patch("whatsapp.handler.attuned_context", return_value="BODY CONTEXT")
+    @patch("whatsapp.handler.get_connection")
+    def test_second_message_reuses_the_days_context(self, mock_conn, mock_context, mock_get_songs, mock_select):
+        mock_conn.return_value = MagicMock()
+        with patch("whatsapp.handler.date", _FrozenDate):
+            self._message(mock_select, "+1111", "something chill")
+            self._message(mock_select, "+1111", "something upbeat")
+        assert mock_context.call_count == 1
+        assert [c.args[2] for c in mock_select.call_args_list] == ["BODY CONTEXT", "BODY CONTEXT"]
+
+    @patch("whatsapp.handler.PHONE_TO_PROFILE", {"+1111": "testuser", "+2222": "other"})
+    @patch("whatsapp.handler.select_songs_nl")
+    @patch("whatsapp.handler.get_all_classified_songs", return_value=[])
+    @patch("whatsapp.handler.attuned_context", side_effect=["MINE", "THEIRS"])
+    @patch("whatsapp.handler.get_connection")
+    def test_each_profile_has_its_own_context(self, mock_conn, mock_context, mock_get_songs, mock_select):
+        mock_conn.return_value = MagicMock()
+        with patch("whatsapp.handler.date", _FrozenDate):
+            self._message(mock_select, "+1111", "a")
+            self._message(mock_select, "+2222", "b")
+        assert [c.args[2] for c in mock_select.call_args_list] == ["MINE", "THEIRS"]
+
+    @patch("whatsapp.handler.PHONE_TO_PROFILE", {"+1111": "testuser"})
+    @patch("whatsapp.handler.select_songs_nl")
+    @patch("whatsapp.handler.get_all_classified_songs", return_value=[])
+    @patch("whatsapp.handler.attuned_context", side_effect=["MONDAY", "TUESDAY"])
+    @patch("whatsapp.handler.get_connection")
+    def test_a_new_day_builds_a_new_context(self, mock_conn, mock_context, mock_get_songs, mock_select):
+        class NextDay(date):
+            @classmethod
+            def today(cls):
+                return cls(2026, 10, 23)
+        mock_conn.return_value = MagicMock()
+        with patch("whatsapp.handler.date", _FrozenDate):
+            self._message(mock_select, "+1111", "a")
+        with patch("whatsapp.handler.date", NextDay):
+            self._message(mock_select, "+1111", "b")
+        assert [c.args[2] for c in mock_select.call_args_list] == ["MONDAY", "TUESDAY"]
+        assert mock_context.call_args.args[1] == "2026-10-23"
+
+    @patch("whatsapp.handler.PHONE_TO_PROFILE", {"+1111": "testuser"})
+    @patch("whatsapp.handler.select_songs_nl")
+    @patch("whatsapp.handler.get_all_classified_songs", return_value=[])
+    @patch("whatsapp.handler.attuned_context", side_effect=["BEFORE SYNC", "AFTER SYNC"])
+    @patch("whatsapp.handler.get_connection")
+    def test_context_expires_so_a_later_whoop_sync_is_seen(
+        self, mock_conn, mock_context, mock_get_songs, mock_select,
+    ):
+        """Morning WHOOP data can land after the first message; the cache must not hide it all day."""
+        from whatsapp.handler import CONTEXT_TTL_SECONDS
+        mock_conn.return_value = MagicMock()
+        with patch("whatsapp.handler.date", _FrozenDate), patch("whatsapp.handler.time.time", return_value=1000.0):
+            self._message(mock_select, "+1111", "a")
+        later = 1000.0 + CONTEXT_TTL_SECONDS + 1
+        with patch("whatsapp.handler.date", _FrozenDate), patch("whatsapp.handler.time.time", return_value=later):
+            self._message(mock_select, "+1111", "b")
+        assert [c.args[2] for c in mock_select.call_args_list] == ["BEFORE SYNC", "AFTER SYNC"]
 
 
 class TestWebhookServer:

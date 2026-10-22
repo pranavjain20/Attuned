@@ -25,3 +25,7 @@ for env_key, profile_name in [
 
 # Conversation TTL: pending clarifications expire after this many seconds.
 CONVERSATION_TTL_SECONDS = 600  # 10 minutes
+
+# Body context cache: a day's Attuned context is reused this long (it replays the score
+# history, ~3 s). Short, so WHOOP data synced later in the morning still reaches the DJ.
+CONTEXT_TTL_SECONDS = 600  # 10 minutes: covers a clarification round trip

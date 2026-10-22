@@ -18,6 +18,7 @@ from intelligence.nl_song_selector import select_songs_nl
 from matching.generator import GenerationError, generate_nl_playlist
 from spotify.auth import get_spotify_client
 from whatsapp.config import (
+    CONTEXT_TTL_SECONDS,
     CONVERSATION_TTL_SECONDS,
     PHONE_TO_PROFILE,
     TWILIO_ACCOUNT_SID,
@@ -30,6 +31,14 @@ logger = logging.getLogger(__name__)
 # In-memory conversation state. Key: phone number, value: dict with
 # original_query and timestamp. Cleared after use or TTL expiry.
 _conversations: dict[str, dict] = {}
+
+# Body context per (profile, date): (context, built_at). Entries older than
+# CONTEXT_TTL_SECONDS are rebuilt; a failed build is never cached.
+_context_cache: dict[tuple[str, str], tuple[str, float]] = {}
+
+# What the DJ is told when the body context can't be built: the request comes first.
+NO_BODY_CONTEXT = ("THEIR BODY TODAY: no body data today.\n"
+                   "Don't adjust for their body. Go by what they tell you.")
 
 
 def _send_whatsapp(to_phone: str, message: str) -> None:
@@ -53,6 +62,28 @@ def _clear_expired_conversations() -> None:
     ]
     for phone in expired:
         del _conversations[phone]
+
+
+def _body_context(conn, profile: str) -> str:
+    """Today's Attuned context for the DJ, cached per profile and day.
+
+    If building it fails, the error is logged with its traceback and the DJ is
+    told there's no body data, so the request is still answered (never silently:
+    the log says the context broke, not that there was no data).
+    """
+    today = date.today().isoformat()
+    key = (profile, today)
+    cached = _context_cache.get(key)
+    if cached and time.time() - cached[1] <= CONTEXT_TTL_SECONDS:
+        return cached[0]
+    try:
+        context = attuned_context(conn, today)
+    except Exception:
+        logger.exception("WhatsApp [%s]: body context failed for %s; answering without body data",
+                         profile, today)
+        return NO_BODY_CONTEXT
+    _context_cache[key] = (context, time.time())
+    return context
 
 
 def _generate_and_send(phone: str, profile: str, query: str, nl_result: dict) -> None:
@@ -116,7 +147,7 @@ def handle_message(phone: str, message: str) -> str:
     conn = get_connection(db_path)
 
     try:
-        body_context = attuned_context(conn, date.today().isoformat())
+        body_context = _body_context(conn, profile)
 
         # Check if this is a reply to a pending clarification
         pending = _conversations.pop(phone, None)

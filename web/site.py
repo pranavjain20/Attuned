@@ -20,9 +20,16 @@ from datetime import date as date_cls, timedelta
 from pathlib import Path
 
 from db.queries import get_recoveries_in_range, get_song, get_song_classifications
-from intelligence.continuous_profile import STATE_PURPOSE
-from intelligence.feeling_score import HEART_SIGNALS, band, build_page_day, compute_composite_history
-from matching.day_playlist import build_day_playlists
+from intelligence.playlist_target import STATE_PURPOSE
+from intelligence.feeling_score import (
+    HEART_SIGNALS,
+    SIGNAL_PHRASES,
+    band,
+    build_page_day,
+    compute_composite_history,
+)
+from matching.day_playlist import build_day_playlists, track_uri
+from matching.why_lines import capitalize_first
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +40,8 @@ PUBLISHED_PATH = WEB_DIR / "published.json"
 DATA_PLACEHOLDER = "__ATTUNED_DATA__"
 
 SHORTCUT_DAYS = 3             # the most recent days get a shortcut chip above the rings
-AGREE_WITHIN_POINTS = 10      # a smaller gap reads as "roughly agree"
-BIG_GAP_POINTS = 20           # a gap this big gets called out under the rings
+AGREE_WITHIN_POINTS = 10      # a smaller gap reads as "roughly agree"; this or more, better/worse
+BIG_GAP_POINTS = 20           # a gap this big also gets a line on why the two can differ
 MAX_MOODS_PER_TRACK = 3
 MAX_GENRES_PER_TRACK = 2
 
@@ -43,21 +50,6 @@ ART_THROTTLE_S = 0.25
 ART_TIMEOUT_S = 15
 
 ArtLookup = Callable[[str], str | None]
-
-# How each signal reads in a sentence: (when it helped, when it hurt).
-PHRASE = {
-    "deep_sleep_z": ("more deep sleep", "less deep sleep"),
-    "deep_ratio_z": ("a bigger share of deep sleep", "a smaller share of deep sleep"),
-    "rem_sleep_z": ("more REM", "less REM"),
-    "total_sleep_z": ("a longer night", "a shorter night"),
-    "sleep_efficiency_z": ("less broken sleep", "more broken sleep"),
-    "sleep_debt_z": ("less sleep debt", "built-up sleep debt"),
-    "hrv_z": ("a higher HRV", "a lower HRV"),
-    "hrv_delta_z": ("HRV up since yesterday", "HRV down since yesterday"),
-    "hrv_trend_z": ("HRV trending up this week", "HRV drifting down this week"),
-    "rhr_z": ("a lower resting heart rate", "a higher resting heart rate"),
-    "rhr_delta_z": ("resting heart rate down since yesterday", "resting heart rate up since yesterday"),
-}
 
 MOOD_WORD = {"green": "good", "yellow": "middling", "red": "low"}
 
@@ -76,7 +68,7 @@ PLAN = {
     "grounding": {
         "does": f"built to {STATE_PURPOSE['grounding']}", "kinds": "Steady, familiar",
         "why": "Studies find music you love triggers the brain's reward system, "
-               "so familiar songs land harder emotionally.",
+               "so personally meaningful songs land harder emotionally.",
         "cites": [["Salimpoor 2011", "https://doi.org/10.1038/nn.2726"],
                   ["Hennessy 2025", "https://doi.org/10.1002/hbm.70181"]],
     },
@@ -99,8 +91,13 @@ def join_and(items: list[str]) -> str:
     return ", ".join(items[:-1]) + " and " + items[-1]
 
 
-def _capitalize_first(text: str) -> str:
-    return text[:1].upper() + text[1:]
+def _leads_with_bad(attuned: dict, whoop: dict) -> bool:
+    """Lead with what pulled the score down? At or below WHOOP, yes. With no WHOOP number,
+    follow the drivers: they come explaining-side first (feeling_score.pick_drivers)."""
+    if whoop.get("recovery") is not None:
+        return attuned["score"] <= whoop["recovery"]
+    drivers = attuned.get("drivers") or []
+    return bool(drivers) and drivers[0]["effect"] != "up"
 
 
 def reason_line(attuned: dict, whoop: dict) -> str:
@@ -109,42 +106,57 @@ def reason_line(attuned: dict, whoop: dict) -> str:
         return attuned.get("reason") or "No feeling score for this day."
     good, bad = [], []
     for driver in attuned.get("drivers") or []:
-        phrase = PHRASE.get(driver["signal"])
+        phrase = SIGNAL_PHRASES.get(driver["signal"])
         if phrase is None:
             continue
         if driver["effect"] == "up":
             good.append(phrase[0])
         else:
             bad.append(phrase[1])
-    lead, other = (bad, good) if attuned["score"] <= (whoop.get("recovery") or 0) else (good, bad)
+    lead, other = (bad, good) if _leads_with_bad(attuned, whoop) else (good, bad)
     if not lead:
         lead, other = other, []
     if not lead:
         return "A night close to your usual."
     line = join_and(lead) + (f", despite {join_and(other)}" if other else " than usual")
-    return _capitalize_first(line) + "."
+    return capitalize_first(line) + "."
 
 
-def _gap_note(attuned: dict, whoop: dict) -> str:
-    """The small line under the two rings; blank when either score is missing."""
-    if attuned.get("score") is None or whoop.get("recovery") is None:
-        return ""
-    gap = abs(whoop["recovery"] - attuned["score"])
-    if gap >= BIG_GAP_POINTS:
-        return f"A {gap}-point gap: body readiness and mood can point different ways."
-    return f"Within {gap} points: today the two scores roughly agree."
+def _gap_article(size: int) -> str:
+    """'An' before numbers said with a vowel sound (8, 11, 18, 80-89), else 'A'."""
+    return "An" if str(size).startswith("8") or size in (11, 18) else "A"
+
+
+def _gap_note(gap: int) -> str:
+    """The small line under the two rings, for a signed gap (Attuned minus WHOOP).
+
+    Uses the title's cut-off, so the note never contradicts the title above it.
+    """
+    size = abs(gap)
+    if size == 0:
+        return "Same score as WHOOP today."
+    if size < AGREE_WITHIN_POINTS:
+        return f"Within {size} point{'' if size == 1 else 's'}: today the two scores roughly agree."
+    if size >= BIG_GAP_POINTS:
+        return f"{_gap_article(size)} {size}-point gap: body readiness and mood can point different ways."
+    return f"{_gap_article(size)} {size}-point gap."
 
 
 def compare_copy(attuned: dict, whoop: dict) -> dict:
-    """{"title", "line", "note"}: why Attuned differs from WHOOP today, in a title + one sentence."""
-    note = _gap_note(attuned, whoop)
-    if attuned.get("score") is None:
-        return {"title": "No Attuned score today", "line": attuned.get("reason") or "", "note": note}
+    """{"title", "line", "note"}: why Attuned differs from WHOOP today, in a title + one sentence.
 
-    gap = _round_half_up(attuned["score"] - (whoop.get("recovery") or 0))
+    The note under the rings is blank when either score is missing.
+    """
+    if attuned.get("score") is None:
+        return {"title": "No Attuned score today", "line": attuned.get("reason") or "", "note": ""}
+    if whoop.get("recovery") is None:
+        return {"title": "No WHOOP recovery to compare today", "line": reason_line(attuned, whoop), "note": ""}
+
+    gap = _round_half_up(attuned["score"] - whoop["recovery"])
+    note = _gap_note(gap)
     heart_good, heart_bad, sleep_good, sleep_bad = [], [], [], []
     for driver in attuned.get("drivers") or []:
-        phrase = PHRASE.get(driver["signal"])
+        phrase = SIGNAL_PHRASES.get(driver["signal"])
         if phrase is None:
             continue
         up, heart = driver["effect"] == "up", driver["signal"] in HEART_SIGNALS
@@ -193,11 +205,18 @@ def kinds_line(tracks: list[dict]) -> str:
 
 
 def playlist_summary(playlist: dict, attuned: dict) -> dict:
-    """{"lead", "kinds", "why", "cites": [[label, url]]} for the playlist card."""
-    plan = PLAN.get(attuned.get("state"), PLAN["grounding"])
-    mood = MOOD_WORD.get(attuned.get("band") or band(attuned.get("score")), "okay")
+    """{"lead", "kinds", "why", "cites": [[label, url]]} for the playlist card.
+
+    The plan follows the day's state, or the playlist's own when the day has none.
+    """
+    plan = PLAN.get(attuned.get("state") or playlist.get("state"), PLAN["grounding"])
+    if attuned.get("score") is None:
+        lead = f"There's no Attuned score for today yet, so this playlist is {plan['does']}."
+    else:
+        mood = MOOD_WORD[attuned.get("band") or band(attuned["score"])]
+        lead = f"You'll likely feel {mood} today, so this playlist is {plan['does']}."
     return {
-        "lead": f"You'll likely feel {mood} today, so this playlist is {plan['does']}.",
+        "lead": lead,
         "kinds": f"{plan['kinds']}, mostly {kinds_line(playlist['tracks'])}.",
         "why": plan["why"],
         "cites": [list(cite) for cite in plan["cites"]],
@@ -224,7 +243,7 @@ def format_total_time(tracks: list[dict]) -> str:
 
 def enrich_track(conn: sqlite3.Connection, track: dict, art_lookup: ArtLookup) -> dict:
     """A copy of track with art, duration_ms, duration ("m:ss"), moods and genres added."""
-    uri = "spotify:track:" + track["spotify_url"].rsplit("/", 1)[-1]
+    uri = track_uri(track)
     song = get_song(conn, uri) or {}
     classifications = get_song_classifications(conn, [uri])
     tags = classifications[0] if classifications else {}
@@ -242,9 +261,11 @@ def enrich_track(conn: sqlite3.Connection, track: dict, art_lookup: ArtLookup) -
 class OembedArtCache:
     """Album art URLs from Spotify's public oEmbed endpoint (no login), cached on disk.
 
-    A track Spotify answers for (even with "not found") is cached. A network
-    failure is not cached, and stops further fetches for the rest of this run so
-    an offline build doesn't wait out a timeout per track.
+    Only real answers are cached: a reply, or "not found" (404). A server error
+    (5xx) is skipped and asked again next build. A rate limit (429) or a network
+    failure is not cached either, and stops further fetches for the rest of this
+    run, so a throttled or offline build doesn't keep asking or wait out a
+    timeout per track.
     """
 
     def __init__(self, path: Path = ART_CACHE_PATH, fetch: Callable = urllib.request.urlopen,
@@ -274,7 +295,13 @@ class OembedArtCache:
             with self.fetch(url, timeout=ART_TIMEOUT_S) as response:
                 art = json.loads(response.read()).get("thumbnail_url")
         except urllib.error.HTTPError as e:
-            logger.warning("No album art for %s (HTTP %s)", track_url, e.code)
+            if e.code != 404:
+                logger.warning("Album art for %s failed (HTTP %s); not cached", track_url, e.code)
+                if e.code == 429:
+                    logger.warning("Spotify is rate limiting oEmbed; skipping art for the rest of this build")
+                    self.offline = True
+                return None
+            logger.warning("No album art for %s (HTTP 404)", track_url)
             art = None
         except (urllib.error.URLError, OSError) as e:
             logger.warning("Album art unreachable (%s); skipping art for the rest of this build", e)
@@ -298,17 +325,23 @@ class OembedArtCache:
 def _is_published_record(record) -> bool:
     return (isinstance(record, dict) and isinstance(record.get("url"), str)
             and isinstance(record.get("track_uris"), list)
-            and all(isinstance(uri, str) for uri in record["track_uris"]))
+            and all(isinstance(uri, str) for uri in record["track_uris"])
+            and all(isinstance(record[key], str) for key in ("name", "description") if key in record))
 
 
 def load_published(path: Path = PUBLISHED_PATH) -> dict[str, dict]:
-    """{date: {"url", "track_uris"}} for days really pushed to Spotify; {} when the file is absent."""
+    """{date: {"url", "track_uris", "name"?, "description"?}} for days really pushed to Spotify.
+
+    {} when the file is absent. name and description are what the Spotify
+    playlist was last given (records written before they were kept lack them).
+    """
     if not path.exists():
         return {}
     published = json.loads(path.read_text())
     if not isinstance(published, dict) or not all(
             isinstance(k, str) and _is_published_record(v) for k, v in published.items()):
-        raise ValueError(f'{path} must map date strings to {{"url": str, "track_uris": [str]}}')
+        raise ValueError(f'{path} must map date strings to '
+                         f'{{"url": str, "track_uris": [str], "name"?: str, "description"?: str}}')
     return published
 
 
@@ -320,13 +353,34 @@ def save_published(published: dict[str, dict], path: Path = PUBLISHED_PATH) -> N
     tmp.replace(path)
 
 
-def open_link(spotify_url: str | None, tracks: list[dict]) -> dict | None:
-    """The playlist header's green button: the real playlist when published, else the first song."""
-    if spotify_url:
-        return {"label": "Open in Spotify", "url": spotify_url}
+def open_link(record: dict | None, tracks: list[dict]) -> dict | None:
+    """The playlist header's green button.
+
+    The published playlist (load_published's record) only when it holds exactly
+    these tracks in this order, so the button never opens different songs from
+    the page; otherwise the first song.
+    """
+    if record and tracks and record["track_uris"] == [track_uri(t) for t in tracks]:
+        return {"label": "Open in Spotify", "url": record["url"]}
     if tracks:
         return {"label": "Play on Spotify", "url": tracks[0]["spotify_url"]}
     return None
+
+
+def shown_tracks(playlist: dict, record: dict | None) -> list[dict]:
+    """The songs the page lists for a day: the published ones when the replay still has them all.
+
+    Publishing swaps songs Spotify no longer plays for spares, so a published
+    playlist can differ from the replay's first 20. When every published song is
+    among the replay's tracks and spares, the page shows them (with their
+    why-lines) in the published order, matching Spotify. Otherwise the replay
+    has moved on (or nothing was published) and the page shows its own tracks.
+    """
+    candidates = {track_uri(t): t for t in playlist["tracks"] + playlist.get("spares", [])}
+    uris = record["track_uris"] if record else []
+    if uris and all(uri in candidates for uri in uris):
+        return [candidates[uri] for uri in uris]
+    return playlist["tracks"]
 
 
 # ---------------------------------------------------------------------------
@@ -334,17 +388,30 @@ def open_link(spotify_url: str | None, tracks: list[dict]) -> dict | None:
 # ---------------------------------------------------------------------------
 
 def _site_playlist(conn: sqlite3.Connection, playlist: dict, attuned: dict,
-                   art_lookup: ArtLookup, spotify_url: str | None) -> dict:
-    tracks = [enrich_track(conn, track, art_lookup) for track in playlist["tracks"]]
-    enriched = {**playlist, "spotify_url": spotify_url, "open": open_link(spotify_url, tracks),
+                   art_lookup: ArtLookup, record: dict | None) -> dict:
+    tracks = [enrich_track(conn, track, art_lookup) for track in shown_tracks(playlist, record)]
+    enriched = {"name": playlist["name"], "state": playlist["state"], "open": open_link(record, tracks),
                 "tracks": tracks, "total_time": format_total_time(tracks)}
     enriched["summary"] = playlist_summary(enriched, attuned)
     return enriched
 
 
-def _playlists_by_date(conn: sqlite3.Connection, dates: list[str],
-                       history: dict[str, dict]) -> dict[str, dict | None]:
-    """The days replayed as one chain, so rotation carries over from day to day."""
+def window_dates(conn: sqlite3.Connection, end_date: str, n_days: int) -> list[str]:
+    """The page's days, oldest first: every WHOOP day in the n_days ending end_date."""
+    if n_days < 1:
+        raise ValueError(f"n_days must be at least 1, got {n_days}")
+    start = (date_cls.fromisoformat(end_date) - timedelta(days=n_days - 1)).isoformat()
+    return sorted(row["date"] for row in get_recoveries_in_range(conn, start, end_date))
+
+
+def replay_playlists(conn: sqlite3.Connection, dates: list[str],
+                     history: dict[str, dict] | None = None) -> dict[str, dict | None]:
+    """The days' playlists (build_day_playlist's dict, or None), replayed as one chain.
+
+    The chain starts at dates[0], so rotation carries over from day to day and
+    the page and publish-playlists (which both call this on window_dates) get
+    the same songs.
+    """
     playlists: dict[str, dict | None] = {}
     if dates:
         for result in build_day_playlists(conn, dates[0], dates[-1], history=history):
@@ -364,23 +431,20 @@ def build_site_days(
     """Page days, oldest first: every WHOOP day in the n_days ending end_date.
 
     Each day is build_page_day's contract plus attuned.compare, a playlist
-    (None when one can't be built) with summary/total_time, enriched tracks and
-    open (the header button: {label, url}), and notable: True on the SHORTCUT_DAYS most recent days.
+    (None when one can't be built) with name/state/summary/total_time, enriched
+    tracks (shown_tracks) and open (the header button: {label, url}), and
+    shortcut: True on the SHORTCUT_DAYS most recent days.
     published is load_published's mapping. art_lookup maps a track URL to album art
     (main.py passes an OembedArtCache and saves it afterwards).
     """
-    if n_days < 1:
-        raise ValueError(f"n_days must be at least 1, got {n_days}")
+    dates = window_dates(conn, end_date, n_days)
     published = published or {}
-
-    end = date_cls.fromisoformat(end_date)
-    start = (end - timedelta(days=n_days - 1)).isoformat()
-    dates = sorted(row["date"] for row in get_recoveries_in_range(conn, start, end_date))
     shortcuts = set(dates[-SHORTCUT_DAYS:])
     # Scoring a day replays every earlier day; compute that history once and share it
     # between the scores and the playlists.
-    history = compute_composite_history(conn, (end + timedelta(days=1)).isoformat())
-    playlists = _playlists_by_date(conn, dates, history)
+    next_day = (date_cls.fromisoformat(end_date) + timedelta(days=1)).isoformat()
+    history = compute_composite_history(conn, next_day)
+    playlists = replay_playlists(conn, dates, history)
 
     days = []
     for date in dates:
@@ -388,10 +452,9 @@ def build_site_days(
         day["attuned"]["compare"] = compare_copy(day["attuned"], day["whoop"])
         playlist = playlists.get(date)
         if playlist is not None:
-            spotify_url = published[date]["url"] if date in published else playlist.get("spotify_url")
-            playlist = _site_playlist(conn, playlist, day["attuned"], art_lookup, spotify_url)
+            playlist = _site_playlist(conn, playlist, day["attuned"], art_lookup, published.get(date))
         day["playlist"] = playlist
-        day["notable"] = date in shortcuts
+        day["shortcut"] = date in shortcuts
         days.append(day)
     return days
 

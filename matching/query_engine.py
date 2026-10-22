@@ -283,6 +283,8 @@ def rewind_songs_to_date(
            GROUP BY spotify_uri""",
         (MIN_PLAY_DURATION_MS, date),
     ).fetchall()
+    # played_at is UTC and the wearer's offset per day isn't stored, so the cutoff is UTC
+    # midnight: only plays within a few hours of local midnight land on the wrong side.
     as_of = {row["spotify_uri"]: row for row in rows}
 
     rewound = []
@@ -674,7 +676,6 @@ def _build_result_song(
         "release_year": song.get("release_year"),
         "original_release_year": song.get("original_release_year"),
         "first_played": song.get("first_played"),
-        "is_anchor": False,
         "selection_score": round(sel_score, 4),
         "breakdown": breakdown,
     }
@@ -748,6 +749,7 @@ def select_songs(
     artist_filter: list[str] | None = None,
     point_in_time: bool = False,
     prior_playlists: dict[str, list[str]] | None = None,
+    library: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Select songs matching the given physiological state.
 
@@ -778,13 +780,19 @@ def select_songs(
             so a past day replays with only what was known that morning.
         prior_playlists: Replayed playlists ({date: track URIs}) that count for
             rotation as if they'd been pushed — lets a range replay chain day to day.
+        library: The classified songs to choose from, in place of reading (and,
+            with point_in_time, rewinding) them here — for a caller that already
+            rewound the library and needs it too.
 
     Returns:
         Dict with keys: songs, state, neuro_profile, match_stats.
     """
-    all_songs = get_all_classified_songs(conn)
-    if point_in_time:
-        all_songs = rewind_songs_to_date(conn, all_songs, date)
+    if library is not None:
+        all_songs = library
+    else:
+        all_songs = get_all_classified_songs(conn)
+        if point_in_time:
+            all_songs = rewind_songs_to_date(conn, all_songs, date)
     if not all_songs:
         logger.warning("No classified songs in database")
         return {
@@ -890,12 +898,9 @@ def select_songs(
 
     # Build result from cohesion-selected indices
     selected_songs = []
-    anchor_uris = {scored[i][0]["spotify_uri"] for i in anchor_indices}
     for idx in cohesion_indices:
         song, sel_score, breakdown = scored[idx]
-        result_song = _build_result_song(song, sel_score, breakdown)
-        result_song["is_anchor"] = song["spotify_uri"] in anchor_uris
-        selected_songs.append(result_song)
+        selected_songs.append(_build_result_song(song, sel_score, breakdown))
 
     # Dedup near-duplicates (e.g., same song from different albums)
     pre_dedup_count = len(selected_songs)

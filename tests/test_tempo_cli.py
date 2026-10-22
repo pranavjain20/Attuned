@@ -147,6 +147,24 @@ class TestFetchSoundchartsTemposCommand:
         assert "1 tempos stored" in out
         assert "Quota remaining: 700" in out
 
+    @pytest.mark.parametrize("args, force", [((), False), (("--force",), True)])
+    def test_force_flag_passed_through(self, monkeypatch, capsys, db_path, args, force):
+        monkeypatch.setenv("SOUNDCHARTS_APP_ID", "app")
+        monkeypatch.setenv("SOUNDCHARTS_API_KEY", "key")
+        stats = {"calls": 0, "stored": 0, "no_tempo": 0, "quota_remaining": 5, "stopped": None}
+        with patch("classification.soundcharts.backfill_soundcharts_tempos", return_value=stats) as backfill:
+            _run(monkeypatch, capsys, "fetch-soundcharts-tempos", db_path, *args)
+        assert backfill.call_args.kwargs["force"] is force
+
+    def test_reports_when_the_quota_ran_out(self, monkeypatch, capsys, db_path):
+        monkeypatch.setenv("SOUNDCHARTS_APP_ID", "app")
+        monkeypatch.setenv("SOUNDCHARTS_API_KEY", "key")
+        stats = {"calls": 3, "stored": 3, "no_tempo": 0, "quota_remaining": 0,
+                 "stopped": "Soundcharts quota used up (x-quota-remaining is 0)"}
+        with patch("classification.soundcharts.backfill_soundcharts_tempos", return_value=stats):
+            out = _run(monkeypatch, capsys, "fetch-soundcharts-tempos", db_path)
+        assert "Stopped early: Soundcharts quota used up" in out
+
     @pytest.mark.parametrize("limit", ["0", "-3", "ten"])
     def test_rejects_bad_limit(self, monkeypatch, capsys, db_path, limit):
         with pytest.raises(SystemExit):

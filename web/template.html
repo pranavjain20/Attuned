@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Attuned — Daily Feeling</title>
-<meta name="description" content="Attuned turns last night's sleep into a 'how do I feel?' score and a Spotify playlist from my own library.">
+<meta name="description" content="Attuned turns last night's sleep and heart data into a 'how do I feel?' score and a Spotify playlist from my own library.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -227,7 +227,7 @@
       <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
   </nav>
-  <div class="chips" id="chips" role="group" aria-label="Notable days"></div>
+  <div class="chips" id="chips" role="group" aria-label="Recent days"></div>
 
   <main class="grid" id="main"></main>
 
@@ -252,14 +252,7 @@
 
   var BAND_COLOR = { green: "var(--green)", yellow: "var(--yellow)", red: "var(--red)" };
   var BAND_LABEL = { green: "High", yellow: "Medium", red: "Low" };
-  var STATES = {
-    rest:      { color: "#8f7bff", meaning: "Go gentle. Low-energy music to ease into the day.",
-                 icon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>' },
-    energy:    { color: "#ff8a1f", meaning: "You have something in the tank. Upbeat music to give you a lift.",
-                 icon: '<path d="M13 2L4 14h7l-1 8 9-12h-7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>' },
-    grounding: { color: "#3fb8ff", meaning: "Steady and even. Mid-tempo music to keep you level.",
-                 icon: '<path d="M3 12c2.5-4 5.5-4 8 0s5.5 4 8 0M3 18h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' }
-  };
+  var STATE_COLOR = { rest: "#8f7bff", energy: "#ff8a1f", grounding: "#3fb8ff" };
   var MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   var DOW = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
@@ -270,10 +263,8 @@
   }
   function safeUrl(u) { return /^https:\/\//.test(u || "") ? u : "#"; }
   function parseDate(iso) { var p = iso.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
-  function bandFor(score, band) {
-    if (BAND_COLOR[band]) return band;
-    return score >= 67 ? "green" : score >= 34 ? "yellow" : "red";
-  }
+  // The band always comes from Python (null when there's no score); no score reads grey.
+  function bandColor(band) { return BAND_COLOR[band] || "var(--text-3)"; }
   function num(v, digits) {
     if (v == null || isNaN(v)) return "—";
     return digits ? Number(v).toFixed(digits) : String(Math.round(v));
@@ -287,17 +278,25 @@
   // Ring: 270-degree arc like a gauge would feel too "dashboard"; WHOOP uses a full circle starting at top.
   var R = 70, C = 2 * Math.PI * R;
   function ring(score, band, label, sub) {
-    var b = bandFor(score, band);
-    var pct = Math.max(0, Math.min(100, Number(score) || 0));
-    return '' +
-      '<div class="ring">' +
-        '<svg viewBox="0 0 180 180" role="img" aria-label="' + esc(label) + ': ' + pct + ' percent, ' + BAND_LABEL[b].toLowerCase() + '">' +
-          '<circle cx="90" cy="90" r="' + R + '" fill="none" stroke="var(--track)" stroke-width="14"/>' +
-          '<circle class="arc" style="color:' + BAND_COLOR[b] + '" cx="90" cy="90" r="' + R + '" fill="none" stroke="' + BAND_COLOR[b] + '" stroke-width="14" stroke-linecap="round"' +
+    var track = '<circle cx="90" cy="90" r="' + R + '" fill="none" stroke="var(--track)" stroke-width="14"/>';
+    var body;
+    if (score == null || isNaN(score)) {
+      // No score: an empty grey ring and a dash, never a red 0%.
+      body = '<svg viewBox="0 0 180 180" role="img" aria-label="' + esc(label) + ': no score">' + track +
+          '<text class="val" x="90" y="106" text-anchor="middle" font-size="50" style="fill:var(--text-3)">–</text>' +
+        '</svg>';
+    } else {
+      var pct = Math.round(Math.max(0, Math.min(100, Number(score))));
+      var color = bandColor(band);
+      body = '<svg viewBox="0 0 180 180" role="img" aria-label="' + esc(label) + ': ' + pct + ' percent' + (BAND_LABEL[band] ? ', ' + BAND_LABEL[band].toLowerCase() : '') + '">' + track +
+          '<circle class="arc" style="color:' + color + '" cx="90" cy="90" r="' + R + '" fill="none" stroke="' + color + '" stroke-width="14" stroke-linecap="round"' +
             ' stroke-dasharray="' + C.toFixed(2) + '" stroke-dashoffset="' + C.toFixed(2) + '" data-target="' + (C * (1 - pct / 100)).toFixed(2) + '"' +
             ' transform="rotate(-90 90 90)"/>' +
           '<text class="val" x="90" y="104" text-anchor="middle" font-size="50">' + pct + '<tspan class="pct" font-size="24" dx="2" dy="-18">%</tspan></text>' +
-        '</svg>' +
+        '</svg>';
+    }
+    return '' +
+      '<div class="ring">' + body +
         '<div class="label">' + esc(label) + '</div>' +
         '<div class="sub">' + esc(sub) + '</div>' +
       '</div>';
@@ -350,15 +349,14 @@
     if (!day) { main.innerHTML = '<div class="card span-2 empty"><b>No days yet</b>Data will appear here once it is exported.</div>'; return; }
 
     var a = day.attuned || {}, w = day.whoop || {}, m = day.metrics || {};
-    var st = STATES[a.state] || STATES.grounding;
-    document.documentElement.style.setProperty("--state", st.color);
+    document.documentElement.style.setProperty("--state", STATE_COLOR[a.state] || STATE_COLOR.grounding);
 
     var d = parseDate(day.date);
     document.getElementById("dow").textContent = DOW[d.getDay()];
     document.getElementById("fulldate").textContent = MONTHS[d.getMonth()] + " " + d.getDate() + ", " + d.getFullYear();
     document.getElementById("prev").disabled = i === 0;
     document.getElementById("next").disabled = i === DAYS.length - 1;
-    Array.prototype.forEach.call(document.querySelectorAll(".chip"), function (c, ci) { c.setAttribute("aria-current", ci === i ? "true" : "false"); });
+    Array.prototype.forEach.call(document.querySelectorAll(".chip"), function (c) { c.setAttribute("aria-current", +c.getAttribute("data-i") === i ? "true" : "false"); });
 
     var cmp = a.compare || {};
 
@@ -386,7 +384,7 @@
           ring(a.score, a.band, "Attuned Recovery", "How you'll feel") +
           ring(w.recovery, w.band, "WHOOP Recovery", "Ready to train?") +
         '</div>' +
-        '<p class="compare">You likely feel <b style="color:' + BAND_COLOR[bandFor(a.score, a.band)] + '">' + num(a.score) + '</b><span class="dot">·</span>WHOOP says <b style="color:' + BAND_COLOR[bandFor(w.recovery, w.band)] + '">' + num(w.recovery) + '</b></p>' +
+        '<p class="compare">You likely feel <b style="color:' + bandColor(a.band) + '">' + num(a.score) + '</b><span class="dot">·</span>WHOOP says <b style="color:' + bandColor(w.band) + '">' + num(w.recovery) + '</b></p>' +
         '<div class="compare-note">' + esc(cmp.note) + '</div>' +
       '</section>' +
 
@@ -419,7 +417,7 @@
   }
 
   var chips = document.getElementById("chips");
-  chips.innerHTML = DAYS.map(function (d, i) { return (d.notable || i === DAYS.length - 1) ? '<button class="chip" data-i="' + i + '">' + esc(chipLabel(i)) + '</button>' : ''; }).join("");
+  chips.innerHTML = DAYS.map(function (d, i) { return d.shortcut ? '<button class="chip" data-i="' + i + '">' + esc(chipLabel(i)) + '</button>' : ''; }).join("");
   chips.addEventListener("click", function (e) { var b = e.target.closest(".chip"); if (b) go(+b.getAttribute("data-i"), true); });
   document.getElementById("prev").addEventListener("click", function () { go(current - 1, true); });
   document.getElementById("next").addEventListener("click", function () { go(current + 1, true); });

@@ -80,29 +80,16 @@ SLEEP_DEFICIT_SD = 1.5
 CV_ELEVATED = 0.15
 CV_SIGNIFICANT = 0.20
 RHR_ELEVATED_BPM = 5           # RHR above baseline → caution (used in trend detection)
-RHR_PEAK_MAX_BPM = 2           # Max RHR above baseline for Peak Readiness
-SLEEP_DEBT_PEAK_HOURS = 3      # Absolute fallback: max debt for peak (used when debt baseline insufficient)
 DEEP_SLEEP_MIN_RATIO = 0.10    # Absolute floor: <10% = deficit
 DEEP_SLEEP_MIN_MS = 3_600_000  # Absolute floor: <1 hour = deficit
 REM_SLEEP_MIN_RATIO = 0.15     # Absolute floor: <15% = deficit
 SLEEP_ADEQUATE_SD = 1.0        # Within this many SDs of mean = "adequate"
 
-# Recovery tiers (from real experience, not WHOOP's red/yellow/green)
-RECOVERY_TIER_2_MAX = 40       # Definitively bad
-RECOVERY_TIER_3_MAX = 60       # Struggling / stressed
-RECOVERY_TIER_4_MAX = 80       # Functional / okay (above = great)
-
-# Accumulated fatigue detection
-FATIGUE_RECENT_DAYS = 5        # Look back window for multi-day pattern
-FATIGUE_BAD_DAYS_MIN = 3       # Min bad days in window → fatigue
-
-# Restorative sleep gate — if last night was genuinely restorative, skip accumulated_fatigue.
-# The 85% / 6h cut-offs are a design choice. Inspiration: sleep quality is associated with
-# next-day mood (Triantafillou 2019, doi 10.2196/12613 — association, not cause).
-RESTORATIVE_SLEEP_EFFICIENCY_MIN = 85.0    # Sleep efficiency % floor
+# Under 6 h asleep is a "short night" (intelligence/main_sleep.py). The cut-off is a design
+# choice: docs/RESEARCH.md, "Short-night cap".
 RESTORATIVE_SLEEP_TOTAL_MIN_MS = 6 * 3_600_000  # 6h minimum total sleep
 
-# Daily playlist target anchors (intelligence/continuous_profile.py). The Attuned score's
+# Daily playlist target anchors (intelligence/playlist_target.py). The Attuned score's
 # position among your own days picks a point on calm (lowest day) → steady (usual day) →
 # energy (best day). Design choices, not research values:
 # - calm and energy mirror each other: one dimension clearly leads (0.65), grounding 0.30;
@@ -178,7 +165,7 @@ ERA_SIGMA_DEFAULT = 5
 # When era similarity drops below this floor, cap total pairwise similarity.
 # A 1999 song matching perfectly on mood/BPM/genre shouldn't survive in a 2010s cluster.
 # Design choice: production-era mismatch sounds more jarring than cultural mismatch
-# (our own judgment; see reference/era_cohesion_research.md).
+# (our own judgment, not a research finding).
 ERA_SIM_FLOOR = 0.05          # Below this = effectively different eras
 ERA_HARD_CAP_SIMILARITY = 0.15  # Max total similarity when era_sim < floor
 

@@ -1,4 +1,4 @@
-"""End-to-end playlist generation: WHOOP state → song matching → Spotify playlist."""
+"""End-to-end playlist generation: Attuned score → song matching → Spotify playlist."""
 
 import logging
 import sqlite3
@@ -7,11 +7,13 @@ from datetime import date, datetime, timedelta as _timedelta
 
 import spotipy
 
-from db.queries import insert_generated_playlist
-from intelligence.continuous_profile import NAME_DEEP_SHARE, STATE_PURPOSE, is_top_energy_day, pick_state
+from db.queries import get_recovery_by_date, insert_generated_playlist
+from intelligence.baselines import compute_hrv_baseline
+from intelligence.continuous_profile import NAME_DEEP_SHARE, is_top_energy_day
+from intelligence.playlist_target import STATE_PURPOSE, pick_state
 from intelligence.dj_context import attuned_context
-from intelligence.state_classifier import classify_state
 from matching.query_engine import select_songs
+from spotify.auth import SpotifyRateLimitError
 from spotify.playlist import (
     SPOTIFY_DESCRIPTION_MAX_LENGTH,
     SpotifyPlaylistError,
@@ -21,7 +23,7 @@ from spotify.playlist import (
 logger = logging.getLogger(__name__)
 
 
-def _filter_unavailable_tracks(
+def filter_unavailable_tracks(
     sp: spotipy.Spotify,
     songs: list[dict],
     conn: sqlite3.Connection | None = None,
@@ -30,7 +32,9 @@ def _filter_unavailable_tracks(
 
     Checks each track individually via sp.track() with throttling (batch
     endpoint returns 403 in dev mode). Drops tracks where is_playable is False.
-    On per-track errors, treats the track as available (graceful degradation).
+    On per-track errors, treats the track as available (graceful degradation),
+    except an exhausted quota (SpotifyRateLimitError), which stops the check:
+    every later call would fail the same way.
 
     Persists results to the DB so future runs skip known-unavailable songs
     at query time. Songs checked within AVAILABILITY_CACHE_DAYS skip the API call.
@@ -85,6 +89,8 @@ def _filter_unavailable_tracks(
                     track.get("artists", [{}])[0].get("name", "?"),
                     uri,
                 )
+        except SpotifyRateLimitError:
+            raise
         except Exception:
             logger.warning("Failed to check availability for %s — treating as available", uri)
         if i < len(needs_check) - 1:
@@ -199,14 +205,21 @@ def generate_description(
     return desc
 
 
+def whoop_metrics(conn: sqlite3.Connection, date_str: str) -> dict:
+    """WHOOP's own numbers for the day, logged with the playlist for the record; {} with no recovery."""
+    recovery = get_recovery_by_date(conn, date_str) or {}
+    keys = ("recovery_score", "hrv_rmssd_milli", "ln_rmssd", "resting_heart_rate")
+    return {key: recovery[key] for key in keys if recovery.get(key) is not None}
+
+
 def format_reasoning(
-    classification_result: dict,
+    metrics: dict,
     match_result: dict,
 ) -> str:
     """Format full reasoning for DB storage (no size limit).
 
     The Attuned state and score position that picked the songs, WHOOP's raw
-    metrics for the record, then match stats.
+    metrics (whoop_metrics) for the record, then match stats.
     """
     lines = []
 
@@ -214,7 +227,6 @@ def format_reasoning(
     position = match_result.get("position")
     lines.append(f"Attuned position: {'none (no score)' if position is None else f'{position:.2f}'}")
 
-    metrics = classification_result.get("metrics", {})
     if metrics:
         lines.append("")
         lines.append("Metrics:")
@@ -257,25 +269,24 @@ def select_day_songs(
     point_in_time: bool = False,
     prior_playlists: dict[str, list[str]] | None = None,
     history: dict[str, dict] | None = None,
-) -> tuple[dict, dict]:
+    library: list[dict] | None = None,
+) -> dict:
     """Match songs to the day's Attuned state — no Spotify, no DB writes.
 
     Over-selects by AVAILABILITY_BUFFER_SIZE so callers can drop unavailable
     tracks and still fill MAX_PLAYLIST_SIZE. point_in_time replays a past day
-    using only the library as it stood that morning; prior_playlists counts
-    earlier replayed days for rotation (see select_songs). history (from
+    using only the library as it stood that morning; library passes that
+    rewound library in when the caller already has it (see select_songs);
+    prior_playlists counts earlier replayed days for rotation. history (from
     feeling_score.compute_composite_history) saves rescoring every earlier day
     (~3 s) when building many days; the result is the same without it.
 
-    Returns (classification, match_result). classification is the old WHOOP
-    classifier's output, kept only for its raw metrics; it plays no part in the
-    songs. match_result["state"] and ["position"] are the Attuned state and
-    score position (0-1, None when the day has no score).
+    Returns select_songs' result; its "state" and "position" are the Attuned
+    state and score position (0-1, None when the day has no score).
     Raises GenerationError on insufficient WHOOP data or no matching songs.
     """
-    # 1. Data check: "insufficient_data" means fewer than 14 days of HRV (no baseline yet)
-    classification = classify_state(conn, date_str)
-    if classification["state"] == "insufficient_data":
+    # 1. Data check: no HRV baseline means fewer than 14 days of HRV
+    if compute_hrv_baseline(conn, date_str) is None:
         raise GenerationError(
             "Cannot generate playlist — insufficient WHOOP data (need 14+ days of HRV)"
         )
@@ -302,6 +313,7 @@ def select_day_songs(
         target_size=buffer_size,
         point_in_time=point_in_time,
         prior_playlists=prior_playlists,
+        library=library,
     )
 
     if not match_result["songs"]:
@@ -311,7 +323,7 @@ def select_day_songs(
         )
     match_result["state"] = state
     match_result["position"] = continuous["position"]
-    return classification, match_result
+    return match_result
 
 
 def generate_playlist(
@@ -349,13 +361,13 @@ def generate_playlist(
         date_str = date.today().isoformat()
 
     # 1-2. Attuned state and target, match songs
-    classification, match_result = select_day_songs(conn, date_str)
+    match_result = select_day_songs(conn, date_str)
     state = match_result["state"]
     songs = match_result["songs"]
 
     # 2b. Filter unavailable tracks (Spotify may have removed them), then trim to target
     if sp is not None:
-        songs = _filter_unavailable_tracks(sp, songs, conn=conn)
+        songs = filter_unavailable_tracks(sp, songs, conn=conn)
         if not songs:
             raise GenerationError(
                 f"All matched songs for state '{state}' are unavailable on Spotify"
@@ -368,7 +380,8 @@ def generate_playlist(
 
     name = format_playlist_name(date_str, neuro_profile, match_result["position"])
     description = generate_description(neuro_profile, songs, cohesion_stats)
-    reasoning = format_reasoning(classification, match_result)
+    metrics = whoop_metrics(conn, date_str)
+    reasoning = format_reasoning(metrics, match_result)
     track_uris = [s["spotify_uri"] for s in songs]
 
     # 4. Create Spotify playlist (unless dry_run)
@@ -390,7 +403,7 @@ def generate_playlist(
                 detected_state=state,
                 track_uris=track_uris,
                 reasoning=f"FAILED: {e}\n\n{reasoning}",
-                whoop_metrics=classification.get("metrics"),
+                whoop_metrics=metrics,
                 description=description,
                 spotify_playlist_id=None,
             )
@@ -403,7 +416,7 @@ def generate_playlist(
         detected_state=state,
         track_uris=track_uris,
         reasoning=reasoning,
-        whoop_metrics=classification.get("metrics"),
+        whoop_metrics=metrics,
         description=description,
         spotify_playlist_id=playlist_id,
     )
@@ -492,7 +505,7 @@ def generate_nl_playlist(
 
     # 2. Filter unavailable tracks
     if sp is not None:
-        songs = _filter_unavailable_tracks(sp, songs, conn=conn)
+        songs = filter_unavailable_tracks(sp, songs, conn=conn)
         if not songs:
             raise GenerationError("All selected songs are unavailable on Spotify")
     songs = songs[:MAX_PLAYLIST_SIZE]

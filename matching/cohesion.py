@@ -121,6 +121,11 @@ def compute_era_similarity(
     return math.exp(-(diff ** 2) / (2 * sigma ** 2))
 
 
+def release_year(song: dict[str, Any]) -> int | None:
+    """The song's year: its original release (a remaster or re-release keeps the old year)."""
+    return song.get("original_release_year") or song.get("release_year")
+
+
 def compute_pairwise_similarity(
     song_a: dict[str, Any],
     song_b: dict[str, Any],
@@ -143,10 +148,8 @@ def compute_pairwise_similarity(
     bpm_sim = compute_bpm_similarity(scoring_tempo(song_a), scoring_tempo(song_b))
     score += w["bpm"] * bpm_sim
 
-    year_a = song_a.get("original_release_year") or song_a.get("release_year")
-    year_b = song_b.get("original_release_year") or song_b.get("release_year")
     era_sim = compute_era_similarity(
-        year_a, year_b,
+        release_year(song_a), release_year(song_b),
         song_a.get("genre_tags"), song_b.get("genre_tags"))
     score += w["release_year"] * era_sim
 

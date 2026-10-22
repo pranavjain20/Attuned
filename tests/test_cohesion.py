@@ -11,6 +11,7 @@ from matching.cohesion import (
     compute_property_similarity,
     compute_tag_similarity,
     expand_cluster,
+    release_year,
     select_cohesive_songs,
     select_seed,
 )
@@ -608,3 +609,16 @@ class TestCohesionWithAnchors:
         candidates = [_make_candidate(i) for i in range(25)]
         _, stats = select_cohesive_songs(candidates, pool_size=25, target_size=15)
         assert stats["anchor_count"] == 0
+
+
+class TestReleaseYear:
+    """One rule for a song's year everywhere: the original release wins over a re-release."""
+
+    def test_original_year_wins(self):
+        assert release_year({"original_release_year": 1995, "release_year": 2015}) == 1995
+
+    def test_falls_back_to_release_year(self):
+        assert release_year({"original_release_year": None, "release_year": 2015}) == 2015
+
+    def test_unknown_is_none(self):
+        assert release_year({}) is None

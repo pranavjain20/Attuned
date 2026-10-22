@@ -1,6 +1,7 @@
 """Tests for the static showcase site: page copy, track enrichment, day assembly, rendering."""
 
 import json
+import re
 import sys
 import urllib.error
 from unittest.mock import patch
@@ -105,9 +106,12 @@ class TestCompareCopy:
     def test_no_score_no_reason_is_empty_line(self):
         assert compare_copy(_attuned(None), {"recovery": 50})["line"] == ""
 
-    def test_missing_whoop_recovery_counts_as_zero(self):
-        copy = compare_copy(_attuned(30, [_driver("hrv_z", "up")]), {"recovery": None})
-        assert copy["title"] == "Why you'll likely feel better than WHOOP says"
+    @pytest.mark.parametrize("score", [5, 30, 95])
+    def test_missing_whoop_recovery_is_neutral(self, score):
+        """No WHOOP number is not a WHOOP 0: no better/worse claim and no gap note."""
+        copy = compare_copy(_attuned(score, [_driver("hrv_z", "up")]), {"recovery": None})
+        assert copy == {"title": "No WHOOP recovery to compare today",
+                        "line": "A higher HRV than usual.", "note": ""}
 
     def test_unknown_signal_ignored(self):
         a = _attuned(57, [_driver("mystery_z", "up"), _driver("rem_sleep_z", "down")])
@@ -117,12 +121,43 @@ class TestCompareCopy:
         assert compare_copy(_attuned(57), {"recovery": 81})["note"] == \
             "A 24-point gap: body readiness and mood can point different ways."
 
+    @pytest.mark.parametrize("whoop, note", [(57, "Same score as WHOOP today."),
+                                             (58, "Within 1 point: today the two scores roughly agree.")])
+    def test_note_says_point_for_one(self, whoop, note):
+        assert compare_copy(_attuned(57), {"recovery": whoop})["note"] == note
+
     def test_note_for_small_gap(self):
         assert compare_copy(_attuned(57), {"recovery": 62})["note"] == \
             "Within 5 points: today the two scores roughly agree."
 
     def test_note_at_twenty_points_is_a_gap(self):
         assert compare_copy(_attuned(40), {"recovery": 60})["note"].startswith("A 20-point gap")
+
+    @pytest.mark.parametrize("whoop, note", [(39, "An 11-point gap."), (32, "An 18-point gap."),
+                                             (36, "A 14-point gap."),
+                                             (100, "A 50-point gap: body readiness and mood can point different ways.")])
+    def test_gap_note_article_follows_the_spoken_number(self, whoop, note):
+        assert compare_copy(_attuned(50), {"recovery": whoop})["note"] == note
+
+    @pytest.mark.parametrize("size, article", [(8, "An"), (11, "An"), (18, "An"), (80, "An"), (88, "An"),
+                                               (10, "A"), (12, "A"), (19, "A"), (28, "A"), (100, "A")])
+    def test_gap_article(self, size, article):
+        assert site._gap_article(size) == article
+
+    def test_medium_gap_title_and_note_agree(self):
+        """70 vs 55 used to say "better than WHOOP" above and "roughly agree" below."""
+        copy = compare_copy(_attuned(70), {"recovery": 55})
+        assert copy["title"] == "Why you'll likely feel better than WHOOP says"
+        assert copy["note"] == "A 15-point gap."
+
+    @pytest.mark.parametrize("attuned, whoop", [(50, 60), (60, 50), (40, 59), (59, 40), (55, 64), (64, 55),
+                                                (0, 100), (100, 0), (50, 50)])
+    def test_title_and_note_never_contradict(self, attuned, whoop):
+        copy = compare_copy(_attuned(attuned), {"recovery": whoop})
+        agree_title = copy["title"] == "WHOOP and Attuned roughly agree today"
+        agree_note = "roughly agree" in copy["note"] or copy["note"] == "Same score as WHOOP today."
+        assert agree_title == agree_note
+        assert agree_title == (abs(attuned - whoop) < site.AGREE_WITHIN_POINTS)
 
 
 class TestReasonLine:
@@ -143,6 +178,15 @@ class TestReasonLine:
 
     def test_no_score_uses_reason_or_default(self):
         assert reason_line(_attuned(None), {}) == "No feeling score for this day."
+
+    @pytest.mark.parametrize("first, line", [
+        ("down", "Less REM, despite a higher HRV."),   # drivers come explaining-side first
+        ("up", "A higher HRV, despite less REM."),
+    ])
+    def test_without_whoop_leads_with_the_first_driver(self, first, line):
+        drivers = [_driver("rem_sleep_z", "down"), _driver("hrv_z", "up")]
+        a = _attuned(50, drivers if first == "down" else drivers[::-1])
+        assert reason_line(a, {"recovery": None}) == line
 
 
 # ─── playlist summary ────────────────────────────────────────────────────────
@@ -200,6 +244,9 @@ class TestPlaylistSummary:
         s = playlist_summary({"tracks": self.TRACKS}, _attuned(50, state="grounding", band="yellow"))
         assert s["lead"] == "You'll likely feel middling today, so this playlist is built to keep you level."
         assert s["kinds"].startswith("Steady, familiar, mostly ")
+        # Hennessy 2025: personally nostalgic songs beat merely familiar ones (docs/RESEARCH.md).
+        assert s["why"] == ("Studies find music you love triggers the brain's reward system, "
+                            "so personally meaningful songs land harder emotionally.")
         assert s["cites"] == [["Salimpoor 2011", "https://doi.org/10.1038/nn.2726"],
                               ["Hennessy 2025", "https://doi.org/10.1002/hbm.70181"]]
 
@@ -211,9 +258,14 @@ class TestPlaylistSummary:
         s = playlist_summary({"tracks": self.TRACKS}, _attuned(70, band=None))
         assert s["lead"].startswith("You'll likely feel good today")
 
-    def test_no_score_says_okay(self):
-        s = playlist_summary({"tracks": self.TRACKS}, _attuned(None))
-        assert s["lead"].startswith("You'll likely feel okay today")
+    def test_no_score_says_there_is_no_score_yet(self):
+        s = playlist_summary({"tracks": self.TRACKS, "state": "grounding"}, _attuned(None, state=None))
+        assert s["lead"] == "There's no Attuned score for today yet, so this playlist is built to keep you level."
+        assert "feel" not in s["lead"]
+
+    def test_no_score_uses_the_playlists_own_state(self):
+        s = playlist_summary({"tracks": self.TRACKS, "state": "rest"}, _attuned(None, state=None))
+        assert s["lead"].endswith("built to help you settle.")
 
 
 class TestDurations:
@@ -296,13 +348,54 @@ class TestOembedArtCache:
         cache = self._cache(tmp_path, lambda u, timeout: pytest.fail("should not fetch"))
         assert cache(self.URL) == "T"
 
-    def test_http_error_is_cached_as_none(self, tmp_path):
+    def test_not_found_is_cached_as_none(self, tmp_path):
         def fetch(u, timeout):
             raise urllib.error.HTTPError(u, 404, "Not Found", {}, None)
         cache = self._cache(tmp_path, fetch)
         assert cache(self.URL) is None
         cache.save()
         assert json.loads((tmp_path / "art.json").read_text()) == {self.URL: None}
+
+    @pytest.mark.parametrize("code", [500, 502, 503])
+    def test_server_error_is_not_cached(self, tmp_path, code):
+        """A passing outage must not leave the track without art forever."""
+        calls = []
+
+        def fetch(u, timeout):
+            calls.append(u)
+            raise urllib.error.HTTPError(u, code, "Server Error", {}, None)
+        cache = self._cache(tmp_path, fetch)
+        assert cache(self.URL) is None
+        assert cache("https://open.spotify.com/track/def") is None
+        cache.save()
+        assert json.loads((tmp_path / "art.json").read_text()) == {}
+        assert len(calls) == 2  # one server error doesn't stop the others
+
+    def test_rate_limit_not_cached_and_stops_further_fetches(self, tmp_path):
+        """Spotify asked us to slow down: stop asking for the rest of this build."""
+        calls = []
+
+        def fetch(u, timeout):
+            calls.append(u)
+            raise urllib.error.HTTPError(u, 429, "Too Many Requests", {}, None)
+        cache = self._cache(tmp_path, fetch)
+        assert cache(self.URL) is None
+        assert cache("https://open.spotify.com/track/def") is None
+        cache.save()
+        assert json.loads((tmp_path / "art.json").read_text()) == {}
+        assert len(calls) == 1
+
+    def test_retried_after_a_server_error(self, tmp_path):
+        replies = iter([urllib.error.HTTPError(self.URL, 503, "x", {}, None), _FakeResponse(b'{"thumbnail_url": "T"}')])
+
+        def fetch(u, timeout):
+            reply = next(replies)
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+        cache = self._cache(tmp_path, fetch)
+        assert cache(self.URL) is None
+        assert cache(self.URL) == "T"
 
     def test_network_failure_not_cached_and_stops_further_fetches(self, tmp_path):
         calls = []
@@ -340,6 +433,12 @@ class TestLoadPublished:
         path.write_text(json.dumps({"2026-04-08": record}))
         assert load_published(path) == {"2026-04-08": record}
 
+    def test_reads_name_and_description(self, tmp_path):
+        path = tmp_path / "published.json"
+        record = {"url": "https://open.spotify.com/playlist/p", "track_uris": [], "name": "N", "description": "D"}
+        path.write_text(json.dumps({"2026-04-08": record}))
+        assert load_published(path) == {"2026-04-08": record}
+
     @pytest.mark.parametrize("bad", [
         [],
         {"2026-04-08": "https://open.spotify.com/playlist/p"},
@@ -347,6 +446,8 @@ class TestLoadPublished:
         {"2026-04-08": {"url": 1, "track_uris": []}},
         {"2026-04-08": {"url": "u", "track_uris": "spotify:track:a"}},
         {"2026-04-08": {"url": "u", "track_uris": [1]}},
+        {"2026-04-08": {"url": "u", "track_uris": [], "name": 1}},
+        {"2026-04-08": {"url": "u", "track_uris": [], "description": None}},
     ])
     def test_rejects_malformed(self, tmp_path, bad):
         path = tmp_path / "published.json"
@@ -365,10 +466,24 @@ class TestLoadPublished:
 class TestOpenLink:
     TRACKS = [{"spotify_url": "https://open.spotify.com/track/first"},
               {"spotify_url": "https://open.spotify.com/track/second"}]
+    URL = "https://open.spotify.com/playlist/p"
 
-    def test_published_playlist_opens_the_playlist(self):
-        assert open_link("https://open.spotify.com/playlist/p", self.TRACKS) == {
-            "label": "Open in Spotify", "url": "https://open.spotify.com/playlist/p"}
+    def _record(self, uris):
+        return {"url": self.URL, "track_uris": uris}
+
+    def test_published_with_the_same_tracks_opens_the_playlist(self):
+        record = self._record(["spotify:track:first", "spotify:track:second"])
+        assert open_link(record, self.TRACKS) == {"label": "Open in Spotify", "url": self.URL}
+
+    @pytest.mark.parametrize("uris", [
+        ["spotify:track:second", "spotify:track:first"],  # same songs, other order
+        ["spotify:track:first"],                          # fewer
+        [],                                               # created, never filled
+        ["spotify:track:first", "spotify:track:second", "spotify:track:third"],
+    ])
+    def test_published_with_other_tracks_plays_the_first_song(self, uris):
+        assert open_link(self._record(uris), self.TRACKS) == {
+            "label": "Play on Spotify", "url": "https://open.spotify.com/track/first"}
 
     def test_unpublished_plays_the_first_song(self):
         assert open_link(None, self.TRACKS) == {
@@ -376,6 +491,7 @@ class TestOpenLink:
 
     def test_no_tracks_no_link(self):
         assert open_link(None, []) is None
+        assert open_link(self._record([]), []) is None
 
 
 # ─── render ──────────────────────────────────────────────────────────────────
@@ -405,7 +521,8 @@ class TestRender:
 # ─── build_site_days ─────────────────────────────────────────────────────────
 
 
-PLAYLIST = {"name": "P", "spotify_url": None, "state": "rest", "tracks": [dict(TRACK)]}
+SPARE = {"title": "Spare", "artist": "S", "spotify_url": "https://open.spotify.com/track/spare", "why": "Spare."}
+PLAYLIST = {"name": "P", "state": "rest", "tracks": [dict(TRACK)], "spares": [dict(SPARE)]}
 
 
 def _page_day(conn, date, history=None):
@@ -470,13 +587,14 @@ class TestBuildSiteDays:
         assert dates == ["2026-10-18", "2026-10-19", "2026-10-20", "2026-10-21"]
 
     def test_marks_the_most_recent_days_as_shortcuts(self, recoveries, stubbed):
-        notable = {d["date"]: d["notable"] for d in _build(recoveries)}
-        assert notable == {"2026-10-18": False, "2026-10-19": True, "2026-10-20": True, "2026-10-21": True}
+        shortcut = {d["date"]: d["shortcut"] for d in _build(recoveries)}
+        assert shortcut == {"2026-10-18": False, "2026-10-19": True, "2026-10-20": True, "2026-10-21": True}
         assert SHORTCUT_DAYS == 3
+        assert all("notable" not in d for d in _build(recoveries))
 
     def test_fewer_days_than_shortcuts_marks_them_all(self, recoveries, stubbed):
         days = build_site_days(recoveries, "2026-10-21", 1, art_lookup=lambda u: None)
-        assert [(d["date"], d["notable"]) for d in days] == [("2026-10-21", True)]
+        assert [(d["date"], d["shortcut"]) for d in days] == [("2026-10-21", True)]
 
     def test_range_replayed_once(self, recoveries, stubbed):
         _build(recoveries)
@@ -508,12 +626,10 @@ class TestBuildSiteDays:
         _build(recoveries)
         assert PLAYLIST["tracks"][0] == TRACK and "summary" not in PLAYLIST
 
-    def test_published_url_used_when_mapped(self, recoveries, stubbed):
-        url = "https://open.spotify.com/playlist/p"
-        published = {"2026-10-20": {"url": url, "track_uris": ["spotify:track:abc"]}}
-        days = {d["date"]: d for d in _build(recoveries, published=published)}
-        assert days["2026-10-20"]["playlist"]["spotify_url"] == url
-        assert days["2026-10-21"]["playlist"]["spotify_url"] is None
+    def test_page_playlist_carries_no_spotify_url_or_spares(self, recoveries, stubbed):
+        """The button is `open`; spares are for publishing only."""
+        pl = next(d for d in _build(recoveries) if d["date"] == "2026-10-21")["playlist"]
+        assert "spotify_url" not in pl and "spares" not in pl
 
     def test_open_link_is_playlist_when_published_else_first_song(self, recoveries, stubbed):
         url = "https://open.spotify.com/playlist/p"
@@ -522,6 +638,30 @@ class TestBuildSiteDays:
         assert days["2026-10-20"]["playlist"]["open"] == {"label": "Open in Spotify", "url": url}
         assert days["2026-10-21"]["playlist"]["open"] == {
             "label": "Play on Spotify", "url": TRACK["spotify_url"]}
+
+    def test_published_with_a_spare_shows_the_published_songs(self, recoveries, stubbed):
+        """Publishing swapped an unavailable song for a spare: the page shows what Spotify has."""
+        url = "https://open.spotify.com/playlist/p"
+        published = {"2026-10-20": {"url": url, "track_uris": ["spotify:track:spare"]}}
+        pl = {d["date"]: d for d in _build(recoveries, published=published)}["2026-10-20"]["playlist"]
+        assert [t["title"] for t in pl["tracks"]] == ["Spare"]
+        assert pl["tracks"][0]["why"] == "Spare."
+        assert pl["open"] == {"label": "Open in Spotify", "url": url}
+
+    def test_published_songs_shown_in_the_published_order(self, recoveries, stubbed):
+        published = {"2026-10-20": {"url": "https://open.spotify.com/playlist/p",
+                                    "track_uris": ["spotify:track:spare", "spotify:track:abc"]}}
+        pl = {d["date"]: d for d in _build(recoveries, published=published)}["2026-10-20"]["playlist"]
+        assert [t["title"] for t in pl["tracks"]] == ["Spare", "Saibo"]
+
+    @pytest.mark.parametrize("uris", [["spotify:track:gone"], ["spotify:track:abc", "spotify:track:gone"], []])
+    def test_stale_publish_falls_back_to_the_replay_and_first_song(self, recoveries, stubbed, uris):
+        """The replay no longer has every published song: show the replay, never link a playlist
+        that doesn't match the songs on the page."""
+        published = {"2026-10-20": {"url": "https://open.spotify.com/playlist/p", "track_uris": uris}}
+        pl = {d["date"]: d for d in _build(recoveries, published=published)}["2026-10-20"]["playlist"]
+        assert [t["title"] for t in pl["tracks"]] == ["Saibo"]
+        assert pl["open"] == {"label": "Play on Spotify", "url": TRACK["spotify_url"]}
 
     def test_no_recoveries_in_window_builds_nothing(self, db_conn, stubbed):
         assert _build(db_conn) == []
@@ -547,10 +687,135 @@ class TestBuildSiteDaysIntegration:
         assert "pl.open.url" in template and "pl.open.label" in template
         assert "Not saved to Spotify yet" not in template and "btn-note" not in template
 
+    def test_template_states_carry_only_a_colour(self):
+        """No unused per-state copy (and no unchecked "Mid-tempo music" claim) in the page."""
+        template = site.TEMPLATE_PATH.read_text()
+        assert "meaning:" not in template and "Mid-tempo" not in template and "icon:" not in template
+        assert "notable" not in template.lower()
+
     def test_renders_into_real_template(self, recoveries):
         days = build_site_days(recoveries, "2026-10-21", 2, art_lookup=lambda u: None)
         html = render(site.TEMPLATE_PATH.read_text(), days)
         assert DATA_PLACEHOLDER not in html and "2026-10-21" in html
+
+
+class TestBuildSiteDaysRealData:
+    """Real scoring, replay and enrichment on a seeded DB: 95 days of WHOOP data, 40 songs."""
+
+    END = "2026-06-05"
+    WINDOW = ["2026-06-01", "2026-06-02", "2026-06-03", "2026-06-04", "2026-06-05"]
+    TITLES = {"WHOOP and Attuned roughly agree today", "Why you'll likely feel worse than WHOOP says",
+              "Why you'll likely feel better than WHOOP says"}
+
+    @pytest.fixture(scope="class")
+    def seeded(self, tmp_path_factory):
+        from db.schema import get_connection
+        from tests.test_day_playlist import _add_song
+        from tests.test_feeling_score import HOUR, _insert_day, _seed_history
+
+        conn = get_connection(tmp_path_factory.mktemp("site") / "site.db")
+        _seed_history(conn, self.WINDOW[0], 90)
+        nights = [(4.0, 78, 40, 70), (7.2, 88, 48, 55), (9.0, 95, 56, 30), (6.5, 85, 46, 50), (8.1, 92, 52, 50)]
+        for i, (total_h, eff, hrv, recovery) in enumerate(nights):
+            _insert_day(conn, self.WINDOW[i], 1 + i, total_ms=total_h * HOUR, eff=eff, hrv=hrv, rhr=56,
+                        recovery=recovery)
+        for i in range(40):
+            uri = _add_song(conn, i, [f"2026-03-{k + 1:02d}T12:00:00Z" for k in range(1 + i % 5)], para=i / 40)
+            conn.execute("UPDATE songs SET duration_ms = ? WHERE spotify_uri = ?", (180_000 + i * 1000, uri))
+        conn.commit()
+        days = build_site_days(conn, self.END, 5, art_lookup=lambda url: f"art:{url}")
+        yield conn, days
+        conn.close()
+
+    def test_every_window_day_is_scored_with_consistent_bands(self, seeded):
+        from intelligence.feeling_score import band
+        _, days = seeded
+        assert [d["date"] for d in days] == self.WINDOW
+        for day in days:
+            score, recovery = day["attuned"]["score"], day["whoop"]["recovery"]
+            assert isinstance(score, int) and 0 <= score <= 100
+            assert day["attuned"]["band"] == band(score)
+            assert day["whoop"]["band"] == band(recovery)
+
+    def test_compare_title_and_note_agree_with_the_gap(self, seeded):
+        _, days = seeded
+        for day in days:
+            copy = day["attuned"]["compare"]
+            gap = day["attuned"]["score"] - day["whoop"]["recovery"]
+            assert copy["title"] in self.TITLES
+            if abs(gap) < site.AGREE_WITHIN_POINTS:
+                assert "roughly agree" in copy["title"] and "roughly agree" in copy["note"]
+            else:
+                assert ("worse" if gap < 0 else "better") in copy["title"]
+                assert copy["note"].startswith(f"{site._gap_article(abs(gap))} {abs(gap)}-point gap")
+            assert copy["line"]
+
+    def test_seed_covers_agree_medium_and_big_gaps(self, seeded):
+        _, days = seeded
+        gaps = {abs(d["attuned"]["score"] - d["whoop"]["recovery"]) for d in days}
+        assert any(g < 10 for g in gaps) and any(10 <= g < 20 for g in gaps) and any(g >= 20 for g in gaps)
+
+    def test_playlists_have_enriched_tracks(self, seeded):
+        _, days = seeded
+        for day in days:
+            pl = day["playlist"]
+            assert pl is not None and 15 <= len(pl["tracks"]) <= 20
+            assert set(pl) == {"name", "state", "open", "tracks", "total_time", "summary"}
+            assert pl["name"].startswith(("Jun 1 ", "Jun 2 ", "Jun 3 ", "Jun 4 ", "Jun 5 "))
+            for track in pl["tracks"]:
+                assert track["art"] == f"art:{track['spotify_url']}"
+                assert re.fullmatch(r"3:\d\d", track["duration"])
+                assert track["moods"] == ["romantic", "nostalgic"] and track["genres"] == ["bollywood"]
+                assert track["why"]
+            assert pl["total_time"].endswith("min")
+            assert pl["summary"]["lead"].startswith("You'll likely feel ")
+
+    def test_unpublished_days_play_the_first_song(self, seeded):
+        _, days = seeded
+        for day in days:
+            assert day["playlist"]["open"] == {"label": "Play on Spotify",
+                                               "url": day["playlist"]["tracks"][0]["spotify_url"]}
+
+    def test_published_day_opens_its_playlist(self, seeded):
+        conn, days = seeded
+        tracks = days[3]["playlist"]["tracks"]
+        record = {"url": "https://open.spotify.com/playlist/p", "track_uris": [_uri(t) for t in tracks]}
+        rebuilt = build_site_days(conn, self.END, 5, art_lookup=lambda url: None, published={self.WINDOW[3]: record})
+        assert rebuilt[3]["playlist"]["open"] == {"label": "Open in Spotify", "url": record["url"]}
+        assert [t["spotify_url"] for t in rebuilt[3]["playlist"]["tracks"]] == [t["spotify_url"] for t in tracks]
+        assert rebuilt[4]["playlist"]["open"]["label"] == "Play on Spotify"
+
+    def test_published_with_a_spare_shows_it_and_opens_the_playlist(self, seeded):
+        conn, days = seeded
+        replay = site.replay_playlists(conn, self.WINDOW)[self.WINDOW[4]]
+        assert replay["spares"], "the replay keeps its buffer for publishing"
+        uris = [_uri(t) for t in replay["tracks"][1:]] + [_uri(replay["spares"][0])]
+        record = {"url": "https://open.spotify.com/playlist/q", "track_uris": uris}
+        rebuilt = build_site_days(conn, self.END, 5, art_lookup=lambda url: None, published={self.WINDOW[4]: record})
+        pl = rebuilt[4]["playlist"]
+        assert [_uri(t) for t in pl["tracks"]] == uris
+        assert pl["tracks"][-1]["why"] == replay["spares"][0]["why"]
+        assert pl["open"]["url"] == record["url"]
+
+    def test_stale_published_record_plays_the_first_song(self, seeded):
+        conn, days = seeded
+        record = {"url": "https://open.spotify.com/playlist/p", "track_uris": ["spotify:track:not-in-the-replay"]}
+        rebuilt = build_site_days(conn, self.END, 5, art_lookup=lambda url: None, published={self.WINDOW[2]: record})
+        assert rebuilt[2]["playlist"]["open"]["label"] == "Play on Spotify"
+        assert rebuilt[2]["playlist"]["tracks"] == [{**t, "art": None} for t in days[2]["playlist"]["tracks"]]
+
+    def test_shortcuts_on_the_last_three_days(self, seeded):
+        _, days = seeded
+        assert [d["shortcut"] for d in days] == [False, False, True, True, True]
+
+    def test_renders_into_the_real_template(self, seeded):
+        _, days = seeded
+        html = render(site.TEMPLATE_PATH.read_text(), days)
+        assert DATA_PLACEHOLDER not in html and self.END in html
+
+
+def _uri(track):
+    return "spotify:track:" + track["spotify_url"].rsplit("/", 1)[-1]
 
 
 # ─── CLI ─────────────────────────────────────────────────────────────────────

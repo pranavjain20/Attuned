@@ -27,13 +27,12 @@ COMMANDS = {
     "sync-recently-played": "Pull recently-played tracks from Spotify (last 24h)",
     "dedup-songs": "Consolidate duplicate songs (same name+artist, different URIs)",
     "compute-engagement": "Compute engagement scores for all eligible songs",
-    "classify-state": "Classify today's physiological state from WHOOP data",
     "download-audio": "Download audio clips (Spotify preview + yt-dlp)",
     "redownload-short-clips": "Replace short preview clips with full YouTube downloads",
     "analyze-audio": "Run Essentia analysis on audio clips (--tempo-only: just backfill tempo readings)",
     "classify-songs": "Run LLM classification on unclassified songs",
     "validate-classifications": "Validate existing classifications and flag suspicious songs",
-    "fetch-soundcharts-tempos": "Fetch Soundcharts tempo for engaged songs with no audio clip (--limit N, default 50)",
+    "fetch-soundcharts-tempos": "Fetch Soundcharts tempo for engaged songs with no audio clip (--limit N, default 50; --force re-asks songs answered with no tempo)",
     "update-tempos": "Decide every song's scored tempo from its stored readings (no API calls)",
     "set-tempo": "Pin a song's tempo by hand: set-tempo <spotify_uri|title> <bpm>",
     "recompute-scores": "Recompute neuro scores from existing DB data (no API calls)",
@@ -98,8 +97,6 @@ def main() -> None:
         _cmd_dedup_songs(db_path)
     elif command == "compute-engagement":
         _cmd_compute_engagement(db_path)
-    elif command == "classify-state":
-        _cmd_classify_state(db_path)
     elif command == "download-audio":
         _cmd_download_audio(db_path)
     elif command == "redownload-short-clips":
@@ -527,10 +524,12 @@ def _cmd_build_site(db_path: Path) -> None:
 def _cmd_publish_playlists(db_path: Path) -> None:
     """Create public Spotify playlists for the page's --recent latest days (default and max 3).
 
-    Uses the same --days/--end window as build-site, so each playlist is exactly
-    what the page shows. Records them in web/published.json; re-running never
-    makes a second playlist for a recorded day, it only replaces changed tracks.
-    --dry-run prints the plan without logging in to Spotify or writing anything.
+    Replays the same --days/--end window as build-site, so each playlist is
+    exactly what the page shows; songs Spotify no longer plays are swapped for
+    the day's spares first. Records them in web/published.json; re-running never
+    makes a second playlist for a recorded day, it only updates changed tracks,
+    name or description. --dry-run prints the plan without logging in to
+    Spotify (so without the availability check) or writing anything.
     """
     from spotify.auth import SpotifyRateLimitError, get_spotify_client
     from spotify.playlist import SpotifyPlaylistError
@@ -552,18 +551,26 @@ def _cmd_publish_playlists(db_path: Path) -> None:
     logging.getLogger().setLevel(logging.WARNING)
     conn = get_connection(db_path)
     try:
-        days = site.build_site_days(conn, end_date, n_days, art_lookup=lambda url: None)
+        dates = site.window_dates(conn, end_date, n_days)
+        playlists = site.replay_playlists(conn, dates)
+        days = [{"date": date, "playlist": playlists.get(date)} for date in dates]
         published = site.load_published(site.PUBLISHED_PATH)
-        steps = publish.plan_publish(days, published, n_recent, allow_more)
+        sp, unavailable = None, set()
+        if not dry_run:
+            sp = get_spotify_client(conn)
+            unavailable = publish.find_unavailable(conn, sp, publish.recent_days(days, n_recent, allow_more))
+        steps = publish.plan_publish(days, published, n_recent, allow_more, unavailable)
         for step in steps:
-            print(f"  {step['date']}  {step['action']:<9}  {step['name']} ({len(step['track_uris'])} songs)")
+            changes = f" ({', '.join(step['changes'])})" if step["changes"] else ""
+            print(f"  {step['date']}  {step['action'] + changes:<25}  {step['name']} "
+                  f"({len(step['track_uris'])} songs)")
         if dry_run:
-            print("Dry run: nothing written, Spotify not contacted.")
+            print("Dry run: nothing written, Spotify not contacted (song availability not checked).")
             return
         if all(step["action"] == "unchanged" for step in steps):
             print("Nothing to publish.")
             return
-        published = publish.publish_steps(get_spotify_client(conn), steps, published, site.PUBLISHED_PATH)
+        published = publish.publish_steps(sp, steps, published, site.PUBLISHED_PATH)
     except (SpotifyRateLimitError, SpotifyPlaylistError) as e:
         print(f"Error: {e}\nStopped; {site.PUBLISHED_PATH} lists what was published. Re-run to finish.")
         sys.exit(1)
@@ -733,71 +740,6 @@ def _cmd_compute_engagement(db_path: Path) -> None:
         conn.close()
 
 
-def _cmd_classify_state(db_path: Path) -> None:
-    from datetime import date
-
-    from intelligence.state_classifier import classify_state
-
-    # Support --date flag, default to today
-    target_date = date.today().isoformat()
-    if "--date" in sys.argv:
-        idx = sys.argv.index("--date")
-        if idx + 1 < len(sys.argv):
-            target_date = sys.argv[idx + 1]
-
-    conn = get_connection(db_path)
-    try:
-        result = classify_state(conn, target_date)
-
-        state = result["state"].replace("_", " ").title()
-        print(f"\n{'='*50}")
-        print(f"  State: {state}")
-        print(f"  Confidence: {result['confidence']}")
-        print(f"  Date: {target_date}")
-        print(f"{'='*50}")
-
-        if result["reasoning"]:
-            print("\nReasoning:")
-            for r in result["reasoning"]:
-                print(f"  - {r}")
-
-        metrics = result["metrics"]
-        if metrics:
-            print("\nToday's Metrics:")
-            if "recovery_score" in metrics and metrics["recovery_score"] is not None:
-                print(f"  Recovery:  {metrics['recovery_score']:.0f}%")
-            if "hrv_rmssd_milli" in metrics and metrics["hrv_rmssd_milli"] is not None:
-                print(f"  HRV:       {metrics['hrv_rmssd_milli']:.1f} ms")
-            if "resting_heart_rate" in metrics and metrics["resting_heart_rate"] is not None:
-                print(f"  RHR:       {metrics['resting_heart_rate']:.0f} bpm")
-            if "deep_sleep_ms" in metrics and metrics["deep_sleep_ms"] is not None:
-                deep_h = metrics["deep_sleep_ms"] / 3_600_000
-                print(f"  Deep:      {deep_h:.1f}h")
-            if "rem_sleep_ms" in metrics and metrics["rem_sleep_ms"] is not None:
-                rem_h = metrics["rem_sleep_ms"] / 3_600_000
-                print(f"  REM:       {rem_h:.1f}h")
-            if "sleep_debt_hours" in metrics and metrics["sleep_debt_hours"] is not None:
-                print(f"  Debt:      {metrics['sleep_debt_hours']:.1f}h")
-            if "recovery_delta" in metrics:
-                delta = metrics["recovery_delta"]
-                yesterday = metrics.get("yesterday_recovery_score")
-                if yesterday is not None:
-                    print(f"  Delta:     {delta:+.0f}pp (yesterday: {yesterday:.0f}%)")
-                else:
-                    print(f"  Delta:     {delta:+.0f}pp")
-
-        baselines = result.get("baselines", {})
-        if baselines.get("hrv"):
-            hrv = baselines["hrv"]
-            print(f"\nBaselines (30-day):")
-            print(f"  HRV mean:  {hrv['mean']:.3f} (ln), CV: {hrv['cv']:.3f}")
-        if baselines.get("rhr"):
-            rhr = baselines["rhr"]
-            print(f"  RHR mean:  {rhr['mean']:.1f} bpm")
-    finally:
-        conn.close()
-
-
 def _cmd_backfill_release_years(db_path: Path) -> None:
     import time
 
@@ -881,23 +823,16 @@ def _cmd_backfill_release_years(db_path: Path) -> None:
 
 
 def _cmd_match_songs(db_path: Path) -> None:
-    from datetime import date
-
     from config import MAX_PLAYLIST_SIZE
     from matching.generator import GenerationError, select_day_songs
 
-    # Support --date flag, default to today
-    target_date = date.today().isoformat()
-    if "--date" in sys.argv:
-        idx = sys.argv.index("--date")
-        if idx + 1 < len(sys.argv):
-            target_date = sys.argv[idx + 1]
+    target_date = _parse_date_flag()
 
     conn = get_connection(db_path)
     try:
         # Same path as the daily playlist (before Spotify's availability check)
         try:
-            _classification, match_result = select_day_songs(conn, target_date)
+            match_result = select_day_songs(conn, target_date)
         except GenerationError as e:
             print(f"\nCannot match songs — {e}")
             return
@@ -940,16 +875,9 @@ def _cmd_match_songs(db_path: Path) -> None:
 
 
 def _cmd_generate(db_path: Path) -> None:
-    from datetime import date
-
     from matching.generator import GenerationError, generate_playlist
 
-    # Support --date flag, default to today
-    target_date = date.today().isoformat()
-    if "--date" in sys.argv:
-        idx = sys.argv.index("--date")
-        if idx + 1 < len(sys.argv):
-            target_date = sys.argv[idx + 1]
+    target_date = _parse_date_flag()
 
     dry_run = "--dry-run" in sys.argv
 
@@ -1234,6 +1162,7 @@ def _cmd_fetch_soundcharts_tempos(db_path: Path) -> None:
     try:
         stats = backfill_soundcharts_tempos(
             conn, lambda uri: fetch_soundcharts_song(uri, app_id, api_key), int(limit_value),
+            force="--force" in sys.argv,
         )
         print(f"Soundcharts: {stats['calls']:,} calls, {stats['stored']:,} tempos stored, "
               f"{stats['no_tempo']:,} without a tempo")

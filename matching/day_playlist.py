@@ -11,13 +11,17 @@ from datetime import date as date_cls, timedelta
 
 from config import MAX_PLAYLIST_SIZE
 from db.queries import get_all_classified_songs
-from intelligence.continuous_profile import pick_state
 from intelligence.feeling_score import compute_composite_history
 from matching.generator import GenerationError, format_playlist_name, select_day_songs
 from matching.query_engine import play_dates_before, rewind_songs_to_date
 from matching.why_lines import build_context, explain_playlist
 
 SPOTIFY_TRACK_URL = "https://open.spotify.com/track/{}"
+
+
+def track_uri(track: dict) -> str:
+    """A page track's Spotify URI, from its spotify_url ('.../track/ID' -> 'spotify:track:ID')."""
+    return "spotify:track:" + track["spotify_url"].rsplit("/", 1)[-1]
 
 
 def build_day_playlist(
@@ -33,8 +37,10 @@ def build_day_playlist(
     history: the Attuned score history (feeling_score.compute_composite_history,
     built up to at least date_str); saves rescoring every earlier day.
 
-    Returns {"name", "spotify_url" (None until a real playlist exists),
-    "state" (rest|energy|grounding), "tracks": [{title, artist, spotify_url, why}]}.
+    Returns {"name", "state" (rest|energy|grounding),
+    "tracks": [{title, artist, spotify_url, why}] (the MAX_PLAYLIST_SIZE songs),
+    "spares": [same shape] (the over-selected buffer, in order: the songs that
+    stand in when publishing finds one Spotify no longer plays)}.
     Raises GenerationError when the day can't be generated (e.g. too little WHOOP data).
     """
     page, _uris = _build(conn, date_str, prior_playlists, history)
@@ -84,29 +90,27 @@ def _build(
     history: dict[str, dict] | None,
 ) -> tuple[dict, list[str]]:
     """(page, track URIs shown) for one day."""
-    _classification, match_result = select_day_songs(
-        conn, date_str, point_in_time=True, prior_playlists=prior_playlists, history=history,
-    )
-    songs = match_result["songs"][:MAX_PLAYLIST_SIZE]
-    profile = match_result["neuro_profile"]
-    state, _label = pick_state(profile)
-
     library = rewind_songs_to_date(conn, get_all_classified_songs(conn), date_str)
+    match_result = select_day_songs(
+        conn, date_str, prior_playlists=prior_playlists, history=history, library=library,
+    )
+    songs = match_result["songs"]  # the playlist plus its availability buffer
     context = build_context(library, date_str, play_dates_before(conn, date_str))
-    whys = explain_playlist(songs, state, context)
-
+    # Lines are written down the list, so the first MAX_PLAYLIST_SIZE read the same with or without spares.
+    whys = explain_playlist(songs, match_result["state"], context)
+    tracks = [
+        {
+            "title": song.get("name", ""),
+            "artist": song.get("artist", ""),
+            "spotify_url": SPOTIFY_TRACK_URL.format(song["spotify_uri"].split(":")[-1]),
+            "why": why,
+        }
+        for song, why in zip(songs, whys)
+    ]
     page = {
-        "name": format_playlist_name(date_str, profile, match_result["position"]),
-        "spotify_url": None,
-        "state": state,
-        "tracks": [
-            {
-                "title": song.get("name", ""),
-                "artist": song.get("artist", ""),
-                "spotify_url": SPOTIFY_TRACK_URL.format(song["spotify_uri"].split(":")[-1]),
-                "why": why,
-            }
-            for song, why in zip(songs, whys)
-        ],
+        "name": format_playlist_name(date_str, match_result["neuro_profile"], match_result["position"]),
+        "state": match_result["state"],
+        "tracks": tracks[:MAX_PLAYLIST_SIZE],
+        "spares": tracks[MAX_PLAYLIST_SIZE:],
     }
-    return page, [s["spotify_uri"] for s in songs]
+    return page, [s["spotify_uri"] for s in songs[:MAX_PLAYLIST_SIZE]]

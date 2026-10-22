@@ -8,6 +8,7 @@ import spotipy
 from spotify.playlist import (
     SPOTIFY_DESCRIPTION_MAX_LENGTH,
     SpotifyPlaylistError,
+    change_playlist_details,
     create_playlist,
     replace_playlist_tracks,
 )
@@ -111,5 +112,40 @@ class TestReplacePlaylistTracks:
         mock_sp.playlist_replace_items.side_effect = spotipy.SpotifyException(
             http_status=404, code=-1, msg="Not found"
         )
-        with pytest.raises(SpotifyPlaylistError, match="Failed to replace tracks"):
+        with pytest.raises(SpotifyPlaylistError, match="Failed to replace tracks") as raised:
             replace_playlist_tracks(mock_sp, "pl_abc", ["spotify:track:1"])
+        assert raised.value.http_status == 404  # callers tell a deleted playlist from other failures
+
+
+class TestHttpStatus:
+    def test_create_failure_keeps_the_status(self, mock_sp):
+        mock_sp._post.side_effect = spotipy.SpotifyException(http_status=403, code=-1, msg="Forbidden")
+        with pytest.raises(SpotifyPlaylistError) as raised:
+            create_playlist(mock_sp, "Name", "Desc", [])
+        assert raised.value.http_status == 403
+
+    def test_status_is_none_when_not_from_spotify(self):
+        assert SpotifyPlaylistError("x").http_status is None
+
+
+# ---------------------------------------------------------------------------
+# change_playlist_details
+# ---------------------------------------------------------------------------
+
+class TestChangePlaylistDetails:
+    def test_sets_name_and_description(self, mock_sp):
+        change_playlist_details(mock_sp, "pl_abc", "Oct 22 — Settle In", "Attuned · help you settle")
+        mock_sp.playlist_change_details.assert_called_once_with(
+            "pl_abc", name="Oct 22 — Settle In", description="Attuned · help you settle")
+
+    def test_truncates_long_description(self, mock_sp):
+        change_playlist_details(mock_sp, "pl_abc", "N", "x" * 400)
+        description = mock_sp.playlist_change_details.call_args.kwargs["description"]
+        assert len(description) == SPOTIFY_DESCRIPTION_MAX_LENGTH and description.endswith("\u2026")
+
+    def test_raises_with_status_on_failure(self, mock_sp):
+        mock_sp.playlist_change_details.side_effect = spotipy.SpotifyException(
+            http_status=404, code=-1, msg="Not found")
+        with pytest.raises(SpotifyPlaylistError, match="Failed to change details") as raised:
+            change_playlist_details(mock_sp, "pl_abc", "N", "D")
+        assert raised.value.http_status == 404

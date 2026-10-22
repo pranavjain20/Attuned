@@ -1,15 +1,18 @@
 """Tests for matching/generator.py — end-to-end playlist generation."""
 
+import json
+import math
 from unittest.mock import MagicMock, patch
 
 import pytest
 import spotipy
 
-from intelligence.continuous_profile import pick_state, profile_at
+from db.queries import upsert_whoop_recovery
+from intelligence.playlist_target import pick_state, profile_at
 from matching.generator import (
     NAME_DEEP_SHARE,
     GenerationError,
-    _filter_unavailable_tracks,
+    filter_unavailable_tracks,
     _get_dominant_moods,
     _get_neuro_purpose,
     _pick_name_label,
@@ -17,7 +20,9 @@ from matching.generator import (
     format_reasoning,
     generate_description,
     generate_playlist,
+    whoop_metrics,
 )
+from spotify.auth import SpotifyRateLimitError
 from spotify.playlist import SpotifyPlaylistError
 
 
@@ -195,12 +200,6 @@ class TestGetNeuroPurpose:
 
 class TestFormatReasoning:
     def test_includes_attuned_state_and_match_details(self):
-        classification = {
-            "state": "accumulated_fatigue",
-            "confidence": "high",
-            "reasoning": ["Multi-day stress pattern"],
-            "metrics": {"recovery_score": 35.0},
-        }
         match_result = {
             "state": "rest",
             "position": 0.05,
@@ -211,7 +210,7 @@ class TestFormatReasoning:
                             }},
             "neuro_profile": {"para": 0.95, "symp": 0.00, "grnd": 0.05},
         }
-        reasoning = format_reasoning(classification, match_result)
+        reasoning = format_reasoning({"recovery_score": 35.0}, match_result)
         assert "State: rest" in reasoning
         assert "Attuned position: 0.05" in reasoning
         assert "recovery_score: 35.0" in reasoning  # WHOOP metrics kept for the record
@@ -222,39 +221,40 @@ class TestFormatReasoning:
         assert "Mean similarity: 0.4200" in reasoning
         assert "Dominant genre: rock" in reasoning
 
-    def test_old_classifier_state_and_reasoning_left_out(self):
-        classification = {"state": "accumulated_fatigue", "confidence": "high",
-                          "reasoning": ["Multi-day stress pattern"], "metrics": {}}
-        reasoning = format_reasoning(classification, {"state": "energy", "position": 0.9,
-                                                      "match_stats": {}, "neuro_profile": {}})
-        assert "accumulated_fatigue" not in reasoning
-        assert "Multi-day stress pattern" not in reasoning
-        assert "Confidence" not in reasoning
+    def test_missing_metric_values_left_out(self):
+        reasoning = format_reasoning({"recovery_score": None, "resting_heart_rate": 55.0},
+                                     {"state": "energy", "position": 0.9, "match_stats": {}, "neuro_profile": {}})
+        assert "recovery_score" not in reasoning
+        assert "resting_heart_rate: 55.0" in reasoning
 
     def test_no_score_no_metrics(self):
-        classification = {"state": "baseline", "confidence": "medium", "reasoning": [], "metrics": {}}
         match_result = {"state": "grounding", "position": None, "match_stats": {}, "neuro_profile": {}}
-        reasoning = format_reasoning(classification, match_result)
+        reasoning = format_reasoning({}, match_result)
         assert "State: grounding" in reasoning
         assert "Attuned position: none" in reasoning
         assert "Metrics:" not in reasoning
+
+
+class TestWhoopMetrics:
+    def test_the_days_recovery_numbers(self, db_conn):
+        upsert_whoop_recovery(db_conn, cycle_id=1, date="2026-03-19", recovery_score=72.0,
+                              hrv_rmssd_milli=55.0, resting_heart_rate=58.0)
+        metrics = whoop_metrics(db_conn, "2026-03-19")
+        assert metrics["recovery_score"] == 72.0
+        assert metrics["hrv_rmssd_milli"] == 55.0
+        assert metrics["resting_heart_rate"] == 58.0
+        assert metrics["ln_rmssd"] == pytest.approx(math.log(55.0))
+
+    def test_no_recovery_row_is_empty(self, db_conn):
+        assert whoop_metrics(db_conn, "2026-03-19") == {}
 
 
 # ---------------------------------------------------------------------------
 # generate_playlist (pipeline tests with mocks)
 # ---------------------------------------------------------------------------
 
-def _make_classification(state="baseline", metrics=None, reasoning=None):
-    return {
-        "state": state,
-        "confidence": "medium",
-        "reasoning": reasoning or [],
-        "metrics": metrics or {},
-        "baselines": {"hrv": None, "rhr": None},
-        "trends": {"hrv": None, "rhr": None},
-        "sleep_analysis": None,
-        "insufficient_data": state == "insufficient_data",
-    }
+# What compute_hrv_baseline returns once 14+ days of HRV exist (None before that).
+HRV_BASELINE = {"mean": 3.9, "sd": 0.2, "cv": 0.05, "count": 30, "values": []}
 
 
 def _make_match_result(n_songs=18, state="baseline"):
@@ -308,7 +308,7 @@ def _make_mock_sp():
 
 
 # ---------------------------------------------------------------------------
-# _filter_unavailable_tracks
+# filter_unavailable_tracks
 # ---------------------------------------------------------------------------
 
 @patch("matching.generator.time.sleep")
@@ -325,7 +325,7 @@ class TestFilterUnavailableTracks:
             {"uri": "spotify:track:c", "name": "C", "artists": [{"name": "Art"}], "is_playable": True},
         ]
         songs = self._make_songs(["spotify:track:a", "spotify:track:b", "spotify:track:c"])
-        result = _filter_unavailable_tracks(sp, songs)
+        result = filter_unavailable_tracks(sp, songs)
         assert len(result) == 2
         assert all(s["spotify_uri"] != "spotify:track:b" for s in result)
 
@@ -336,19 +336,19 @@ class TestFilterUnavailableTracks:
             {"uri": "spotify:track:b", "name": "B", "artists": [{"name": "Art"}], "is_playable": True},
         ]
         songs = self._make_songs(["spotify:track:a", "spotify:track:b"])
-        result = _filter_unavailable_tracks(sp, songs)
+        result = filter_unavailable_tracks(sp, songs)
         assert len(result) == 2
 
     def test_api_failure_returns_all_songs(self, mock_sleep):
         sp = MagicMock(spec=spotipy.Spotify)
         sp.track.side_effect = Exception("API error")
         songs = self._make_songs(["spotify:track:a", "spotify:track:b"])
-        result = _filter_unavailable_tracks(sp, songs)
+        result = filter_unavailable_tracks(sp, songs)
         assert len(result) == 2  # graceful fallback
 
     def test_empty_songs_returns_empty(self, mock_sleep):
         sp = MagicMock(spec=spotipy.Spotify)
-        result = _filter_unavailable_tracks(sp, [])
+        result = filter_unavailable_tracks(sp, [])
         assert result == []
         sp.track.assert_not_called()
 
@@ -357,7 +357,7 @@ class TestFilterUnavailableTracks:
         sp = MagicMock(spec=spotipy.Spotify)
         sp.track.return_value = {"uri": "spotify:track:a", "name": "A", "artists": [{"name": "Art"}]}
         songs = self._make_songs(["spotify:track:a"])
-        result = _filter_unavailable_tracks(sp, songs)
+        result = filter_unavailable_tracks(sp, songs)
         assert len(result) == 1
 
     def test_null_track_treated_as_available(self, mock_sleep):
@@ -365,7 +365,7 @@ class TestFilterUnavailableTracks:
         sp = MagicMock(spec=spotipy.Spotify)
         sp.track.return_value = None
         songs = self._make_songs(["spotify:track:a"])
-        result = _filter_unavailable_tracks(sp, songs)
+        result = filter_unavailable_tracks(sp, songs)
         assert len(result) == 1  # no crash, treated as available
 
     def test_persists_availability_to_db(self, mock_sleep, tmp_path):
@@ -383,13 +383,21 @@ class TestFilterUnavailableTracks:
             {"uri": "spotify:track:b", "name": "B", "artists": [{"name": "Art"}], "is_playable": False},
         ]
         songs = self._make_songs(["spotify:track:a", "spotify:track:b"])
-        _filter_unavailable_tracks(sp, songs, conn=conn)
+        filter_unavailable_tracks(sp, songs, conn=conn)
 
         row_a = conn.execute("SELECT is_available FROM songs WHERE spotify_uri = 'spotify:track:a'").fetchone()
         row_b = conn.execute("SELECT is_available FROM songs WHERE spotify_uri = 'spotify:track:b'").fetchone()
         assert row_a["is_available"] == 1
         assert row_b["is_available"] == 0
         conn.close()
+
+    def test_rate_limit_stops_the_check_instead_of_waving_every_song_through(self, mock_sleep):
+        """A daily-quota 429 must abort: treating it as "available" would hammer Spotify once per song."""
+        sp = MagicMock(spec=spotipy.Spotify)
+        sp.track.side_effect = SpotifyRateLimitError(3600)
+        with pytest.raises(SpotifyRateLimitError):
+            filter_unavailable_tracks(sp, self._make_songs(["spotify:track:a", "spotify:track:b"]))
+        assert sp.track.call_count == 1
 
     def test_skips_recently_checked_available_songs(self, mock_sleep):
         """Songs checked within AVAILABILITY_CACHE_DAYS skip the API call."""
@@ -403,7 +411,7 @@ class TestFilterUnavailableTracks:
             {"spotify_uri": "spotify:track:a", "name": "A", "is_available": 1, "availability_checked_at": recent_ts},
             {"spotify_uri": "spotify:track:b", "name": "B", "is_available": None, "availability_checked_at": None},
         ]
-        result = _filter_unavailable_tracks(sp, songs)
+        result = filter_unavailable_tracks(sp, songs)
         assert len(result) == 2
         # Only track:b should have been checked via API (track:a was cached)
         assert sp.track.call_count == 1
@@ -420,19 +428,37 @@ class TestFilterUnavailableTracks:
         songs = [
             {"spotify_uri": "spotify:track:a", "name": "A", "is_available": 1, "availability_checked_at": old_ts},
         ]
-        result = _filter_unavailable_tracks(sp, songs)
+        result = filter_unavailable_tracks(sp, songs)
         assert len(result) == 1
         assert sp.track.call_count == 1  # stale, so re-checked
 
 
 class TestGeneratePlaylist:
+    @pytest.fixture(autouse=True)
+    def _no_throttle(self):
+        """The availability check pauses 3 s between Spotify calls; tests don't wait."""
+        with patch("matching.generator.time.sleep"):
+            yield
+
     @patch("matching.generator.select_songs")
-    @patch("matching.generator.classify_state")
-    def test_dry_run_no_spotify_call(self, mock_classify, mock_select, tmp_path):
+    @patch("matching.generator.compute_hrv_baseline")
+    def test_logs_the_days_whoop_metrics(self, mock_baseline, mock_select, db_conn):
+        mock_baseline.return_value = HRV_BASELINE
+        mock_select.return_value = _make_match_result()
+        upsert_whoop_recovery(db_conn, cycle_id=1, date="2026-03-19", recovery_score=72.0,
+                              hrv_rmssd_milli=55.0, resting_heart_rate=58.0)
+        result = generate_playlist(db_conn, sp=None, date_str="2026-03-19", dry_run=True)
+        row = db_conn.execute("SELECT whoop_metrics FROM generated_playlists").fetchone()
+        assert json.loads(row["whoop_metrics"])["recovery_score"] == 72.0
+        assert "recovery_score: 72.0" in result["reasoning"]
+
+    @patch("matching.generator.select_songs")
+    @patch("matching.generator.compute_hrv_baseline")
+    def test_dry_run_no_spotify_call(self, mock_baseline, mock_select, tmp_path):
         from db.schema import get_connection
 
         conn = get_connection(tmp_path / "test.db")
-        mock_classify.return_value = _make_classification()
+        mock_baseline.return_value = HRV_BASELINE
         mock_select.return_value = _make_match_result()
 
         result = generate_playlist(conn, sp=None, date_str="2026-03-19", dry_run=True)
@@ -451,10 +477,12 @@ class TestGeneratePlaylist:
         (0.05, CALM, 90.0, "Mar 19 — Rest & Repair"),  # WHOOP green, Attuned near your lowest
     ])
     @patch("matching.generator.select_songs")
-    @patch("matching.generator.classify_state")
-    def test_name_follows_attuned_score_not_whoop(self, mock_classify, mock_select,
+    @patch("matching.generator.compute_hrv_baseline")
+    def test_name_follows_attuned_score_not_whoop(self, mock_baseline, mock_select,
                                                   position, profile, recovery, name, db_conn):
-        mock_classify.return_value = _make_classification(metrics={"recovery_score": recovery})
+        mock_baseline.return_value = HRV_BASELINE
+        upsert_whoop_recovery(db_conn, cycle_id=1, date="2026-03-19", recovery_score=recovery,
+                              hrv_rmssd_milli=50.0, resting_heart_rate=55.0)
         mock_select.side_effect = lambda *a, **kw: {**_make_match_result(),
                                                     "neuro_profile": kw["neuro_profile"]}
         continuous = {"profile": profile, "target_valence": 0.5, "position": position,
@@ -468,12 +496,12 @@ class TestGeneratePlaylist:
         assert row["detected_state"] == pick_state(profile)[0]
 
     @patch("matching.generator.select_songs")
-    @patch("matching.generator.classify_state")
-    def test_dry_run_logs_to_db(self, mock_classify, mock_select, tmp_path):
+    @patch("matching.generator.compute_hrv_baseline")
+    def test_dry_run_logs_to_db(self, mock_baseline, mock_select, tmp_path):
         from db.schema import get_connection
 
         conn = get_connection(tmp_path / "test.db")
-        mock_classify.return_value = _make_classification()
+        mock_baseline.return_value = HRV_BASELINE
         mock_select.return_value = _make_match_result()
 
         generate_playlist(conn, sp=None, date_str="2026-03-19", dry_run=True)
@@ -486,12 +514,12 @@ class TestGeneratePlaylist:
         conn.close()
 
     @patch("matching.generator.select_songs")
-    @patch("matching.generator.classify_state")
-    def test_live_creates_spotify_playlist(self, mock_classify, mock_select, tmp_path):
+    @patch("matching.generator.compute_hrv_baseline")
+    def test_live_creates_spotify_playlist(self, mock_baseline, mock_select, tmp_path):
         from db.schema import get_connection
 
         conn = get_connection(tmp_path / "test.db")
-        mock_classify.return_value = _make_classification()
+        mock_baseline.return_value = HRV_BASELINE
         mock_select.return_value = _make_match_result()
         sp = _make_mock_sp()
 
@@ -507,24 +535,24 @@ class TestGeneratePlaylist:
         conn.close()
 
     @patch("matching.generator.select_songs")
-    @patch("matching.generator.classify_state")
-    def test_insufficient_data_raises(self, mock_classify, mock_select, tmp_path):
+    @patch("matching.generator.compute_hrv_baseline")
+    def test_insufficient_data_raises(self, mock_baseline, mock_select, tmp_path):
         from db.schema import get_connection
 
         conn = get_connection(tmp_path / "test.db")
-        mock_classify.return_value = _make_classification(state="insufficient_data")
+        mock_baseline.return_value = None
 
         with pytest.raises(GenerationError, match="insufficient WHOOP data"):
             generate_playlist(conn, sp=None, date_str="2026-03-19", dry_run=True)
         conn.close()
 
     @patch("matching.generator.select_songs")
-    @patch("matching.generator.classify_state")
-    def test_no_songs_raises(self, mock_classify, mock_select, tmp_path):
+    @patch("matching.generator.compute_hrv_baseline")
+    def test_no_songs_raises(self, mock_baseline, mock_select, tmp_path):
         from db.schema import get_connection
 
         conn = get_connection(tmp_path / "test.db")
-        mock_classify.return_value = _make_classification()
+        mock_baseline.return_value = HRV_BASELINE
         mock_select.return_value = _make_match_result(n_songs=0)
 
         with pytest.raises(GenerationError, match="No songs matched"):
@@ -532,12 +560,12 @@ class TestGeneratePlaylist:
         conn.close()
 
     @patch("matching.generator.select_songs")
-    @patch("matching.generator.classify_state")
-    def test_spotify_failure_logs_and_raises(self, mock_classify, mock_select, tmp_path):
+    @patch("matching.generator.compute_hrv_baseline")
+    def test_spotify_failure_logs_and_raises(self, mock_baseline, mock_select, tmp_path):
         from db.schema import get_connection
 
         conn = get_connection(tmp_path / "test.db")
-        mock_classify.return_value = _make_classification()
+        mock_baseline.return_value = HRV_BASELINE
         mock_select.return_value = _make_match_result()
         sp = _make_mock_sp()
         sp._post.side_effect = spotipy.SpotifyException(
@@ -555,12 +583,12 @@ class TestGeneratePlaylist:
         conn.close()
 
     @patch("matching.generator.select_songs")
-    @patch("matching.generator.classify_state")
-    def test_no_sp_for_live_raises(self, mock_classify, mock_select, tmp_path):
+    @patch("matching.generator.compute_hrv_baseline")
+    def test_no_sp_for_live_raises(self, mock_baseline, mock_select, tmp_path):
         from db.schema import get_connection
 
         conn = get_connection(tmp_path / "test.db")
-        mock_classify.return_value = _make_classification()
+        mock_baseline.return_value = HRV_BASELINE
         mock_select.return_value = _make_match_result()
 
         with pytest.raises(GenerationError, match="Spotify client required"):
@@ -568,29 +596,27 @@ class TestGeneratePlaylist:
         conn.close()
 
     @patch("matching.generator.select_songs")
-    @patch("matching.generator.classify_state")
-    def test_defaults_to_today(self, mock_classify, mock_select, tmp_path):
+    @patch("matching.generator.compute_hrv_baseline")
+    def test_defaults_to_today(self, mock_baseline, mock_select, tmp_path):
         from datetime import date
         from db.schema import get_connection
 
         conn = get_connection(tmp_path / "test.db")
-        mock_classify.return_value = _make_classification()
+        mock_baseline.return_value = HRV_BASELINE
         mock_select.return_value = _make_match_result()
 
         generate_playlist(conn, sp=None, dry_run=True)
 
-        mock_classify.assert_called_once_with(conn, date.today().isoformat())
+        mock_baseline.assert_called_once_with(conn, date.today().isoformat())
         conn.close()
 
     @patch("matching.generator.select_songs")
-    @patch("matching.generator.classify_state")
-    def test_description_in_result(self, mock_classify, mock_select, tmp_path):
+    @patch("matching.generator.compute_hrv_baseline")
+    def test_description_in_result(self, mock_baseline, mock_select, tmp_path):
         from db.schema import get_connection
 
         conn = get_connection(tmp_path / "test.db")
-        mock_classify.return_value = _make_classification(
-            metrics={"recovery_score": 72.0, "hrv_rmssd_milli": 55.0}
-        )
+        mock_baseline.return_value = HRV_BASELINE
         mock_select.return_value = _make_match_result()
 
         result = generate_playlist(conn, sp=None, date_str="2026-03-19", dry_run=True)
@@ -601,13 +627,13 @@ class TestGeneratePlaylist:
         conn.close()
 
     @patch("matching.generator.select_songs")
-    @patch("matching.generator.classify_state")
-    def test_multiple_playlists_per_day(self, mock_classify, mock_select, tmp_path):
+    @patch("matching.generator.compute_hrv_baseline")
+    def test_multiple_playlists_per_day(self, mock_baseline, mock_select, tmp_path):
         """PRD says each generation creates a NEW playlist — no conflicts."""
         from db.schema import get_connection
 
         conn = get_connection(tmp_path / "test.db")
-        mock_classify.return_value = _make_classification()
+        mock_baseline.return_value = HRV_BASELINE
         mock_select.return_value = _make_match_result()
 
         generate_playlist(conn, sp=None, date_str="2026-03-19", dry_run=True)
@@ -620,12 +646,12 @@ class TestGeneratePlaylist:
         conn.close()
 
     @patch("matching.generator.select_songs")
-    @patch("matching.generator.classify_state")
-    def test_track_uris_passed_to_spotify(self, mock_classify, mock_select, tmp_path):
+    @patch("matching.generator.compute_hrv_baseline")
+    def test_track_uris_passed_to_spotify(self, mock_baseline, mock_select, tmp_path):
         from db.schema import get_connection
 
         conn = get_connection(tmp_path / "test.db")
-        mock_classify.return_value = _make_classification()
+        mock_baseline.return_value = HRV_BASELINE
         match = _make_match_result(n_songs=5)
         mock_select.return_value = match
         sp = _make_mock_sp()
