@@ -78,6 +78,8 @@
   .reason-card { display: flex; flex-direction: column; }
   .reason { font-family: var(--num); font-weight: 700; font-size: 24px; line-height: 1.2; margin: 0 0 18px; text-wrap: balance; }
   .reason-line { color: var(--text-2); margin: -8px 0 18px; font-size: 15.5px; line-height: 1.5; }
+  .reason-line + .reason-line { margin-top: 0; }
+  .reason-line.closing { margin: 16px 0 0; color: var(--text); }
   .night { margin-top: auto; padding-top: 18px; }
   .night summary { cursor: pointer; color: var(--text-3); font-size: 14px; list-style: none; }
   .night summary::-webkit-details-marker { display: none; }
@@ -368,6 +370,11 @@
         '<small>vs normal</small></div></div>';
     }).join("");
 
+    var changes = (cmp.rows || []).map(function (r) {
+      return '<div class="driver">' + arrow(r.effect) +
+        '<div><div class="name">' + esc(r.text) + '</div><div class="vs">' + esc(r.meaning) + '</div></div></div>';
+    }).join("");
+
     var metrics = [
       ["HRV", num(m.hrv_ms), "ms"], ["Resting HR", num(m.rhr_bpm), "bpm"], ["Sleep", num(m.sleep_hours, 1), "h"],
       ["REM", num(m.rem_hours, 1), "h"], ["Deep", num(m.deep_hours, 1), "h"], ["Efficiency", num(m.sleep_efficiency_pct), "%"],
@@ -390,7 +397,9 @@
 
       '<section class="card reason-card" aria-label="Why">' +
         '<p class="reason">' + esc(cmp.title) + '</p><p class="reason-line">' + esc(cmp.line) + '</p>' +
-        '<div class="drivers">' + drivers + '</div>' +
+        (cmp.intro ? '<p class="reason-line">' + esc(cmp.intro) + '</p>' : '') +
+        '<div class="drivers">' + (changes || drivers) + '</div>' +
+        (cmp.closing ? '<p class="reason-line closing">' + esc(cmp.closing) + '</p>' : '') +
         '<details class="night"><summary>Health metrics</summary><div class="metrics">' + metrics + '</div></details>' +
       '</section>' +
 

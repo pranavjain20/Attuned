@@ -47,7 +47,7 @@ class TestNoDriverGap:
 
     def test_below_whoop_explains_the_ordinary_night(self):
         copy = compare_copy(_attuned(64), {"recovery": 79})
-        assert copy["title"] == "Why you'll likely feel worse than WHOOP says"
+        assert copy["title"] == "Why Attuned is lower than WHOOP today"
         assert copy["line"] == ("Your sleep and heart signals were all close to your usual, "
                                 "so Attuned puts today in the middle. WHOOP rated it higher.")
 
@@ -61,6 +61,130 @@ class TestNoDriverGap:
 
     def test_agreeing_day_keeps_the_short_line(self):
         assert compare_copy(_attuned(60), {"recovery": 62})["line"] == "A night close to your usual."
+
+
+def _change(signal, effect, z=-0.5, text=None):
+    return {"signal": signal, "effect": effect, "z": z, "text": text or f"{signal} {effect}.",
+            "meaning": f"Why {signal} matters."}
+
+
+# Oct 22, 2026: WHOOP 79, Attuned 64; HRV up 16% on yesterday; a bit less deep sleep and total sleep, more REM.
+TODAY_CHANGES = [
+    _change("deep_sleep_z", "down", -0.33, "You got 5% less deep sleep than usual."),
+    _change("rem_sleep_z", "up", 0.32, "Your REM sleep was 10% above usual."),
+    _change("total_sleep_z", "down", -0.24, "You slept 5% less than usual."),
+    _change("sleep_efficiency_z", "down", -0.19, "You were asleep for 1% less of your time in bed than usual."),
+]
+
+
+def _gap_day(score, changes, hrv=None):
+    return {**_attuned(score), "sleep_changes": changes,
+            "hrv_change": hrv if hrv is not None else {"vs_usual": 8, "vs_yesterday": 16}}
+
+
+class TestGapExplanation:
+    """A real gap with WHOOP: what drove WHOOP, each sleep change and what it means, then what to expect."""
+
+    def test_todays_copy_in_full(self):
+        copy = compare_copy(_gap_day(64, TODAY_CHANGES), {"recovery": 79})
+        assert copy["title"] == "Why Attuned is lower than WHOOP today"
+        assert copy["line"] == (
+            "WHOOP's score mostly follows your HRV, which shows how well your body has recovered for "
+            "physical effort. Your HRV was 16% higher than yesterday, so WHOOP says your body is ready.")
+        assert copy["intro"] == site.SLEEP_INTRO
+        assert [r["text"] for r in copy["rows"]] == [
+            "You got 5% less deep sleep than usual.", "You slept 5% less than usual.",
+            "Your REM sleep was 10% above usual."]
+        assert copy["closing"] == "So your body is ready, but you'll probably feel about normal, not great."
+        assert copy["note"] == "A 15-point gap."
+
+    def test_rows_carry_their_meaning(self):
+        rows = compare_copy(_gap_day(64, TODAY_CHANGES), {"recovery": 79})["rows"]
+        assert rows[0]["meaning"] == "Why deep_sleep_z matters."
+
+    def test_attuned_side_first_then_one_counterpoint(self):
+        changes = [_change("rem_sleep_z", "up", 0.9), _change("total_sleep_z", "down"),
+                   _change("deep_sleep_z", "up", 0.8), _change("sleep_debt_z", "down")]
+        rows = compare_copy(_gap_day(40, changes), {"recovery": 70})["rows"]
+        assert [(r["signal"], r["effect"]) for r in rows] == [
+            ("total_sleep_z", "down"), ("sleep_debt_z", "down"), ("rem_sleep_z", "up")]
+
+    def test_at_most_three_rows(self):
+        changes = [_change(s, "down") for s in ("total_sleep_z", "deep_sleep_z", "rem_sleep_z",
+                                                "sleep_efficiency_z")]
+        assert len(compare_copy(_gap_day(40, changes), {"recovery": 70})["rows"]) == site.MAX_GAP_ROWS
+
+    def test_small_changes_are_noise_except_the_biggest_on_attuneds_side(self):
+        changes = [_change("total_sleep_z", "down", -0.1), _change("deep_sleep_z", "up", 0.15),
+                   _change("rem_sleep_z", "down", -0.12)]
+        rows = compare_copy(_gap_day(40, changes), {"recovery": 70})["rows"]
+        assert [r["signal"] for r in rows] == ["total_sleep_z"]
+
+    def test_higher_than_whoop(self):
+        changes = [_change("total_sleep_z", "up", 0.9, "You slept 30% more than usual."),
+                   _change("sleep_debt_z", "down", -0.6)]
+        copy = compare_copy(_gap_day(80, changes, {"vs_usual": -12, "vs_yesterday": -4}), {"recovery": 55})
+        assert copy["title"] == "Why Attuned is higher than WHOOP today"
+        assert copy["line"].endswith("Your HRV was 12% lower than usual, so WHOOP scored you lower.")
+        assert [r["effect"] for r in copy["rows"]] == ["up", "down"]
+        assert copy["closing"] == "So you'll probably feel good, better than WHOOP's score suggests."
+
+    def test_nothing_on_attuneds_side_falls_back_to_the_short_line(self):
+        copy = compare_copy(_gap_day(64, [_change("rem_sleep_z", "up", 0.9)]), {"recovery": 79})
+        assert "rows" not in copy
+        assert copy["title"] == "Why Attuned is lower than WHOOP today"
+
+    def test_agreeing_scores_get_no_rows(self):
+        assert "rows" not in compare_copy(_gap_day(64, TODAY_CHANGES), {"recovery": 70})
+
+    def test_missing_whoop_gets_no_rows(self):
+        assert "rows" not in compare_copy(_gap_day(64, TODAY_CHANGES), {"recovery": None})
+
+
+class TestWhoopLine:
+    """Which HRV change, if any, is named as WHOOP's reason."""
+
+    def _line(self, hrv, score=64, whoop=79):
+        return compare_copy(_gap_day(score, TODAY_CHANGES if score < whoop else
+                                     [_change("total_sleep_z", "up", 0.9)], hrv), {"recovery": whoop})["line"]
+
+    def test_bigger_change_wins(self):
+        assert "8% higher than usual" in self._line({"vs_usual": 8, "vs_yesterday": 5})
+        assert "16% higher than yesterday" in self._line({"vs_usual": 8, "vs_yesterday": 16})
+
+    def test_yellow_whoop_says_higher_not_ready(self):
+        assert self._line({"vs_usual": 8, "vs_yesterday": 2}, score=30, whoop=55).endswith(
+            "Your HRV was 8% higher than usual, so WHOOP scored you higher.")
+
+    @pytest.mark.parametrize("hrv", [
+        {"vs_usual": -10, "vs_yesterday": -3},          # moved the other way
+        {"vs_usual": 2, "vs_yesterday": -1},            # barely moved
+        {"vs_usual": None, "vs_yesterday": None},       # unknown
+        {},
+    ])
+    def test_hrv_that_doesnt_back_whoop_is_not_credited(self, hrv):
+        assert self._line(hrv).endswith(
+            "Your HRV doesn't explain the gap today, so it comes down to your sleep.")
+
+    def test_threshold_is_inclusive(self):
+        assert "3% higher than usual" in self._line({"vs_usual": site.MIN_HRV_CHANGE_PCT, "vs_yesterday": None})
+
+
+class TestClosing:
+    @pytest.mark.parametrize("score, whoop, closing", [
+        (40, 79, "So your body is ready, but you'll probably feel about normal, not great."),
+        (20, 79, "So your body is ready, but you'll probably feel below normal."),
+        (70, 95, "So you'll probably feel good, just not as good as WHOOP's score suggests."),
+        (40, 60, "So you'll probably feel about normal, not as good as WHOOP's score suggests."),
+        (20, 50, "So you'll probably feel below normal, not as good as WHOOP's score suggests."),
+        (80, 50, "So you'll probably feel good, better than WHOOP's score suggests."),
+        (50, 20, "So you'll probably feel about normal, better than WHOOP's score suggests."),
+        (30, 10, "So you'll probably still feel below normal, just better than WHOOP's score suggests."),
+    ])
+    def test_every_band_pair(self, score, whoop, closing):
+        side = "down" if score < whoop else "up"
+        copy = compare_copy(_gap_day(score, [_change("total_sleep_z", side, 0.9)]), {"recovery": whoop})
+        assert copy["closing"] == closing
 
 
 class TestJoinAnd:
@@ -85,7 +209,7 @@ class TestCompareCopy:
         a = _attuned(57, [_driver("sleep_efficiency_z", "down"), _driver("rem_sleep_z", "down"),
                           _driver("hrv_z", "up")])
         copy = compare_copy(a, {"recovery": 81})
-        assert copy["title"] == "Why you'll likely feel worse than WHOOP says"
+        assert copy["title"] == "Why Attuned is lower than WHOOP today"
         assert copy["line"] == ("You had a higher HRV, which WHOOP leans on. But you also had "
                                 "more broken sleep and less REM, which Attuned weighs more for how you'll feel.")
 
@@ -93,7 +217,7 @@ class TestCompareCopy:
         a = _attuned(70, [_driver("deep_sleep_z", "up"), _driver("rhr_z", "down"),
                           _driver("hrv_trend_z", "down")])
         copy = compare_copy(a, {"recovery": 40})
-        assert copy["title"] == "Why you'll likely feel better than WHOOP says"
+        assert copy["title"] == "Why Attuned is higher than WHOOP today"
         assert copy["line"] == ("You had a higher resting heart rate and HRV drifting down this week, "
                                 "which pulls WHOOP down. But you also had more deep sleep, "
                                 "which Attuned weighs more for how you'll feel.")
@@ -106,18 +230,18 @@ class TestCompareCopy:
 
     def test_ten_point_gap_is_not_agreement(self):
         copy = compare_copy(_attuned(50, [_driver("rem_sleep_z", "down")]), {"recovery": 60})
-        assert copy["title"] == "Why you'll likely feel worse than WHOOP says"
+        assert copy["title"] == "Why Attuned is lower than WHOOP today"
 
     def test_worse_without_both_groups_falls_back_to_reason_line(self):
         a = _attuned(40, [_driver("rem_sleep_z", "down"), _driver("deep_sleep_z", "down")])
         copy = compare_copy(a, {"recovery": 70})
-        assert copy["title"] == "Why you'll likely feel worse than WHOOP says"
+        assert copy["title"] == "Why Attuned is lower than WHOOP today"
         assert copy["line"] == "Less REM and less deep sleep than usual."
 
     def test_better_without_heart_bad_falls_back_to_reason_line(self):
         a = _attuned(80, [_driver("deep_sleep_z", "up"), _driver("rhr_z", "up")])
         copy = compare_copy(a, {"recovery": 50})
-        assert copy["title"] == "Why you'll likely feel better than WHOOP says"
+        assert copy["title"] == "Why Attuned is higher than WHOOP today"
         assert copy["line"] == "More deep sleep and a lower resting heart rate than usual."
 
     def test_no_score_uses_reason(self):
@@ -168,7 +292,7 @@ class TestCompareCopy:
     def test_medium_gap_title_and_note_agree(self):
         """70 vs 55 used to say "better than WHOOP" above and "roughly agree" below."""
         copy = compare_copy(_attuned(70), {"recovery": 55})
-        assert copy["title"] == "Why you'll likely feel better than WHOOP says"
+        assert copy["title"] == "Why Attuned is higher than WHOOP today"
         assert copy["note"] == "A 15-point gap."
 
     @pytest.mark.parametrize("attuned, whoop", [(50, 60), (60, 50), (40, 59), (59, 40), (55, 64), (64, 55),
@@ -638,7 +762,7 @@ class TestBuildSiteDays:
 
     def test_attaches_copy_and_enriched_playlist(self, recoveries, stubbed):
         day = next(d for d in _build(recoveries) if d["date"] == "2026-10-21")
-        assert day["attuned"]["compare"]["title"] == "Why you'll likely feel worse than WHOOP says"
+        assert day["attuned"]["compare"]["title"] == "Why Attuned is lower than WHOOP today"
         pl = day["playlist"]
         assert pl["summary"]["lead"].endswith("built to help you settle.")
         assert pl["total_time"] == "0 min"
@@ -779,8 +903,8 @@ class TestBuildSiteDaysRealData:
 
     END = "2026-06-05"
     WINDOW = ["2026-06-01", "2026-06-02", "2026-06-03", "2026-06-04", "2026-06-05"]
-    TITLES = {"WHOOP and Attuned roughly agree today", "Why you'll likely feel worse than WHOOP says",
-              "Why you'll likely feel better than WHOOP says"}
+    TITLES = {"WHOOP and Attuned roughly agree today", "Why Attuned is lower than WHOOP today",
+              "Why Attuned is higher than WHOOP today"}
 
     @pytest.fixture(scope="class")
     def seeded(self, tmp_path_factory):
@@ -821,7 +945,7 @@ class TestBuildSiteDaysRealData:
             if abs(gap) < site.AGREE_WITHIN_POINTS:
                 assert "roughly agree" in copy["title"] and "roughly agree" in copy["note"]
             else:
-                assert ("worse" if gap < 0 else "better") in copy["title"]
+                assert ("lower" if gap < 0 else "higher") in copy["title"]
                 assert copy["note"].startswith(f"{site._gap_article(abs(gap))} {abs(gap)}-point gap")
             assert copy["line"]
 

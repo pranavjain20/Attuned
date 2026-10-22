@@ -40,7 +40,7 @@ There's a second problem. Even a better number changes nothing on its own. "Your
 **The day page.** One page per day, in this order:
 
 - **Two rings.** The Attuned score first, WHOOP's recovery second, both on the same 0–100 scale and colours.
-- **Why they differ.** A title and one sentence, for example "Why you'll likely feel worse than WHOOP says: you had a higher HRV, which WHOOP leans on. But you also had more broken sleep and less REM, which Attuned weighs more for how you'll feel."
+- **Why they differ.** What drove WHOOP's score (the change in HRV), then each sleep change as a percentage with one line on what it means for how you'll feel, for example "You slept 5% less than usual. Even small amounts of lost sleep make it harder to focus, and they add up over days without you noticing." Each meaning line says only what a study in the research doc supports.
 - **What moved the score.** Up to three signals, each with today's value and my usual, and an arrow for which way it pushed.
 - **Health metrics.** HRV, resting heart rate, sleep, REM, deep sleep, sleep efficiency and 7-night sleep debt.
 - **Today's playlist,** styled like Spotify: album art, a summary of what's in it ("Slower, softer, mostly calm, romantic Bollywood songs from your library"), why that kind of music should help with linked sources, and one plain reason under each song ("A romantic Bollywood song that keeps the mood level. A long-time favourite.").

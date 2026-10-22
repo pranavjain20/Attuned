@@ -43,6 +43,9 @@ DATA_PLACEHOLDER = "__ATTUNED_DATA__"
 SHORTCUT_DAYS = 3             # the most recent days get a shortcut chip above the rings
 AGREE_WITHIN_POINTS = 10      # a smaller gap reads as "roughly agree"; this or more, better/worse
 BIG_GAP_POINTS = 20           # a gap this big also gets a line on why the two can differ
+MAX_GAP_ROWS = 3              # sleep changes listed under a gap with WHOOP
+MIN_Z_GAP_ROW = 0.2           # a smaller sleep change is noise, not a reason for the gap
+MIN_HRV_CHANGE_PCT = 3        # a smaller HRV change isn't named as WHOOP's reason
 MAX_MOODS_PER_TRACK = 3
 MAX_GENRES_PER_TRACK = 2
 
@@ -143,9 +146,70 @@ def _gap_note(gap: int) -> str:
     return f"{_gap_article(size)} {size}-point gap."
 
 
+HRV_MEANS = ("WHOOP's score mostly follows your HRV, which shows how well your body has recovered "
+             "for physical effort.")
+SLEEP_INTRO = "Attuned focuses more on sleep, because sleep is more closely tied to how you feel."
+# {Attuned's band: last line} when Attuned is below WHOOP, and the same when it's above.
+LOWER_CLOSING = {
+    "green": "So you'll probably feel good, just not as good as WHOOP's score suggests.",
+    "yellow": "So you'll probably feel about normal, not as good as WHOOP's score suggests.",
+    "red": "So you'll probably feel below normal, not as good as WHOOP's score suggests.",
+}
+LOWER_THAN_GREEN_CLOSING = {
+    "yellow": "So your body is ready, but you'll probably feel about normal, not great.",
+    "red": "So your body is ready, but you'll probably feel below normal.",
+}
+HIGHER_CLOSING = {
+    "green": "So you'll probably feel good, better than WHOOP's score suggests.",
+    "yellow": "So you'll probably feel about normal, better than WHOOP's score suggests.",
+    "red": "So you'll probably still feel below normal, just better than WHOOP's score suggests.",
+}
+
+
+def _gap_rows(changes: list[dict], lower: bool) -> list[dict]:
+    """The sleep changes that explain the gap, up to MAX_GAP_ROWS: the ones on Attuned's side
+    first, then at most one pulling the other way. Below MIN_Z_GAP_ROW a change is noise
+    and left out, except the biggest one on Attuned's side. None when nothing is on Attuned's side."""
+    side = "down" if lower else "up"
+    agreeing = [c for c in changes if c["effect"] == side]
+    if not agreeing:
+        return []
+    clear = lambda cs: [c for c in cs if abs(c["z"]) >= MIN_Z_GAP_ROW]
+    opposing = clear(c for c in changes if c["effect"] != side)[:1]
+    return (agreeing[:1] + clear(agreeing[1:]))[: MAX_GAP_ROWS - len(opposing)] + opposing
+
+
+def _whoop_line(hrv: dict, lower: bool, whoop_band: str) -> str:
+    """What drove WHOOP's side: the bigger HRV change (vs usual or vs yesterday) that points
+    WHOOP's way. Never credits HRV that moved the other way or barely moved."""
+    options = [(hrv.get("vs_yesterday"), "than yesterday"), (hrv.get("vs_usual"), "than usual")]
+    backing = [(p, than) for p, than in options
+               if p is not None and (p > 0) == lower and abs(p) >= MIN_HRV_CHANGE_PCT]
+    if not backing:
+        return f"{HRV_MEANS} Your HRV doesn't explain the gap today, so it comes down to your sleep."
+    pct, than = max(backing, key=lambda pt: abs(pt[0]))
+    if not lower:
+        effect = "WHOOP scored you lower"
+    elif whoop_band == "green":
+        effect = "WHOOP says your body is ready"
+    else:
+        effect = "WHOOP scored you higher"
+    return f"{HRV_MEANS} Your HRV was {abs(pct)}% {'higher' if pct > 0 else 'lower'} {than}, so {effect}."
+
+
+def _closing(lower: bool, attuned_band: str, whoop_band: str) -> str:
+    if not lower:
+        return HIGHER_CLOSING[attuned_band]
+    if whoop_band == "green" and attuned_band in LOWER_THAN_GREEN_CLOSING:
+        return LOWER_THAN_GREEN_CLOSING[attuned_band]
+    return LOWER_CLOSING[attuned_band]
+
+
 def compare_copy(attuned: dict, whoop: dict) -> dict:
     """{"title", "line", "note"}: why Attuned differs from WHOOP today, in a title + one sentence.
 
+    When the gap is real and some sleep change explains it, also "intro", "rows" (each
+    sleep change and what it means, see feeling_score.sleep_changes) and "closing".
     The note under the rings is blank when either score is missing.
     """
     if attuned.get("score") is None:
@@ -170,7 +234,13 @@ def compare_copy(attuned: dict, whoop: dict) -> dict:
         return {"title": "WHOOP and Attuned roughly agree today", "line": reason_line(attuned, whoop),
                 "note": note}
     worse = gap < 0
-    title = f"Why you'll likely feel {'worse' if worse else 'better'} than WHOOP says"
+    title = f"Why Attuned is {'lower' if worse else 'higher'} than WHOOP today"
+    rows = _gap_rows(attuned.get("sleep_changes") or [], worse)
+    if rows:
+        attuned_band, whoop_band = band(attuned["score"]), band(whoop["recovery"])
+        return {"title": title, "line": _whoop_line(attuned.get("hrv_change") or {}, worse, whoop_band),
+                "intro": SLEEP_INTRO, "rows": rows,
+                "closing": _closing(worse, attuned_band, whoop_band), "note": note}
     if worse and heart_good and sleep_bad:
         line = (f"You had {join_and(heart_good)}, which WHOOP leans on. But you also had "
                 f"{join_and(sleep_bad)}, which Attuned weighs more for how you'll feel.")
