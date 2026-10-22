@@ -978,9 +978,11 @@ def _cmd_generate(db_path: Path) -> None:
 
 def _cmd_request(db_path: Path) -> None:
     """Generate a playlist from a natural language request (interactive)."""
+    from datetime import date
+
     from db.queries import get_all_classified_songs
+    from intelligence.dj_context import attuned_context
     from intelligence.nl_song_selector import select_songs_nl
-    from intelligence.state_classifier import classify_state
     from matching.generator import GenerationError, generate_nl_playlist
 
     # Extract the query from argv (everything after "request" that's not a flag)
@@ -1009,24 +1011,14 @@ def _cmd_request(db_path: Path) -> None:
             from spotify.auth import get_spotify_client
             sp = get_spotify_client(conn)
 
-        # Get WHOOP context for NL calibration
-        recovery_score = None
-        hrv = None
-        state = None
-        try:
-            classification = classify_state(conn)
-            state = classification["state"]
-            metrics = classification.get("metrics", {})
-            recovery_score = metrics.get("recovery_score")
-            hrv = metrics.get("hrv_rmssd_milli")
-        except Exception:
-            pass
+        # Today's Attuned body context calibrates the DJ
+        body_context = attuned_context(conn, date.today().isoformat())
 
         # Load song library for LLM-direct selection
         all_songs = get_all_classified_songs(conn)
 
         # Phase 1: LLM picks songs or asks a clarifying question
-        nl_result = select_songs_nl(query, all_songs, recovery_score, hrv, state)
+        nl_result = select_songs_nl(query, all_songs, body_context)
 
         # If the DJ needs clarification, ask and re-select
         if nl_result.get("needs_clarification"):
@@ -1034,14 +1026,14 @@ def _cmd_request(db_path: Path) -> None:
             answer = input("\n  > ").strip()
             if answer:
                 refined_query = f"{query}. {answer}"
-                nl_result = select_songs_nl(refined_query, all_songs, recovery_score, hrv, state)
+                nl_result = select_songs_nl(refined_query, all_songs, body_context)
                 query = refined_query
 
         # If still needs clarification after one round, force selection
         if nl_result.get("needs_clarification"):
             nl_result = select_songs_nl(
                 f"{query}. IMPORTANT: Do not ask questions. Pick 20 songs now.",
-                all_songs, recovery_score, hrv, state,
+                all_songs, body_context,
             )
 
         # Print DJ message

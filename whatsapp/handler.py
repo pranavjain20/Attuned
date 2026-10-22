@@ -6,7 +6,6 @@ background thread — the result is sent via Twilio API when ready.
 """
 
 import logging
-import sqlite3
 import threading
 import time
 from datetime import date
@@ -14,8 +13,8 @@ from datetime import date
 from config import get_profile_db_path
 from db.queries import get_all_classified_songs
 from db.schema import get_connection
+from intelligence.dj_context import attuned_context
 from intelligence.nl_song_selector import select_songs_nl
-from intelligence.state_classifier import classify_state
 from matching.generator import GenerationError, generate_nl_playlist
 from spotify.auth import get_spotify_client
 from whatsapp.config import (
@@ -43,17 +42,6 @@ def _send_whatsapp(to_phone: str, message: str) -> None:
         to=f"whatsapp:{to_phone}",
         body=message,
     )
-
-
-def _get_whoop_context(conn: sqlite3.Connection) -> tuple[float | None, float | None, str | None]:
-    """Get today's WHOOP recovery context for NL calibration."""
-    try:
-        classification = classify_state(conn)
-        state = classification["state"]
-        metrics = classification.get("metrics", {})
-        return metrics.get("recovery_score"), metrics.get("hrv_rmssd_milli"), state
-    except Exception:
-        return None, None, None
 
 
 def _clear_expired_conversations() -> None:
@@ -123,12 +111,12 @@ def handle_message(phone: str, message: str) -> str:
             "Ask Pranav to add you to Attuned."
         )
 
-    # Get DB connection and WHOOP context
+    # Get DB connection and today's Attuned body context
     db_path = get_profile_db_path(None if profile == "default" else profile)
     conn = get_connection(db_path)
 
     try:
-        recovery_score, hrv, state = _get_whoop_context(conn)
+        body_context = attuned_context(conn, date.today().isoformat())
 
         # Check if this is a reply to a pending clarification
         pending = _conversations.pop(phone, None)
@@ -142,7 +130,7 @@ def handle_message(phone: str, message: str) -> str:
 
         # LLM picks songs directly from the library
         all_songs = get_all_classified_songs(conn)
-        nl_result = select_songs_nl(query, all_songs, recovery_score, hrv, state)
+        nl_result = select_songs_nl(query, all_songs, body_context)
 
         # If needs clarification and this isn't already a follow-up
         if nl_result.get("needs_clarification") and not pending:
@@ -157,7 +145,7 @@ def handle_message(phone: str, message: str) -> str:
         if nl_result.get("needs_clarification"):
             nl_result = select_songs_nl(
                 f"{query}. IMPORTANT: Do not ask questions. Pick 20 songs now.",
-                all_songs, recovery_score, hrv, state,
+                all_songs, body_context,
             )
 
         # Return DJ message immediately, generate playlist in background

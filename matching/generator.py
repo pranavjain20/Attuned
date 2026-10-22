@@ -9,6 +9,7 @@ import spotipy
 
 from db.queries import insert_generated_playlist
 from intelligence.continuous_profile import NAME_DEEP_SHARE, STATE_PURPOSE, is_top_energy_day, pick_state
+from intelligence.dj_context import attuned_context
 from intelligence.state_classifier import classify_state
 from matching.query_engine import select_songs
 from spotify.playlist import (
@@ -440,7 +441,8 @@ def generate_nl_playlist(
     No neuro profile middleman — "dark seductive Weeknd" goes straight to
     Earned It, not through cosine similarity.
 
-    WHOOP data makes the DJ smarter about questions, not about math.
+    The day's Attuned score (dj_context.attuned_context) calibrates the DJ;
+    the request still drives the picks.
 
     Args:
         conn: Database connection.
@@ -462,20 +464,7 @@ def generate_nl_playlist(
     if date_str is None:
         date_str = date.today().isoformat()
 
-    # 1. Get today's WHOOP recovery if available
-    recovery_score = None
-    hrv = None
-    state = None
-    try:
-        classification = classify_state(conn, date_str)
-        state = classification["state"]
-        metrics = classification.get("metrics", {})
-        recovery_score = metrics.get("recovery_score")
-        hrv = metrics.get("hrv_rmssd_milli")
-    except Exception:
-        logger.info("No WHOOP data for NL request — skipping calibration")
-
-    # 2. LLM picks songs directly (unless pre-selected)
+    # 1. LLM picks songs directly, told the day's Attuned body context (unless pre-selected)
     if nl_result is None:
         all_songs = get_all_classified_songs(conn)
         if not all_songs:
@@ -483,7 +472,7 @@ def generate_nl_playlist(
                 "No classified songs in database. "
                 "Run: python main.py classify-songs"
             )
-        nl_result = select_songs_nl(query, all_songs, recovery_score, hrv, state)
+        nl_result = select_songs_nl(query, all_songs, attuned_context(conn, date_str))
 
     # If clarification needed, return it (caller handles the interaction)
     if nl_result.get("needs_clarification"):
@@ -501,14 +490,14 @@ def generate_nl_playlist(
             f"No songs selected for request '{query}'."
         )
 
-    # 3. Filter unavailable tracks
+    # 2. Filter unavailable tracks
     if sp is not None:
         songs = _filter_unavailable_tracks(sp, songs, conn=conn)
         if not songs:
             raise GenerationError("All selected songs are unavailable on Spotify")
     songs = songs[:MAX_PLAYLIST_SIZE]
 
-    # 4. Format outputs
+    # 3. Format outputs
     dt = datetime.strptime(date_str, "%Y-%m-%d")
     name = f"{dt.strftime('%b %-d')} — {playlist_name}"
     track_uris = [s["spotify_uri"] for s in songs]
@@ -519,13 +508,12 @@ def generate_nl_playlist(
     if len(description) > 300:
         description = description[:297] + "..."
 
-    reasoning = (
-        f"NL request: \"{query}\"\n"
-        f"Recovery: {recovery_score}%\n" if recovery_score else f"NL request: \"{query}\"\n"
-        f"No WHOOP data\n"
-    )
+    # What the DJ was asked, and the body context it was given
+    reasoning = f"NL request: \"{query}\""
+    if nl_result.get("body_context"):
+        reasoning += f"\n{nl_result['body_context']}"
 
-    # 5. Create Spotify playlist
+    # 4. Create Spotify playlist
     playlist_id = None
     playlist_url = None
 
@@ -536,14 +524,14 @@ def generate_nl_playlist(
         playlist_id = result["playlist_id"]
         playlist_url = result["playlist_url"]
 
-    # 6. Log to DB
+    # 5. Log to DB
     insert_generated_playlist(
         conn,
         date=date_str,
         detected_state="nl_request",
         track_uris=track_uris,
         reasoning=reasoning,
-        whoop_metrics={"recovery_score": recovery_score, "hrv": hrv, "nl_query": query},
+        whoop_metrics={"nl_query": query},
         description=description,
         spotify_playlist_id=playlist_id,
     )

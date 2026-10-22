@@ -4,8 +4,8 @@ Instead of translating intent → neuro profile → math → songs, this gives
 the LLM the full song library and lets it pick directly. The LLM understands
 "dark seductive Weeknd" means Earned It, not In Dino — no translation needed.
 
-WHOOP data makes the DJ smarter about questions and calibration, but the
-user always has final say.
+Today's Attuned score (see intelligence/dj_context.py) makes the DJ smarter
+about questions and calibration, but the user always has final say.
 """
 
 import json
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 _SYSTEM_PROMPT = """You're a personal DJ for someone you know well. You have their complete music
 library and you know how their body is doing today.
 
-{whoop_context}
+{body_context}
 
 YOUR JOB:
 1. Read their message. Do you understand exactly what kind of playlist they want?
@@ -41,10 +41,10 @@ YOUR JOB:
      and "Channa Mereya (From ...)" — pick ONE version (prefer the ★ one).
      Same for any song with remix/unplugged/live/acoustic variants.
 
-3. WHOOP context shapes your questions, not your obedience. The user decides:
-   - If they want full energy at 30% recovery, give it to them.
-   - But if they're vague ("something upbeat"), use recovery to calibrate:
-     low recovery → ask if they want moderate or full energy.
+3. Their body context shapes your calibration and questions, not your obedience. The user decides:
+   - If they want full energy on a day that leans calm, give it to them.
+   - But if they're vague ("something upbeat"), lean the way today's calibration says;
+     on a day that leans calm you can ask if they want moderate or full energy.
 
 Respond with JSON only.
 
@@ -64,40 +64,6 @@ If ready:
 
 THEIR LIBRARY ({song_count} songs, ordered by how much they listen to each):
 {song_library}"""
-
-
-_WHOOP_CONTEXT_AVAILABLE = """THEIR BODY TODAY:
-Recovery: {recovery}% | State: {state}
-{body_interpretation}
-
-Use this to ask smarter questions when the request is vague. Don't lecture them about
-their health — just be a friend who knows they had a rough/great day."""
-
-_WHOOP_CONTEXT_NONE = """No body data available today. Just go by what they tell you."""
-
-
-def _build_whoop_context(
-    recovery_score: float | None,
-    state: str | None,
-) -> str:
-    """Build plain-English WHOOP context for the prompt."""
-    if recovery_score is None:
-        return _WHOOP_CONTEXT_NONE
-
-    if recovery_score < 40:
-        interpretation = "Rough day — body is stressed and tired. Gentle is the default unless they push."
-    elif recovery_score < 60:
-        interpretation = "Moderate day — not great, not terrible. Middle-of-the-road energy is safe."
-    elif recovery_score < 80:
-        interpretation = "Decent day — body is doing fine. Can handle most things."
-    else:
-        interpretation = "Great day — body is fully charged. Full energy is fair game."
-
-    return _WHOOP_CONTEXT_AVAILABLE.format(
-        recovery=f"{recovery_score:.0f}",
-        state=state or "unknown",
-        body_interpretation=interpretation,
-    )
 
 
 def _build_song_library(songs: list[dict]) -> str:
@@ -144,40 +110,34 @@ def _build_song_library(songs: list[dict]) -> str:
 def select_songs_nl(
     query: str,
     songs: list[dict],
-    recovery_score: float | None = None,
-    hrv: float | None = None,
-    state: str | None = None,
+    body_context: str,
 ) -> dict[str, Any]:
     """Let the LLM pick songs directly from the library.
 
     Args:
         query: User's natural language request.
         songs: Full classified song library (from get_all_classified_songs).
-        recovery_score: Today's WHOOP recovery % (None if unavailable).
-        hrv: Today's HRV in ms (None if unavailable).
-        state: Today's classified state (None if unavailable).
+        body_context: Today's body context (from dj_context.attuned_context).
 
-    Returns:
+    Returns (both carry "body_context", the text the DJ was given):
         If clarification needed:
-            {"needs_clarification": True, "clarifying_question": str}
+            {"needs_clarification": True, "clarifying_question": str, "body_context": str}
         If ready:
             {"needs_clarification": False, "songs": list[dict], "dj_message": str,
-             "playlist_name": str}
+             "playlist_name": str, "body_context": str}
     """
     from config import get_anthropic_api_key
     from llm_client import call_anthropic
 
-    whoop_ctx = _build_whoop_context(recovery_score, state)
     song_library_text, indexed_songs = _build_song_library(songs)
 
     system_prompt = _SYSTEM_PROMPT.format(
-        whoop_context=whoop_ctx,
+        body_context=body_context,
         song_count=len(indexed_songs),
         song_library=song_library_text,
     )
 
-    logger.info("NL song selector: query='%s', %d songs, recovery=%s",
-                query[:50], len(songs), recovery_score)
+    logger.info("NL song selector: query='%s', %d songs", query[:50], len(songs))
 
     raw = call_anthropic(
         api_key=get_anthropic_api_key(),
@@ -202,6 +162,7 @@ def select_songs_nl(
         return {
             "needs_clarification": True,
             "clarifying_question": question,
+            "body_context": body_context,
         }
 
     # Parse song selections
@@ -252,4 +213,5 @@ def select_songs_nl(
         "songs": selected,
         "dj_message": dj_message,
         "playlist_name": playlist_name,
+        "body_context": body_context,
     }
