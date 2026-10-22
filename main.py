@@ -575,6 +575,8 @@ def _cmd_publish_playlists(db_path: Path) -> None:
             print("Nothing to publish.")
             return
         published = publish.publish_steps(sp, steps, published, site.PUBLISHED_PATH)
+        if site.align_frozen_to_published(frozen, published):  # a spare replaced an unavailable song
+            site.save_frozen(frozen, site.PLAYLISTS_PATH)
     except (SpotifyRateLimitError, SpotifyPlaylistError) as e:
         print(f"Error: {e}\nStopped; {site.PUBLISHED_PATH} lists what was published. Re-run to finish.")
         sys.exit(1)

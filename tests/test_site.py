@@ -722,6 +722,24 @@ class TestFrozenPlaylists:
         assert site.replay_playlists(recoveries, ["2026-10-20"], frozen=frozen) == {"2026-10-20": PLAYLIST}
         assert stubbed["range"] == []
 
+    def test_align_to_published_swaps_in_the_published_spare(self):
+        t = lambda i: {"spotify_url": f"https://open.spotify.com/track/s{i}", "why": f"w{i}"}
+        frozen = {"2026-10-21": {"tracks": [t(1), t(2)], "spares": [t(3)]}}
+        published = {"2026-10-21": {"url": "u", "track_uris": ["spotify:track:s1", "spotify:track:s3"]}}
+        assert site.align_frozen_to_published(frozen, published) == ["2026-10-21"]
+        assert frozen["2026-10-21"]["tracks"] == [t(1), t(3)]
+        assert frozen["2026-10-21"]["spares"] == [t(2)]
+
+    def test_align_leaves_matching_and_unknown_days_alone(self):
+        t = {"spotify_url": "https://open.spotify.com/track/a"}
+        frozen = {"2026-10-20": {"tracks": [t], "spares": []}}
+        published = {"2026-10-20": {"url": "u", "track_uris": ["spotify:track:a"]},
+                     "2026-10-19": {"url": "u", "track_uris": ["spotify:track:x"]},
+                     "2026-10-18": {"url": "u", "track_uris": ["spotify:track:not-a-candidate"]}}
+        frozen["2026-10-18"] = {"tracks": [t], "spares": []}
+        assert site.align_frozen_to_published(frozen, published) == []
+        assert frozen["2026-10-18"]["tracks"] == [t]
+
     def test_frozen_file_round_trip(self, tmp_path):
         path = tmp_path / "playlists.json"
         assert site.load_frozen(path) == {}

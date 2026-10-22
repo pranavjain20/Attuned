@@ -431,6 +431,29 @@ def window_dates(conn: sqlite3.Connection, end_date: str, n_days: int) -> list[s
     return sorted(row["date"] for row in get_recoveries_in_range(conn, start, end_date))
 
 
+def align_frozen_to_published(frozen: dict[str, dict], published: dict[str, dict]) -> list[str]:
+    """Make each decided day hold exactly the songs really pushed to Spotify; returns the days changed.
+
+    Publishing can swap an unavailable song for one of the day's spares, and
+    what was published is what that morning actually got. A day is left alone
+    when its published songs aren't all among its own candidates.
+    """
+    changed = []
+    for date, record in sorted(published.items()):
+        playlist = frozen.get(date)
+        if playlist is None:
+            continue
+        candidates = playlist["tracks"] + playlist.get("spares", [])
+        by_uri = {track_uri(t): t for t in candidates}
+        uris = record["track_uris"]
+        if [track_uri(t) for t in playlist["tracks"]] == uris or not all(u in by_uri for u in uris):
+            continue
+        playlist["tracks"] = [by_uri[u] for u in uris]
+        playlist["spares"] = [t for t in candidates if track_uri(t) not in uris]
+        changed.append(date)
+    return changed
+
+
 def replay_playlists(conn: sqlite3.Connection, dates: list[str],
                      history: dict[str, dict] | None = None,
                      frozen: dict[str, dict] | None = None) -> dict[str, dict | None]:
