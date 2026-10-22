@@ -39,6 +39,7 @@ COMMANDS = {
     "request": "Generate a playlist from a natural language request",
     "backfill-release-years": "Backfill release_year from Spotify for songs missing it",
     "sync-whoop-history": "Pull full WHOOP recovery + sleep history",
+    "feeling-score": "Attuned 0-100 feeling score for a day (--date YYYY-MM-DD, --json)",
 }
 
 
@@ -107,6 +108,8 @@ def main() -> None:
         _cmd_recompute_scores(db_path)
     elif command == "sync-whoop-history":
         _cmd_sync_whoop_history(db_path)
+    elif command == "feeling-score":
+        _cmd_feeling_score(db_path)
     elif command == "backfill-release-years":
         _cmd_backfill_release_years(db_path)
     elif command == "match-songs":
@@ -376,6 +379,49 @@ def _cmd_sync_whoop_history(db_path: Path) -> None:
         print(f"  whoop_sleep:    {count_rows(conn, 'whoop_sleep'):,}")
     finally:
         conn.close()
+
+
+def _cmd_feeling_score(db_path: Path) -> None:
+    """Print the feeling score for --date (default today); --json prints the page data contract."""
+    import json
+    from datetime import date
+
+    from intelligence.feeling_score import build_page_day
+
+    target_date = date.today().isoformat()
+    if "--date" in sys.argv:
+        idx = sys.argv.index("--date")
+        if idx + 1 >= len(sys.argv):
+            print("Error: --date requires a value (YYYY-MM-DD)")
+            sys.exit(1)
+        target_date = sys.argv[idx + 1]
+    try:
+        date.fromisoformat(target_date)
+    except ValueError:
+        print(f"Error: --date must be YYYY-MM-DD, got {target_date!r}")
+        sys.exit(1)
+
+    # Scoring replays every earlier day; their per-day INFO logs would bury the output.
+    logging.getLogger("intelligence").setLevel(logging.WARNING)
+    conn = get_connection(db_path)
+    try:
+        day = build_page_day(conn, target_date)
+    finally:
+        conn.close()
+
+    if "--json" in sys.argv:
+        print(json.dumps(day, indent=2, ensure_ascii=False))
+        return
+
+    attuned, whoop = day["attuned"], day["whoop"]
+    print(f"\n{target_date}  WHOOP {whoop['recovery']} ({whoop['band']})")
+    if attuned["score"] is None:
+        print(f"Attuned: no score — {attuned['reason']}")
+        return
+    print(f"Attuned {attuned['score']} ({attuned['band']}) · {attuned['state_label']}")
+    print(f"\n{attuned['headline']}")
+    for line in attuned["explanation"]:
+        print(f"  - {line}")
 
 
 def _cmd_sync_whoop(db_path: Path) -> None:
