@@ -251,7 +251,7 @@ The question of whether WHOOP's composite Recovery Score adds value beyond raw m
 - **Recovery score composition (publicly known):** ~65% HRV (RMSSD), ~20% RHR, ~15% respiratory rate, plus contributions from sleep duration, SpO2, and skin temperature. All values normalized against the user's 30-day rolling baseline, then passed through a proprietary non-linear transformation with dynamic weighting.
 - **Healthy adult correlation:** r = 0.68 with subjective fatigue (Journal of Science and Medicine in Sport, 2023). This is a meaningful moderate-to-strong correlation — the score does reflect something real about how a healthy person feels. However, most of that predictive power comes from HRV itself, which accounts for ~65% of the score's weight.
 - **Clinical populations:** Correlation drops to r = 0.31 (insomnia) and r = 0.22 (diabetics), populations where HRV is chronically suppressed (medRxiv 2024 systematic review, Khodr et al.).
-- **The swimmer study comparison:** In the same Lundstrom 2024 study, raw HRV correlated significantly with validated stress measures — but the Recovery Score showed no correlation with any RESTQ stress/recovery variable (r values of -0.05, -0.18, -0.03, -0.01). The composite algorithm lost a signal that existed in the raw data.
+- **The swimmer study comparison:** In the same Lundstrom 2024 study, raw HRV correlated significantly with validated stress measures — but WHOOP Strain and Recovery showed no relationship with the RESTQ stress/recovery variables. The composite algorithm lost a signal that existed in the raw data.
 - **Performance correlations:** WHOOP-conducted studies found Recovery Score correlated with basketball shooting accuracy (NCAA Div I case study) and baseball fastball velocity/exit bat speed (230 MLB minor league players, 2016). These are directionally meaningful but were not peer-reviewed or independently replicated.
 
 ### 5.3 Why Multi-Dimensional Metrics Matter for State Classification
@@ -450,13 +450,13 @@ Research-backed target ranges for the matching engine. Each state maps to an ide
 
 ### 9.1 Sleep Quality Predicts How You Feel More Than How You Slept
 
-The key insight for Attuned: playlists target how you FEEL, not your lab-measured cognitive performance. A person who slept great last night doesn't want "slow down" even if the week has been rough. The research strongly supports subjective state being disproportionately driven by last night's sleep.
+The key insight for Attuned: playlists target how you FEEL, not your lab-measured cognitive performance. A person who slept great last night doesn't want "slow down" even if the week has been rough. The research supports subjective state being closely tied to last night's sleep (an association, not proven cause).
 
-- **Holding et al. (PMC6456824):** Bidirectional relationship between sleep quality and affect: sleep quality predicts next-day positive affect with a coefficient 2.6× larger than the reverse direction (affect → sleep). Sleep quality is the single strongest predictor of next-morning subjective state.
+- **Triantafillou et al., 2019 (JMIR Mental Health, PMC6456824):** Phone-based daily ratings of sleep quality and mood. In the person-centred analysis, sleep quality → next-day mood had a coefficient of b=.344 vs b=.132 for mood → next-night sleep — 2.6× larger. The outcome is mood (not "positive affect"), the unadjusted difference between the two directions was not statistically significant, and it is an association, not proof that sleep causes mood.
 
-- **Nature Scientific Reports (2024):** Sleep efficiency is the strongest objective correlate of subjective sleep quality — stronger than total duration, onset latency, or wake-after-sleep-onset. People who spend more of their time in bed actually sleeping rate their sleep significantly better.
+- **Pierson-Bartel & Ujma, 2024 (Scientific Reports):** Sleep efficiency is the strongest objective correlate of subjective sleep quality — stronger than total duration, onset latency, or wake-after-sleep-onset. People who spend more of their time in bed actually sleeping rate their sleep significantly better.
 
-- **PMC12208346:** Reallocating just 30 minutes from light sleep to deep sleep improves positive affect by +0.38, independent of total sleep duration. It's not about sleeping longer — it's about sleeping better. The quality of sleep architecture matters more than quantity.
+- **Le et al., 2025 (Annals of Behavioral Medicine, PMC12208346):** Between people, 30 minutes per night in deep sleep instead of light or REM sleep is associated with ≥0.38 higher positive affect, independent of total sleep duration. No within-person effect was found (a given person's better-deep-sleep nights were not followed by better days), and the study is observational — so this is an association, not proof that more deep sleep improves mood.
 
 - **Dinges et al. / Belenky et al. (cumulative fatigue literature):** One good night does NOT fully reverse accumulated fatigue objectively. Cognitive performance, reaction time, and physiological markers require multiple recovery nights. However, subjective experience is disproportionately driven by the most recent night — people feel dramatically better after one good night even when objective impairment persists.
 
@@ -582,6 +582,20 @@ _Full era cohesion analysis: reference/era_cohesion_research.md. Full playlist c
 
 ---
 
+## Citation corrections (2026-10-19)
+
+Earlier versions of this repo cited papers that don't say what was claimed. Each was checked against the paper itself.
+
+- **"Holding et al., PMC6456824" (sleep quality → next-day positive affect, 2.6×).** PMC6456824 is not by Holding. It is Triantafillou S, Saeb S, Lattie EG, Mohr DC, Kording KP (2019), "Relationship Between Sleep Quality and Mood: Ecological Momentary Assessment Study", JMIR Mental Health 6(3):e12613, https://doi.org/10.2196/12613. The 2.6× is b=.344 (sleep → next-day mood) vs b=.132 (mood → sleep) in the person-centred analysis. The outcome is mood, not positive affect; the unadjusted difference was not significant; it's an association, not proof of cause.
+- **"Vitale 2015" (sleep architecture ↔ next-morning subjective state r=0.4–0.6; deep sleep % predicts wellness more than HRV).** No such paper exists. Vitale JA et al. 2015 (Chronobiology International) is about chronotype and weekday/weekend sleep, with no HRV. The r=0.4–0.6 figure has no source. It was also wrongly paired with PMC6456824, which reports no such correlation.
+- **"Hynynen 2011" (HRV ↔ subjective recovery r=0.2–0.3).** Not supported. Hynynen E et al. (2011), Eur J Appl Physiol 111(5):733–741, https://doi.org/10.1007/s00421-010-1698-x, studied 99 office workers. HRV related to self-reported stress only in a morning stand-up (orthostatic) test; overnight HRV did not differ between high- and low-stress groups. No r=0.2–0.3 is reported. The figure has no source.
+- **"Sleep predicts how you feel ~2× as well as HRV" / "2:1 ratio from the research."** Not a published ratio — it was built from the two unsourced figures above. The ~2:1 sleep-over-autonomic weighting in `config.py` and `intelligence/continuous_profile.py` is a design choice. The research supports the direction (sleep matters for how you feel) — Triantafillou 2019, Pierson-Bartel & Ujma 2024, Le 2025 — not the number.
+- **"PMC12208346: 30 min light → deep sleep improves positive affect by +0.38."** The paper is Le F, Yap Y, Dumuid D, Wiley JF (2025), Annals of Behavioral Medicine 59(1):kaaf050, https://doi.org/10.1093/abm/kaaf050. The effect is between people (30 min/night moved from light or REM to deep is associated with ≥0.38 higher positive affect), with no within-person effect, and observational. "Improves" overstated it; "is associated with" is accurate.
+- **"Nature Scientific Reports, 2024" (sleep efficiency strongest correlate of subjective sleep quality).** Correct as cited; now credited to its authors: Pierson-Bartel R, Ujma PP (2024), Scientific Reports 14:5943, https://doi.org/10.1038/s41598-024-56668-0 (mobile EEG headband, within-person).
+- **Lundstrom 2024 Recovery Score "r values of -0.05, -0.18, -0.03, -0.01."** The qualitative finding is right: WHOOP Strain and Recovery showed no relationship with the RESTQ stress or metabolic variables. But those four numbers are not the Recovery Score against four questionnaire variables — per a secondary write-up they are RESTQ total recovery against HRV, RHR, Strain and Recovery respectively, and this could not be confirmed against the paper. The numbers were removed. The HRV correlations (r=-0.462 sport-specific stress, r=-0.459 total stress) stand.
+
+---
+
 ## References
 
 ### Music and ANS
@@ -617,15 +631,15 @@ _Full era cohesion analysis: reference/era_cohesion_research.md. Full playlist c
 ### WHOOP Validation and Metric Importance
 - medRxiv, 2024 — Systematic Review of WHOOP Accuracy (Khodr et al.)
 - PMC, 2022 — Validation of Six Wearable Devices
-- Lundstrom et al., 2024 — Raw HRV vs Recovery Score in NCAA Swimmers (Int J Sports Science & Coaching)
+- Lundstrom EA et al., 2024 — Raw HRV vs Recovery Score in NCAA Swimmers (Int J Sports Science & Coaching 19(4):1578–1587, https://doi.org/10.1177/17479541231206424)
 - Doherty, Lambe, Altini et al., 2025 — Composite Health Scores in Consumer Wearables (Translational Exercise Biomedicine)
 - Altini, M. — Measurements vs Made Up Scores (HRV4Training / Substack)
 - Antwerp University Hospital — WHOOP HRV Accuracy Validation (PMC)
 
 ### Sleep Quality and Subjective State
-- Holding et al. (PMC6456824) — Bidirectional sleep quality / affect relationship
-- Nature Scientific Reports, 2024 — Sleep efficiency as strongest correlate of subjective sleep quality
-- PMC12208346 — Light→deep sleep reallocation improves positive affect
+- Triantafillou S, Saeb S, Lattie EG, Mohr DC, Kording KP, 2019 — Relationship Between Sleep Quality and Mood: Ecological Momentary Assessment Study (JMIR Mental Health 6(3):e12613, PMC6456824, https://doi.org/10.2196/12613)
+- Pierson-Bartel R, Ujma PP, 2024 — Objective sleep quality predicts subjective sleep ratings (Scientific Reports 14:5943, https://doi.org/10.1038/s41598-024-56668-0)
+- Le F, Yap Y, Dumuid D, Wiley JF, 2025 — Light/REM→deep sleep reallocation associated with higher positive affect, between people (Annals of Behavioral Medicine 59(1):kaaf050, PMC12208346, https://doi.org/10.1093/abm/kaaf050)
 - Dinges et al. — Cumulative fatigue and recovery timelines
 - Belenky et al. — Sleep restriction and recovery of sustained performance
 

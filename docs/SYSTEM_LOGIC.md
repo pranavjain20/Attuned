@@ -119,7 +119,7 @@ Not just "did you sleep enough" but "what kind of sleep did you get." This is wh
 ### Step 5: State Classification
 The classifier takes today's data + baselines + trends and assigns one of six composite states. It evaluates top-to-bottom and returns the first match (so more serious states are checked first):
 
-1. **Accumulated Fatigue** — multi-day decline across HRV, RHR, and sleep debt. **Restorative sleep gate:** if last night's sleep was genuinely restorative (no deep deficit, no REM deficit, efficiency >=85%, total >=6h), fatigue is skipped. Playlists target how you feel, not the week's trend — and a person who slept great feels ready even if the week was rough (PMC6456824: sleep quality predicts next-day affect with 2.6x the coefficient of the reverse direction).
+1. **Accumulated Fatigue** — multi-day decline across HRV, RHR, and sleep debt. **Restorative sleep gate:** if last night's sleep was genuinely restorative (no deep deficit, no REM deficit, efficiency >=85%, total >=6h), fatigue is skipped. Playlists target how you feel, not the week's trend — and a person who slept great feels ready even if the week was rough (Triantafillou 2019, PMC6456824: sleep quality is associated with next-day mood with 2.6x the coefficient of the reverse direction).
 2. **Physical Recovery Deficit** — deep sleep significantly low, REM adequate
 3. **Emotional Processing Deficit** — REM significantly low, deep sleep adequate
 4. **Poor Recovery** — today is bad but the 7-day trend is fine
@@ -171,7 +171,7 @@ The recovery score is composed of ~65% HRV, ~20% RHR, ~15% respiratory rate, plu
 
 These all look like "yellow recovery" or "red recovery," but they need different music.
 
-**The evidence:** In a study of 23 elite NCAA swimmers (Lundstrom 2024), raw HRV correlated significantly with validated stress measures (r = -0.462 for sport-specific stress). The Recovery Score showed no correlation at all (r values of -0.05, -0.18, -0.03, -0.01). The composite algorithm actually *lost* the signal that existed in the raw data.
+**The evidence:** In a study of 23 elite NCAA swimmers (Lundstrom 2024), raw HRV correlated significantly with validated stress measures (r = -0.462 for sport-specific stress). WHOOP Strain and Recovery showed no relationship with the stress or recovery questionnaire variables. The composite algorithm actually *lost* the signal that existed in the raw data.
 
 **What we do instead:** Use raw metrics (HRV, RHR, sleep stages, sleep debt) as primary inputs — they give us the multi-dimensional signal we need. Use the Recovery Score as a sanity check — if our classifier says "Peak Readiness" but WHOOP says red, investigate.
 
@@ -557,7 +557,7 @@ The classifier evaluates states top-to-bottom and returns the first match. This 
 
 **WHOOP Trigger:** LnRMSSD <1.0 SD below 30-day mean, sustained 3+ days AND RHR rising (+5 bpm above baseline) AND sleep debt >5 hours (7-day rolling).
 
-**Restorative sleep gate:** Even when all fatigue triggers fire, if last night's sleep was genuinely restorative — no deep sleep deficit, no REM deficit, sleep efficiency >=85%, total sleep >=6 hours — fatigue classification is skipped. The person falls through to baseline. Research (PMC6456824) shows sleep quality is the strongest predictor of next-morning subjective state, with a coefficient 2.6× larger than the reverse direction. One good night doesn't reverse accumulated fatigue objectively, but subjective experience is disproportionately driven by the most recent night. Playlists target how you FEEL, not lab-measured performance. Backtest: 62 of 150 fatigue days flipped to baseline, all with genuinely restorative sleep.
+**Restorative sleep gate:** Even when all fatigue triggers fire, if last night's sleep was genuinely restorative — no deep sleep deficit, no REM deficit, sleep efficiency >=85%, total sleep >=6 hours — fatigue classification is skipped. The person falls through to baseline. Research (Triantafillou 2019, PMC6456824) found sleep quality is associated with next-day mood with a coefficient 2.6× larger than the reverse direction (an association, not proven cause). One good night doesn't reverse accumulated fatigue objectively, but subjective experience is disproportionately driven by the most recent night. Playlists target how you FEEL, not lab-measured performance. Backtest: 62 of 150 fatigue days flipped to baseline, all with genuinely restorative sleep.
 
 **What's happening in your body:** This isn't a bad morning — it's a downward trend across multiple systems over multiple days. Your autonomic nervous system is depleted. The parasympathetic branch (rest/recovery) is suppressed. The requirement for all three signals to align (HRV + RHR + sleep debt) means this is high-confidence — no single bad reading can trigger it.
 

@@ -94,7 +94,8 @@ FATIGUE_RECENT_DAYS = 5        # Look back window for multi-day pattern
 FATIGUE_BAD_DAYS_MIN = 3       # Min bad days in window → fatigue
 
 # Restorative sleep gate — if last night was genuinely restorative, skip accumulated_fatigue
-# Research: last night's sleep is the strongest predictor of next-morning subjective state (PMC6456824)
+# Research: sleep quality is associated with next-day mood more than mood with next-night sleep
+# (Triantafillou 2019, PMC6456824 — association, not proven cause)
 RESTORATIVE_SLEEP_EFFICIENCY_MIN = 85.0    # Sleep efficiency % floor
 RESTORATIVE_SLEEP_TOTAL_MIN_MS = 6 * 3_600_000  # 6h minimum total sleep
 
@@ -109,8 +110,9 @@ BASELINE_CALM_ANCHOR = {"para": 0.45, "symp": 0.15, "grnd": 0.40}
 BASELINE_ENERGY_ANCHOR = {"para": 0.05, "symp": 0.75, "grnd": 0.20}
 BASELINE_Z_CLAMP = 2.0
 BASELINE_SLEEP_WEIGHT = 0.65  # Sleep architecture vs recovery delta weight for baseline scaling
-# Research basis: sleep-subjective correlation r=0.4-0.6 (Vitale 2015, PMC6456824)
-# vs HRV-subjective correlation r=0.2-0.3 (Hynynen 2011). Roughly 2:1 ratio.
+# ~2:1 sleep over recovery delta is a design choice, not a published ratio. Directional
+# support that sleep matters for how you feel: Triantafillou 2019 (PMC6456824),
+# Pierson-Bartel & Ujma 2024 (Sci Rep). See docs/RESEARCH.md › Citation corrections.
 TOKEN_EXPIRY_BUFFER_SECONDS = 300  # 5-minute buffer before refresh
 
 # ---------------------------------------------------------------------------

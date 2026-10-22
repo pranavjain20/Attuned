@@ -12,11 +12,11 @@ On April 7, my WHOOP said 81% — green, strong recovery. My HRV had bounced bac
 
 The next morning, my WHOOP said 59% — yellow, recovery dropped 22 points. But I woke up happier and more energetic than I'd felt all week. REM had nearly doubled to 2.1 hours, well above baseline. Sleep efficiency normalized. Consistency jumped from 72% to 83%. Respiratory rate dropped back to normal. My brain got exactly the processing it needed. Recovery was right that my HRV dipped. It was wrong about how I felt.
 
-WHOOP may have been right about readiness both times — that's what it measures, and it measures it well. But readiness and feeling are different questions, and on these two days, they pointed in opposite directions. This isn't a WHOOP problem. It's a representation problem: any single number dominated by HRV will capture readiness but miss feeling when the two diverge. And the research says they diverge often — sleep architecture predicts next-morning subjective state roughly twice as well as HRV does (Vitale 2015, Hynynen 2011).
+WHOOP may have been right about readiness both times — that's what it measures, and it measures it well. But readiness and feeling are different questions, and on these two days, they pointed in opposite directions. This isn't a WHOOP problem. It's a representation problem: any single number dominated by HRV will capture readiness but miss feeling when the two diverge. And the research points the same way — how you slept is closely tied to how you feel the next day (Triantafillou et al., 2019; Pierson-Bartel & Ujma, 2024).
 
 ### What Attuned does differently
 
-Attuned is built for the feeling question. It reads 12 independent physiological signals and computes a continuous profile of your actual state. Recovery is one of 12 inputs, not the whole picture. Sleep signals outweigh autonomic signals roughly 2:1, matching what the research says about what predicts how you feel. Then it matches songs from your library to that profile — so the playlist you get reflects how your body actually feels, not just whether your HRV bounced back.
+Attuned is built for the feeling question. It reads 12 independent physiological signals and computes a continuous profile of your actual state. Recovery is one of 12 inputs, not the whole picture. Sleep signals outweigh autonomic signals roughly 2:1 — a design choice, not a published ratio, informed by research showing sleep matters for how you feel. Then it matches songs from your library to that profile — so the playlist you get reflects how your body actually feels, not just whether your HRV bounced back.
 
 Two modes:
 
@@ -55,9 +55,9 @@ WHOOP's recovery score is a lossy compression. It combines multiple physiologica
 
 The research is specific about what gets lost:
 
-Sleep quality predicts next-day positive affect with a coefficient 2.6x larger than the reverse direction — sleep drives how you feel more than how you feel drives sleep (Holding et al., PMC6456824). Sleep efficiency is the strongest objective correlate of subjective sleep quality, stronger than total duration or any single stage metric (Nature Scientific Reports, 2024). Reallocating just 30 minutes from light sleep to deep sleep improves positive affect by +0.38, independent of total duration (PMC12208346). It's not about sleeping longer — it's about the architecture of how you slept.
+In a daily-diary study, sleep quality was associated with next-day mood with a coefficient 2.6x larger than the reverse direction — sleep is more tied to how you feel than how you feel is to sleep (Triantafillou et al., 2019, PMC6456824). It's an association, not proof of cause. Sleep efficiency is the strongest objective correlate of subjective sleep quality, stronger than total duration or any single stage metric (Pierson-Bartel & Ujma, Scientific Reports, 2024). Between people, having 30 more minutes of deep sleep in place of light or REM sleep is associated with at least +0.38 higher positive affect, independent of total duration (Le et al., 2025, PMC12208346). It's not about sleeping longer — it's about the architecture of how you slept.
 
-Meanwhile, HRV's relationship with subjective state is weaker. In a study of 23 elite NCAA swimmers, raw HRV correlated significantly with validated stress measures (r=-0.46). But WHOOP's composite Recovery Score — which is mostly HRV — showed no correlation with any stress or recovery questionnaire variable. Correlation values of -0.05, -0.18, -0.03, -0.01 (Lundstrom et al., 2024). The composite algorithm lost signals present in the raw data. A number dominated by HRV absorbed sleep, RHR, and respiratory rate into one score and flattened the distinctions between them.
+Meanwhile, HRV's relationship with subjective state is weaker. In a study of 23 elite NCAA swimmers, raw HRV correlated significantly with validated stress measures (r=-0.46). But WHOOP's composite Recovery Score — which is mostly HRV — showed no relationship with the stress or recovery questionnaire variables (Lundstrom et al., 2024). The composite algorithm lost signals present in the raw data. A number dominated by HRV absorbed sleep, RHR, and respiratory rate into one score and flattened the distinctions between them.
 
 The practical result: the recovery score can't distinguish between physical recovery deficit (low deep sleep) vs emotional processing deficit (low REM). It can't separate genuine recovery (HRV + sleep both strong) from misleading recovery (HRV rebounded but sleep architecture is deteriorating). It can't detect accumulated fatigue across 5 days because it resets every night.
 
@@ -128,7 +128,7 @@ Interaction terms capture compound stress: if HRV is crashing AND resting heart 
 
 Recovery score alone sees 81% and says: energy playlist. But the 12-signal profile sees REM at -1.12 SD (emotional processing deficit), sleep efficiency at -1.05 SD (fragmented despite time in bed), RHR elevated at 57 vs 52-55 norm (sympathetic stress not resolved), and respiratory rate elevated at 14.4 vs 13.7-14.0 norm. The profile shifts toward calming and grounding — not because recovery is low (it isn't), but because the signals that predict how you feel are telling a different story than the signal that predicts readiness.
 
-This is Attuned's core output — a continuous 3D representation of your neurological state that WHOOP doesn't compute. The weight distribution matches the research: sleep signals collectively outweigh autonomic signals roughly 2:1, because sleep predicts next-morning subjective state roughly twice as well as HRV does.
+This is Attuned's core output — a continuous 3D representation of your neurological state that WHOOP doesn't compute. Sleep signals collectively outweigh autonomic signals roughly 2:1. That ratio is a design choice, not a published finding — the research supports the direction (sleep matters for how you feel), not the exact number.
 
 **Example — two consecutive days:**
 
@@ -185,14 +185,14 @@ This isn't vibes. Every threshold, weight, and property range traces back to pub
 - Familiar music triggers significantly stronger physiological responses than unfamiliar music via the dopamine reward circuit (Chanda & Levitin, 2013 — Trends in Cognitive Sciences; European Heart Journal, 2024). This is why Attuned uses YOUR library — the intervention is stronger with songs you already love.
 
 **Why sleep outweighs HRV for the feeling question:**
-- Sleep quality predicts next-day positive affect with a coefficient 2.6x larger than the reverse direction (Holding et al., PMC6456824). Sleep drives mood more than mood drives sleep.
-- Sleep architecture correlates with next-morning subjective state at r=0.4-0.6; HRV correlates at r=0.2-0.3 (Vitale 2015, Hynynen 2011). Sleep predicts how you feel roughly twice as well as HRV — which is why Attuned weights sleep signals above autonomic signals, the inverse of WHOOP's recovery formula.
-- Shifting just 30 minutes from light to deep sleep improves positive affect by +0.38, independent of total duration (PMC12208346). It's not about sleeping longer — it's about sleep architecture. This is why Attuned tracks deep and REM as independent signals, not just total sleep.
+- Sleep quality is associated with next-day mood with a coefficient 2.6x larger than the reverse direction (Triantafillou et al., 2019 — JMIR Mental Health, PMC6456824). Sleep is more tied to mood than mood is to sleep — an association, not proof of cause.
+- Sleep efficiency is the strongest objective correlate of how well people say they slept (Pierson-Bartel & Ujma, 2024 — Scientific Reports). Attuned weights sleep signals roughly 2:1 above autonomic signals, the inverse of WHOOP's recovery formula. The 2:1 is a design choice informed by these studies, not a published ratio.
+- Between people, 30 more minutes of deep sleep in place of light or REM sleep is associated with at least +0.38 higher positive affect, independent of total duration (Le et al., 2025 — Annals of Behavioral Medicine, PMC12208346). It's observational, and no within-person effect was found. It's not about sleeping longer — it's about sleep architecture. This is why Attuned tracks deep and REM as independent signals, not just total sleep.
 - Cumulative sleep debt of ~1.5h/night over 7 days produces cognitive impairment equivalent to a full night of total sleep deprivation — and subjects are unaware of their decline (Van Dongen & Dinges, 2003 — SLEEP). Feeling fine while impaired is the default. This is why Attuned tracks rolling debt as a separate signal from last night's sleep quality.
 
 **HRV monitoring** — valuable, but noisy without context:
 - 7-day rolling averages are superior to single-day HRV for detecting overreaching (Plews et al., 2012 — Eur J Appl Physiol). Single-day values bounce around; the trend is the signal. This is why Attuned uses both absolute HRV and 7-day HRV slope as separate inputs.
-- Raw HRV correlated with validated stress measures in elite athletes — but WHOOP's composite Recovery Score showed no correlation with any stress/recovery questionnaire (Lundstrom et al., 2024). The raw data had signal. The composite lost it.
+- Raw HRV correlated with validated stress measures in elite athletes — but WHOOP's composite Recovery Score showed no relationship with the stress/recovery questionnaire (Lundstrom et al., 2024). The raw data had signal. The composite lost it.
 
 Full research analysis with methodology notes and evidence quality caveats: [docs/RESEARCH.md](docs/RESEARCH.md)
 
@@ -204,7 +204,7 @@ A weekend project picks calming songs when recovery is low and upbeat songs when
 
 Attuned does something fundamentally different:
 
-**A neurological profile, not a recovery score.** Other approaches map recovery to music: low = calm, high = energetic. Three buckets, three playlists. Attuned extracts 12 signals that WHOOP doesn't combine, computes them into a continuous 3-dimensional profile, and matches music to that profile. Sleep signals collectively outweigh autonomic signals ~2:1, matching the research on what predicts subjective state. Recovery is one input, not the driver.
+**A neurological profile, not a recovery score.** Other approaches map recovery to music: low = calm, high = energetic. Three buckets, three playlists. Attuned extracts 12 signals that WHOOP doesn't combine, computes them into a continuous 3-dimensional profile, and matches music to that profile. Sleep signals collectively outweigh autonomic signals ~2:1 — a design choice informed by research on sleep and how you feel. Recovery is one input, not the driver.
 
 **Two interfaces, one intelligence.** A daily automatic playlist when you want your body to decide. A WhatsApp DJ when you want to decide, informed by your body. Same song library, same WHOOP context, different selection engines.
 

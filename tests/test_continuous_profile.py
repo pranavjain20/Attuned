@@ -39,7 +39,7 @@ class TestWeightTableProperties:
             assert set(weights.keys()) == {"para", "symp", "grnd"}, f"{name} missing component"
 
     def test_sleep_para_dominates_autonomic_para(self):
-        """Sleep signals should have ~2x the para weight of autonomic signals (Vitale 2015)."""
+        """Sleep signals should have ~2x the para weight of autonomic signals (design choice, see docs/RESEARCH.md)."""
         auto_para = sum(abs(SIGNAL_WEIGHTS[s]["para"]) for s in self.AUTONOMIC_SIGNALS)
         sleep_para = sum(abs(SIGNAL_WEIGHTS[s]["para"]) for s in self.SLEEP_SIGNALS)
         ratio = sleep_para / auto_para

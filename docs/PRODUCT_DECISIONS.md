@@ -272,9 +272,9 @@ A song with para=0.65, grnd=0.70 gets labeled "GRND" (counted wrong). But it STI
 ### Restorative sleep overrides accumulated fatigue
 **What we noticed:** Today classified as accumulated fatigue (recovery below 60%, multi-day pattern). But last night's sleep was genuinely restorative — good deep+REM, high efficiency. The user felt well-rested. The "Slow Down" playlist (95% parasympathetic, devotional) didn't match how they felt.
 **Research we did:**
-- Sleep quality is the single strongest predictor of next-morning subjective state — coefficient 2.6x larger than reverse direction (PMC6456824)
+- Sleep quality is the single strongest predictor of next-morning subjective state — coefficient 2.6x larger than reverse direction (PMC6456824) (Correction 2026-10-19: PMC6456824 is Triantafillou 2019; it found sleep quality is associated with next-day mood, not that it is the strongest predictor; see docs/RESEARCH.md › Citation corrections.)
 - Sleep efficiency is the strongest objective correlate of subjective sleep quality (Nature Scientific Reports 2024)
-- Reallocating 30 min light → deep sleep improves positive affect by +0.38 independent of total duration (PMC12208346)
+- Reallocating 30 min light → deep sleep improves positive affect by +0.38 independent of total duration (PMC12208346) (Correction 2026-10-19: Le 2025; a between-person association, not an improvement, with no within-person effect; see docs/RESEARCH.md › Citation corrections.)
 - One good night does NOT fully reverse accumulated fatigue objectively. But subjective experience is disproportionately driven by last night.
 **The product insight:** Playlists target how you FEEL, not your lab-measured cognitive performance. A person who slept great doesn't want "slow down" even if the week has been rough.
 **Decision:** Added restorative sleep gate to accumulated fatigue. If last night meets ALL four conditions, skip fatigue:
@@ -407,7 +407,7 @@ Recovery delta is HRV-driven. HRV is a biomarker of autonomic balance, not a dir
 
 Four parallel research agents investigated:
 
-1. **Sleep-recovery mismatch:** HRV and sleep architecture recover through independent mechanisms. Sleep architecture is a better predictor of subjective state (Vitale 2015: deep sleep % predicted wellness more strongly than HRV; Hynynen 2011: HRV-subjective recovery correlation only r=0.2-0.3).
+1. **Sleep-recovery mismatch:** HRV and sleep architecture recover through independent mechanisms. Sleep architecture is a better predictor of subjective state (Vitale 2015: deep sleep % predicted wellness more strongly than HRV; Hynynen 2011: HRV-subjective recovery correlation only r=0.2-0.3). (Correction 2026-10-19: no such Vitale 2015 paper exists, and Hynynen 2011 reports no r=0.2-0.3; see docs/RESEARCH.md › Citation corrections.)
 
 2. **WHOOP algorithm:** Recovery is ~85% HRV-driven (Marco Altini, Rob ter Horst independent analyses). Sleep stage composition does NOT directly feed into the score — only total duration vs need. Architecture deficits are invisible.
 
@@ -421,7 +421,7 @@ Added continuous sleep quality z-score as a second input to baseline profile sca
 
 **The blend:** `z_effective = 0.35 * z_recovery + 0.65 * z_sleep`
 
-Sleep gets 65% weight, recovery delta gets 35%. This ratio comes from the research: sleep architecture correlates with next-morning subjective state at r=0.4-0.6 (Vitale 2015, PMC6456824), while HRV correlates at r=0.2-0.3 (Hynynen 2011). That's roughly a 2:1 ratio in favor of sleep. When both signals agree, the effect is reinforced. When they conflict, sleep dominates — because sleep is what actually determines how you feel.
+Sleep gets 65% weight, recovery delta gets 35%. This ratio comes from the research: sleep architecture correlates with next-morning subjective state at r=0.4-0.6 (Vitale 2015, PMC6456824), while HRV correlates at r=0.2-0.3 (Hynynen 2011). That's roughly a 2:1 ratio in favor of sleep. (Correction 2026-10-19: the r=0.4-0.6 and r=0.2-0.3 figures are unsourced — no such Vitale 2015 paper exists, Hynynen 2011 doesn't report it, and PMC6456824 is Triantafillou 2019. The 2:1 is a design choice, not a published ratio; see docs/RESEARCH.md › Citation corrections.) When both signals agree, the effect is reinforced. When they conflict, sleep dominates — because sleep is what actually determines how you feel.
 
 ### The before/after
 
@@ -619,6 +619,8 @@ The key insight: **1.5h deep sleep in a 5h night ≠ 1.5h deep sleep in a 9h nig
 | WHOOP Recovery composite | r = -0.05 to -0.18 with validated stress scales | Loses raw signal fidelity |
 | Sleep debt | Cognitive impairment >5h cumulative | Van Dongen & Dinges 2003 |
 
+(Correction 2026-10-19: the sleep-architecture r = 0.4-0.6 has no source — PMC6456824 and the 2024 Sci Rep paper don't report it. The Recovery composite r = -0.05 to -0.18 figures are not the Recovery Score against stress scales and were removed elsewhere; Lundstrom 2024's finding is only that Strain and Recovery showed no relationship with the questionnaire; see docs/RESEARCH.md › Citation corrections.)
+
 **Key research insights:**
 - Multi-day trends (7-day rolling averages) are more predictive than single-day readings (Plews et al., 2012)
 - Day-over-day deltas predict subjective experience better than absolute position
@@ -626,7 +628,7 @@ The key insight: **1.5h deep sleep in a 5h night ≠ 1.5h deep sleep in a 9h nig
 - Deep sleep deficit + REM deficit indicate different problems requiring different music
 - Subjective state recovers after 1 good night; objective impairment takes 9+ days (Dinges/Belenky)
 - Sleep efficiency is the single strongest objective correlate of subjective sleep quality
-- Sleep quality/architecture matters more than quantity for subjective state — shifting 30min from light to deep improves positive affect by +0.38 regardless of total duration (PMC12208346)
+- Sleep quality/architecture matters more than quantity for subjective state — shifting 30min from light to deep improves positive affect by +0.38 regardless of total duration (PMC12208346) (Correction 2026-10-19: between-person association, not an improvement; see docs/RESEARCH.md › Citation corrections.)
 
 ### The new architecture: continuous weighted function
 
@@ -1400,6 +1402,8 @@ Traced the problem to the `SIGNAL_WEIGHTS` table in `continuous_profile.py`. The
 - HRV correlates with subjective state at r=0.2-0.3 (Hynynen 2011)
 - That's roughly 2:1 in favor of sleep
 - Sleep quality predicts next-day positive affect with coefficient 2.6x larger than the reverse (Holding et al., PMC6456824)
+
+(Correction 2026-10-19: no such Vitale 2015 paper exists; Hynynen 2011 reports no r=0.2-0.3; PMC6456824 is Triantafillou 2019, not Holding, and its outcome is mood. The 2:1 is a design choice, not a published ratio; see docs/RESEARCH.md › Citation corrections.)
 
 **Our weights are 2.5:1 in the wrong direction.** The research says sleep should dominate next-morning feel. Our code has autonomic dominating.
 

@@ -29,9 +29,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Weight table: research-backed, sleep-dominant
 #
-# Sleep architecture correlates with next-morning subjective state at r=0.4-0.6
-# (Vitale 2015, PMC6456824). HRV correlates at r=0.2-0.3 (Hynynen 2011).
-# Aggregate sleep:autonomic weight ratio targets ~2:1 to match the research.
+# Aggregate sleep:autonomic weight ratio targets ~2:1. This is a design choice,
+# not a published ratio. Directional support that sleep matters for how you feel:
+# Triantafillou 2019 (PMC6456824), Pierson-Bartel & Ujma 2024 (Sci Rep), Le 2025
+# (PMC12208346). See docs/RESEARCH.md › Citation corrections.
 #
 # Previous table had this inverted (2.5:1 autonomic over sleep) because the
 # Day 10 sleep dampener was architecturally bypassed by the Day 12 continuous
