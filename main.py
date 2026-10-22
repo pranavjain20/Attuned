@@ -876,8 +876,8 @@ def _cmd_match_songs(db_path: Path) -> None:
             artist = (song["artist"] or "")[:20]
             genres = song.get("genre_tags") or []
             genre_str = (genres[0] if genres else "—")[:13]
-            bpm_str = f"{song['bpm']:.0f}" if song.get("bpm") is not None else "?"
-            print(f"{i:<4} {name:<35} {artist:<22} {genre_str:<15} {bpm_str:>5} {song['selection_score']:>6.3f}")
+            tempo_str = f"{song['tempo']:.0f}" if song.get("tempo") is not None else "?"
+            print(f"{i:<4} {name:<35} {artist:<22} {genre_str:<15} {tempo_str:>5} {song['selection_score']:>6.3f}")
     finally:
         conn.close()
 

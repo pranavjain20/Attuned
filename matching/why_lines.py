@@ -8,8 +8,8 @@ The playlist is chosen for what's good for you given how you'll likely feel,
 so lines never name our internal states ("rest day", "grounding") and never
 claim what a song does to the body ("lowers your heart rate").
 
-No raw BPM unless it's trustworthy: LLM BPM is often double-time for
-Bollywood, so only the human-felt tempo (felt_tempo) is ever shown.
+Tempo is never a raw number, only a plain word ("slow", "mid-tempo",
+"up-tempo"), and only when the corrected tempo is high or medium confidence.
 """
 
 from datetime import date as date_cls, timedelta
@@ -38,6 +38,9 @@ DIM_TIE_MARGIN = 0.05
 SOFT_MAX_ENERGY = 0.30
 HIGH_MIN_ENERGY = 0.75
 ACOUSTIC_MIN = 0.60
+TRUSTED_TEMPO_CONFIDENCE = ("high", "medium")
+SLOW_MAX_BPM = 85
+MID_MAX_BPM = 110
 
 # Mood tags reworded where the raw tag doesn't read as an adjective;
 # tags in _SKIP_MOODS don't describe how the song sounds.
@@ -150,12 +153,11 @@ def _texture(song: dict) -> str | None:
 
 
 def _tempo(song: dict) -> str | None:
-    """Felt tempo phrase, the only tempo we trust enough to show."""
-    felt = song.get("felt_tempo")
-    if not felt:
+    """Tempo as a plain word, only when the corrected tempo is trusted."""
+    tempo = song.get("tempo")
+    if not tempo or song.get("tempo_confidence") not in TRUSTED_TEMPO_CONFIDENCE:
         return None
-    word = "slow" if felt <= 85 else "steady" if felt <= 110 else "upbeat"
-    return f"{word} ({round(felt)} BPM)"
+    return "slow" if tempo <= SLOW_MAX_BPM else "mid-tempo" if tempo <= MID_MAX_BPM else "up-tempo"
 
 
 def _adjective_phrases(song: dict) -> list[str]:

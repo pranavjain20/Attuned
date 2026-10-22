@@ -13,6 +13,7 @@ import re
 import sqlite3
 from typing import Any
 
+from classification.profiler import scoring_tempo
 from config import (
     ANCHOR_MAX_COUNT,
     ANCHOR_RECENCY_DAYS,
@@ -663,8 +664,8 @@ def _build_result_song(
         "last_played": song.get("last_played"),
         "play_count": song.get("play_count"),
         "engagement_score": song.get("engagement_score"),
-        "bpm": song.get("bpm"),
-        "felt_tempo": song.get("felt_tempo"),
+        "tempo": scoring_tempo(song),
+        "tempo_confidence": song.get("tempo_confidence"),
         "energy": song.get("energy"),
         "valence": song.get("valence"),
         "acousticness": song.get("acousticness"),

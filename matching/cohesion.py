@@ -9,6 +9,7 @@ import logging
 import math
 from typing import Any
 
+from classification.profiler import scoring_tempo
 from config import (
     BPM_HARD_CAP_SIMILARITY,
     BPM_HARD_CAP_THRESHOLD,
@@ -139,8 +140,7 @@ def compute_pairwise_similarity(
     score += w["mood_tags"] * compute_tag_similarity(
         song_a.get("mood_tags"), song_b.get("mood_tags"))
 
-    bpm_sim = compute_bpm_similarity(
-        song_a.get("bpm"), song_b.get("bpm"))
+    bpm_sim = compute_bpm_similarity(scoring_tempo(song_a), scoring_tempo(song_b))
     score += w["bpm"] * bpm_sim
 
     year_a = song_a.get("original_release_year") or song_a.get("release_year")

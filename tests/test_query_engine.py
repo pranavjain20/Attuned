@@ -15,6 +15,7 @@ from db.queries import (
 )
 from matching.query_engine import (
     _apply_lead_track_ordering,
+    _build_result_song,
     _dedup_near_duplicates,
     _normalize_title,
     compute_confidence_multiplier,
@@ -539,7 +540,7 @@ class TestSelectSongs:
             assert "breakdown" in song
             assert "parasympathetic" in song
             assert "genre_tags" in song
-            assert "bpm" in song
+            assert "tempo" in song
 
     def test_selected_songs_include_cohesion_fields(self, db_conn):
         self._seed_songs(db_conn)
@@ -547,7 +548,7 @@ class TestSelectSongs:
         for song in result["songs"]:
             assert "genre_tags" in song
             assert "mood_tags" in song
-            assert "bpm" in song
+            assert "tempo" in song
             assert "energy" in song
 
     def test_near_duplicate_songs_deduped(self, db_conn):
@@ -1252,3 +1253,25 @@ class TestIdentifyAnchors:
         scored = [_make_scored_entry(0, last_played="2025-12-18", score=0.9)]
         result = identify_anchors(scored, "2026-03-19", recency_days=90, max_count=5)
         assert result == []
+
+
+class TestResultSongTempo:
+    """Result songs carry one tempo: the corrected one, else the old fallback."""
+
+    def test_carries_corrected_tempo_and_confidence(self):
+        song = {"spotify_uri": "u", "tempo": 76.0, "tempo_confidence": "high",
+                "felt_tempo": 80.0, "bpm": 152.0}
+        result = _build_result_song(song, 0.5, {})
+        assert result["tempo"] == 76.0
+        assert result["tempo_confidence"] == "high"
+
+    def test_old_row_falls_back_without_confidence(self):
+        song = {"spotify_uri": "u", "tempo": None, "felt_tempo": None, "bpm": 118.0}
+        result = _build_result_song(song, 0.5, {})
+        assert result["tempo"] == 118.0
+        assert result["tempo_confidence"] is None
+
+    def test_no_raw_bpm_or_felt_tempo_keys(self):
+        """Nothing downstream can read the uncorrected numbers by mistake."""
+        result = _build_result_song({"spotify_uri": "u", "bpm": 152.0, "felt_tempo": 80.0}, 0.5, {})
+        assert "bpm" not in result and "felt_tempo" not in result

@@ -21,7 +21,7 @@ def _song(**overrides):
     song = {
         "spotify_uri": "spotify:track:x",
         "parasympathetic": 0.8, "sympathetic": 0.2, "grounding": 0.4,
-        "bpm": 152.0, "felt_tempo": None,
+        "bpm": 152.0, "felt_tempo": None, "tempo": None, "tempo_confidence": None,
         "energy": 0.5, "valence": 0.5, "acousticness": 0.3,
         "mood_tags": ["romantic", "nostalgic"], "genre_tags": ["bollywood", "hindi"],
         "original_release_year": 2011, "release_year": 2011,
@@ -152,14 +152,39 @@ class TestDescription:
         assert not any("—" in l for l in lines)
 
 
-class TestNoUntrustedTempo:
+class TestTempoWords:
+    """Tempo is shown only as a plain word, and only when the corrected tempo is trusted."""
+
+    @staticmethod
+    def _lines(**overrides):
+        return explain_playlist([_song(**overrides)] * 4, "rest", build_context(_library(), DATE))
+
     def test_llm_bpm_never_shown(self, ctx):
         lines = explain_playlist([_song(bpm=b) for b in (60.0, 90.0, 152.0, None)], "rest", ctx)
         assert not any("BPM" in line or "152" in line for line in lines)
 
-    def test_felt_tempo_shown(self):
-        lines = explain_playlist([_song(felt_tempo=72.0)] * 4, "rest", build_context(_library(), DATE))
-        assert any("slow (72 bpm) and romantic" in l.lower() for l in lines), lines
+    @pytest.mark.parametrize("tempo, word", [(60.0, "slow"), (85.0, "slow"), (86.0, "mid-tempo"),
+                                             (110.0, "mid-tempo"), (111.0, "up-tempo"),
+                                             (172.0, "up-tempo")])
+    @pytest.mark.parametrize("confidence", ["high", "medium"])
+    def test_trusted_tempo_shown_as_word(self, tempo, word, confidence):
+        lines = self._lines(tempo=tempo, tempo_confidence=confidence)
+        assert any(f"{word} and romantic" in l.lower() for l in lines), lines
+
+    @pytest.mark.parametrize("confidence", ["high", "medium", "low", None])
+    def test_never_a_number(self, confidence):
+        lines = self._lines(tempo=72.0, tempo_confidence=confidence, felt_tempo=70.0, bpm=144.0)
+        assert not any(re.search(r"\d|bpm", l, re.IGNORECASE) for l in lines), lines
+
+    @pytest.mark.parametrize("confidence", ["low", None, "unknown"])
+    def test_untrusted_tempo_not_shown(self, confidence):
+        lines = self._lines(tempo=72.0, tempo_confidence=confidence)
+        assert not any(w in l.lower() for l in lines for w in ("slow", "mid-tempo", "up-tempo")), lines
+
+    def test_felt_tempo_alone_not_shown(self):
+        """felt_tempo is the old LLM guess; only the corrected tempo is trusted now."""
+        lines = self._lines(felt_tempo=72.0)
+        assert not any("slow" in l.lower() for l in lines), lines
 
 
 class TestMissingData:
@@ -258,7 +283,8 @@ class TestPlaylistLevel:
     @pytest.mark.parametrize("state", ["rest", "energy", "grounding"])
     def test_guardrails(self, ctx, state):
         songs = self._playlist() + [_song(mood_tags=["light-hearted", "celebratory", "x"],
-                                          genre_tags=["hip-hop"], felt_tempo=128.0,
+                                          genre_tags=["hip-hop"], tempo=128.0,
+                                          tempo_confidence="high",
                                           play_count=99, original_release_year=1970)]
         for line in explain_playlist(songs, state, ctx):
             assert len(line) < 80, line

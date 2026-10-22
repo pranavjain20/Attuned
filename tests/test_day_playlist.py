@@ -112,8 +112,8 @@ class TestSelectSongsPointInTime:
     def test_result_songs_carry_why_line_fields(self, library):
         conn, _, _ = library
         song = select_songs(conn, "rest", DAY, BASELINE_CALM_ANCHOR, point_in_time=True)["songs"][0]
-        for key in ("valence", "acousticness", "felt_tempo", "original_release_year", "is_anchor",
-                    "first_played"):
+        for key in ("valence", "acousticness", "tempo", "tempo_confidence",
+                    "original_release_year", "is_anchor", "first_played"):
             assert key in song
 
     def test_anchor_flag_set_for_recent_plays(self, library):

@@ -2,7 +2,7 @@
 
 import pytest
 
-from config import COHESION_MIN_SIMILARITY
+from config import BPM_HARD_CAP_SIMILARITY, COHESION_MIN_SIMILARITY
 from matching.cohesion import (
     compute_bpm_similarity,
     compute_era_similarity,
@@ -220,6 +220,28 @@ class TestPairwiseSimilarity:
 # ---------------------------------------------------------------------------
 # compute_neighborhood_density
 # ---------------------------------------------------------------------------
+
+class TestPairwiseSimilarityUsesCorrectedTempo:
+    """Cohesion compares the corrected tempo, not the old bpm column."""
+
+    BASE = {"genre_tags": ["bollywood"], "mood_tags": ["romantic"], "energy": 0.4,
+            "acousticness": 0.6, "danceability": 0.4, "valence": 0.4, "release_year": 2010}
+
+    def test_same_tempo_despite_old_double_time_bpm(self):
+        ballad_old_double = {**self.BASE, "tempo": 76.0, "bpm": 152.0}
+        ballad = {**self.BASE, "tempo": 76.0, "bpm": 76.0}
+        assert compute_pairwise_similarity(ballad_old_double, ballad) == pytest.approx(1.0, abs=0.01)
+
+    def test_tempo_gap_triggers_bpm_hard_cap_even_when_bpm_matches(self):
+        slow = {**self.BASE, "tempo": 60.0, "bpm": 120.0}
+        fast = {**self.BASE, "tempo": 120.0, "bpm": 120.0}
+        assert compute_pairwise_similarity(slow, fast) <= BPM_HARD_CAP_SIMILARITY
+
+    def test_falls_back_to_bpm_when_tempo_missing(self):
+        old_row = {**self.BASE, "tempo": None, "bpm": 76.0}
+        new_row = {**self.BASE, "tempo": 76.0, "bpm": 152.0}
+        assert compute_pairwise_similarity(old_row, new_row) == pytest.approx(1.0, abs=0.01)
+
 
 class TestNeighborhoodDensity:
 
