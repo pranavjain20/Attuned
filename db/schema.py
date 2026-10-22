@@ -158,7 +158,7 @@ CREATE TABLE IF NOT EXISTS songs (
 
 CREATE TABLE IF NOT EXISTS whoop_recovery (
     cycle_id            INTEGER PRIMARY KEY,
-    date                TEXT NOT NULL UNIQUE,      -- YYYY-MM-DD, derived from cycle end time
+    date                TEXT NOT NULL UNIQUE,      -- YYYY-MM-DD, local date of the sleep it scores
     recovery_score      REAL,
     hrv_rmssd_milli     REAL,
     ln_rmssd            REAL,                      -- log(hrv_rmssd_milli), computed on storage
@@ -169,7 +169,7 @@ CREATE TABLE IF NOT EXISTS whoop_recovery (
 
 CREATE TABLE IF NOT EXISTS whoop_sleep (
     sleep_id            TEXT PRIMARY KEY,         -- UUID in v2 API
-    date                TEXT NOT NULL,             -- YYYY-MM-DD, derived from sleep end time
+    date                TEXT NOT NULL,             -- YYYY-MM-DD, local date the sleep ended
     recovery_cycle_id   INTEGER,
     deep_sleep_ms       INTEGER,
     rem_sleep_ms        INTEGER,

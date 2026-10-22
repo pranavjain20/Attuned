@@ -4,9 +4,9 @@ import logging
 import sqlite3
 from datetime import date
 
-from db.queries import upsert_whoop_recovery, upsert_whoop_sleep
+from db.queries import replace_whoop_recovery_history, upsert_whoop_recovery, upsert_whoop_sleep
 from whoop.auth import get_valid_token
-from whoop.client import get_recovery_for_date, get_sleeps_for_date, _paginated_get, _parse_recovery_response, _parse_sleep_response
+from whoop.client import get_records_for_date, _paginated_get, _parse_recovery_response, _parse_sleep_response
 from config import WHOOP_BASE_URL
 
 logger = logging.getLogger(__name__)
@@ -25,8 +25,8 @@ def sync_date(conn: sqlite3.Connection, target_date: str) -> dict[str, bool]:
     token = get_valid_token(conn)
     result = {"recovery": False, "sleep": False}
 
-    recovery = get_recovery_for_date(token, target_date)
-    if recovery:
+    records = get_records_for_date(token, target_date)
+    for recovery in records["recoveries"]:
         upsert_whoop_recovery(
             conn,
             cycle_id=recovery["cycle_id"],
@@ -37,14 +37,14 @@ def sync_date(conn: sqlite3.Connection, target_date: str) -> dict[str, bool]:
             spo2=recovery.get("spo2"),
             skin_temp=recovery.get("skin_temp"),
         )
-        result["recovery"] = True
         logger.info("Stored recovery for %s: score=%.0f%%, HRV=%.1fms",
                      target_date, recovery["recovery_score"] or 0,
                      recovery["hrv_rmssd_milli"] or 0)
-    else:
+    result["recovery"] = bool(records["recoveries"])
+    if not records["recoveries"]:
         logger.warning("No recovery data found for %s", target_date)
 
-    sleeps = get_sleeps_for_date(token, target_date)
+    sleeps = records["sleeps"]
     for sleep in sleeps:
         _store_sleep(conn, sleep)
         logger.info("Stored %s for %s: deep=%dms, REM=%dms",
@@ -65,33 +65,23 @@ def sync_full_history(conn: sqlite3.Connection) -> dict[str, int]:
     token = get_valid_token(conn)
     counts = {"recovery": 0, "sleep": 0}
 
-    # Pull all recovery records
+    # Sleeps first: each recovery takes the local date of the sleep it scores
+    logger.info("Pulling full WHOOP sleep history...")
+    sleeps = [_parse_sleep_response(raw)
+              for raw in _paginated_get(token, f"{WHOOP_BASE_URL}/v2/activity/sleep", params={})]
+    sleeps = [s for s in sleeps if s and s.get("date")]
+    sleep_dates = {s["sleep_id"]: s["date"] for s in sleeps}
+
     logger.info("Pulling full WHOOP recovery history...")
-    raw_recoveries = _paginated_get(token, f"{WHOOP_BASE_URL}/v2/recovery", params={})
-    for raw in raw_recoveries:
-        parsed = _parse_recovery_response(raw)
-        if parsed and parsed.get("date"):
-            upsert_whoop_recovery(
-                conn,
-                cycle_id=parsed["cycle_id"],
-                date=parsed["date"],
-                recovery_score=parsed["recovery_score"],
-                hrv_rmssd_milli=parsed["hrv_rmssd_milli"],
-                resting_heart_rate=parsed["resting_heart_rate"],
-                spo2=parsed.get("spo2"),
-                skin_temp=parsed.get("skin_temp"),
-            )
-            counts["recovery"] += 1
+    recoveries = [_parse_recovery_response(raw, sleep_dates)
+                  for raw in _paginated_get(token, f"{WHOOP_BASE_URL}/v2/recovery", params={})]
+    # Recoveries are written before sleeps, which link to them
+    counts["recovery"] = replace_whoop_recovery_history(conn, [r for r in recoveries if r and r.get("date")])
     logger.info("Stored %d recovery records", counts["recovery"])
 
-    # Pull all sleep records
-    logger.info("Pulling full WHOOP sleep history...")
-    raw_sleeps = _paginated_get(token, f"{WHOOP_BASE_URL}/v2/activity/sleep", params={})
-    for raw in raw_sleeps:
-        parsed = _parse_sleep_response(raw)
-        if parsed and parsed.get("date"):
-            _store_sleep(conn, parsed)
-            counts["sleep"] += 1
+    for sleep in sleeps:
+        _store_sleep(conn, sleep)
+    counts["sleep"] = len(sleeps)
     logger.info("Stored %d sleep records", counts["sleep"])
 
     return counts

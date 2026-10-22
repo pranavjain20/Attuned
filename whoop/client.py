@@ -1,7 +1,7 @@
 """WHOOP API client — recovery, sleep, and cycle data (v2 API)."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -11,38 +11,31 @@ from config import WHOOP_BASE_URL, WHOOP_PAGE_SIZE
 logger = logging.getLogger(__name__)
 
 
-def get_recovery_for_date(token: str, date: str) -> dict[str, Any] | None:
-    """Fetch recovery data for a specific date (YYYY-MM-DD).
+def get_records_for_date(token: str, date: str) -> dict[str, list[dict[str, Any]]]:
+    """Fetch every recovery and sleep record whose local date is `date` (YYYY-MM-DD).
 
-    Uses the v2 /recovery collection endpoint with date filtering.
-    Returns parsed recovery dict or None if not found.
+    Returns {"recoveries": [...], "sleeps": [...]}. Sleeps include naps — a date
+    can hold a night plus naps, and keeping only the first would store whichever
+    the API listed first (often a nap). A recovery is dated by the sleep it scores.
+
+    WHOOP filters by UTC time, and a local date spans UTC from the day before to
+    the day after (UTC+14 to UTC−12), so a three-day window is asked for and the
+    records are kept by their local date.
     """
-    records = _paginated_get(
-        token,
-        f"{WHOOP_BASE_URL}/v2/recovery",
-        params={"start": f"{date}T00:00:00.000Z", "end": f"{date}T23:59:59.999Z"},
-    )
-    for record in records:
-        parsed = _parse_recovery_response(record)
-        if parsed and parsed["date"] == date:
-            return parsed
-    return None
-
-
-def get_sleeps_for_date(token: str, date: str) -> list[dict[str, Any]]:
-    """Fetch every sleep record (main sleep and naps) for a date (YYYY-MM-DD).
-
-    Uses the v2 /activity/sleep endpoint with date filtering. Returns all parsed
-    records whose date matches — a date can hold a night plus naps, and keeping
-    only the first would store whichever the API listed first (often a nap).
-    """
-    records = _paginated_get(
-        token,
-        f"{WHOOP_BASE_URL}/v2/activity/sleep",
-        params={"start": f"{date}T00:00:00.000Z", "end": f"{date}T23:59:59.999Z"},
-    )
-    parsed = [_parse_sleep_response(record) for record in records]
-    return [p for p in parsed if p and p["date"] == date]
+    day = datetime.strptime(date, "%Y-%m-%d")
+    params = {
+        "start": f"{(day - timedelta(days=2)):%Y-%m-%d}T00:00:00.000Z",
+        "end": f"{(day + timedelta(days=1)):%Y-%m-%d}T23:59:59.999Z",
+    }
+    sleeps = [_parse_sleep_response(r) for r in _paginated_get(token, f"{WHOOP_BASE_URL}/v2/activity/sleep", params=params)]
+    sleeps = [s for s in sleeps if s]
+    sleep_dates = {s["sleep_id"]: s["date"] for s in sleeps}
+    recoveries = [_parse_recovery_response(r, sleep_dates)
+                  for r in _paginated_get(token, f"{WHOOP_BASE_URL}/v2/recovery", params=params)]
+    return {
+        "recoveries": [r for r in recoveries if r and r["date"] == date],
+        "sleeps": [s for s in sleeps if s["date"] == date],
+    }
 
 
 def _paginated_get(
@@ -93,8 +86,14 @@ def _paginated_get(
     return results
 
 
-def _parse_recovery_response(raw: dict[str, Any]) -> dict[str, Any] | None:
-    """Parse a WHOOP v2 recovery API response into our schema format."""
+def _parse_recovery_response(raw: dict[str, Any], sleep_dates: dict[Any, str]) -> dict[str, Any] | None:
+    """Parse a WHOOP v2 recovery API response into our schema format.
+
+    A recovery has no time zone of its own; it scores one sleep (`sleep_id`), so it
+    takes that sleep's local date from `sleep_dates` ({sleep_id: date}). That keeps
+    a night and its recovery on the same date, even when WHOOP scored the recovery
+    hours later. If the sleep is unknown, falls back to the UTC date of created_at.
+    """
     score = raw.get("score", {})
     if not score:
         return None
@@ -103,8 +102,11 @@ def _parse_recovery_response(raw: dict[str, Any]) -> dict[str, Any] | None:
     if cycle_id is None:
         return None
 
-    # Derive date from created_at timestamp
-    date = _derive_date_from_timestamp(raw.get("created_at", ""))
+    date = sleep_dates.get(raw.get("sleep_id"))
+    if date is None:
+        logger.warning("WHOOP recovery %s has no known sleep (%s) — dating it by UTC created_at",
+                       cycle_id, raw.get("sleep_id"))
+        date = local_date(raw.get("created_at", ""), None)
 
     return {
         "cycle_id": cycle_id,
@@ -130,9 +132,8 @@ def _parse_sleep_response(raw: dict[str, Any]) -> dict[str, Any] | None:
     # v2 sleep IDs are UUIDs — use cycle_id (integer) for FK
     cycle_id = raw.get("cycle_id")
 
-    # Derive date from sleep end time
-    end_time = raw.get("end", "")
-    date = _derive_date_from_timestamp(end_time)
+    # A sleep belongs to the local date it ended on (the morning you woke up)
+    date = local_date(raw.get("end", ""), raw.get("timezone_offset"))
 
     stage_summary = score.get("stage_summary", {})
     sleep_needed = score.get("sleep_needed", {})
@@ -163,18 +164,28 @@ def _parse_sleep_response(raw: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def _derive_date_from_timestamp(iso_timestamp: str) -> str:
-    """Derive the user's local date from a WHOOP ISO 8601 timestamp.
+def local_date(timestamp: str | None, timezone_offset: str | None) -> str:
+    """The wearer's own calendar date at `timestamp`.
 
-    WHOOP timestamps include timezone offsets (e.g., '2026-03-17T06:30:00.000-05:00').
-    We use the offset to determine the user's local date, NOT UTC.
-    Falls back to UTC date if parsing fails.
+    WHOOP sends times in UTC ("...Z") and the wearer's offset from UTC as a
+    separate `timezone_offset` field (e.g. "+05:30", "-04:00"). The UTC date is
+    wrong far from UTC: a night ending at 04:00 in India is 22:30 the previous
+    day in UTC. With no usable offset, the timestamp's own offset is used (UTC
+    for "Z" or no offset). Returns "" for an empty timestamp; if it can't be parsed, its
+    first 10 characters.
     """
-    if not iso_timestamp:
+    if not timestamp:
         return ""
     try:
-        dt = datetime.fromisoformat(iso_timestamp)
-        return dt.date().isoformat()
+        dt = datetime.fromisoformat(timestamp)
     except (ValueError, TypeError):
-        logger.warning("Could not parse WHOOP timestamp: %s", iso_timestamp)
-        return iso_timestamp[:10] if len(iso_timestamp) >= 10 else ""
+        logger.warning("Could not parse WHOOP timestamp: %s", timestamp)
+        return timestamp[:10] if len(timestamp) >= 10 else ""
+    if dt.tzinfo is None:  # WHOOP times are UTC; never read a bare time as this machine's zone
+        dt = dt.replace(tzinfo=timezone.utc)
+    if timezone_offset:
+        try:
+            dt = dt.astimezone(datetime.strptime(timezone_offset, "%z").tzinfo)
+        except ValueError:
+            logger.warning("Could not parse WHOOP timezone offset %r — using the timestamp's own", timezone_offset)
+    return dt.date().isoformat()

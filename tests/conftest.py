@@ -119,6 +119,7 @@ def sample_whoop_recovery():
     """Sample WHOOP recovery API response."""
     return {
         "cycle_id": 12345,
+        "sleep_id": 67890,
         "score": {
             "recovery_score": 72.0,
             "hrv_rmssd_milli": 55.3,
@@ -126,7 +127,7 @@ def sample_whoop_recovery():
             "spo2_percentage": 97.5,
             "skin_temp_celsius": 33.2,
         },
-        "created_at": "2026-03-17T06:30:00.000-05:00",
+        "created_at": "2026-03-17T11:30:00.000Z",
     }
 
 
@@ -135,7 +136,9 @@ def sample_whoop_sleep():
     """Sample WHOOP sleep API response."""
     return {
         "id": 67890,
-        "end": "2026-03-17T07:00:00.000-05:00",
+        "cycle_id": 12345,
+        "end": "2026-03-17T12:00:00.000Z",
+        "timezone_offset": "-05:00",
         "score_state_id": 12345,
         "score": {
             "stage_summary": {

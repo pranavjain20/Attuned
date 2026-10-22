@@ -164,6 +164,122 @@ class TestWhoopRecovery:
     def test_returns_none_for_missing_date(self, db_conn):
         assert queries.get_recovery_by_date(db_conn, "2026-01-01") is None
 
+    def test_same_date_other_cycle_keeps_higher_score(self, db_conn):
+        queries.upsert_whoop_recovery(db_conn, cycle_id=1, date="2026-03-17", recovery_score=40.0,
+                                      hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        queries.upsert_whoop_recovery(db_conn, cycle_id=2, date="2026-03-17", recovery_score=30.0,
+                                      hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        assert queries.get_recovery_by_date(db_conn, "2026-03-17")["cycle_id"] == 1
+        queries.upsert_whoop_recovery(db_conn, cycle_id=3, date="2026-03-17", recovery_score=70.0,
+                                      hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        assert queries.get_recovery_by_date(db_conn, "2026-03-17")["cycle_id"] == 3
+        assert queries.count_rows(db_conn, "whoop_recovery") == 1
+
+    def test_replacing_a_recovery_a_sleep_points_at_detaches_the_sleep(self, db_conn):
+        """Foreign keys are on: dropping the losing cycle must not fail because a sleep links to it."""
+        queries.upsert_whoop_recovery(db_conn, cycle_id=1, date="2026-03-17", recovery_score=40.0,
+                                      hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        queries.upsert_whoop_sleep(db_conn, sleep_id="s1", date="2026-03-17", recovery_cycle_id=1)
+        queries.upsert_whoop_recovery(db_conn, cycle_id=2, date="2026-03-17", recovery_score=70.0,
+                                      hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        assert queries.get_recovery_by_date(db_conn, "2026-03-17")["cycle_id"] == 2
+        assert queries.get_sleep_by_date(db_conn, "2026-03-17")["recovery_cycle_id"] is None
+
+
+def _recovery(cycle_id, date, score=50.0):
+    return {"cycle_id": cycle_id, "date": date, "recovery_score": score,
+            "hrv_rmssd_milli": 50.0, "resting_heart_rate": 60.0, "spo2": None, "skin_temp": None}
+
+
+def _stored_dates(conn):
+    rows = conn.execute("SELECT cycle_id, date FROM whoop_recovery").fetchall()
+    return {r["cycle_id"]: r["date"] for r in rows}
+
+
+class TestReplaceWhoopRecoveryHistory:
+    """Full-history writes: WHOOP's history decides every date it covers, rows move instead of duplicating."""
+
+    def test_writes_all_records(self, db_conn):
+        n = queries.replace_whoop_recovery_history(
+            db_conn, [_recovery(1, "2026-03-16"), _recovery(2, "2026-03-17")])
+        assert n == 2
+        assert _stored_dates(db_conn) == {1: "2026-03-16", 2: "2026-03-17"}
+        assert queries.get_recovery_by_date(db_conn, "2026-03-17")["ln_rmssd"] == pytest.approx(math.log(50.0))
+
+    def test_moves_a_row_to_its_new_date(self, db_conn):
+        queries.upsert_whoop_recovery(db_conn, cycle_id=1, date="2026-03-16", recovery_score=50.0,
+                                      hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        queries.replace_whoop_recovery_history(db_conn, [_recovery(1, "2026-03-17")])
+        assert _stored_dates(db_conn) == {1: "2026-03-17"}
+
+    def test_moves_into_a_date_another_row_is_leaving(self, db_conn):
+        """UTC → local: cycle 1 moves to the 17th, which cycle 2 holds until it moves to the 18th."""
+        for cycle_id, d in [(1, "2026-03-16"), (2, "2026-03-17")]:
+            queries.upsert_whoop_recovery(db_conn, cycle_id=cycle_id, date=d, recovery_score=50.0,
+                                          hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        # cycle 1 listed first, so a one-row-at-a-time write would hit cycle 2's stale date
+        queries.replace_whoop_recovery_history(
+            db_conn, [_recovery(1, "2026-03-17", 10.0), _recovery(2, "2026-03-18", 90.0)])
+        assert _stored_dates(db_conn) == {1: "2026-03-17", 2: "2026-03-18"}
+
+    def test_two_rows_swapping_dates(self, db_conn):
+        for cycle_id, d in [(1, "2026-03-16"), (2, "2026-03-17")]:
+            queries.upsert_whoop_recovery(db_conn, cycle_id=cycle_id, date=d, recovery_score=50.0,
+                                          hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        queries.replace_whoop_recovery_history(
+            db_conn, [_recovery(1, "2026-03-17"), _recovery(2, "2026-03-16")])
+        assert _stored_dates(db_conn) == {1: "2026-03-17", 2: "2026-03-16"}
+
+    def test_restores_a_record_an_earlier_collision_dropped(self, db_conn):
+        """The bug's symptom: two cycles on one UTC date, one dropped. Local dates bring it back."""
+        queries.upsert_whoop_recovery(db_conn, cycle_id=1, date="2026-03-16", recovery_score=70.0,
+                                      hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        queries.replace_whoop_recovery_history(
+            db_conn, [_recovery(1, "2026-03-16", 70.0), _recovery(2, "2026-03-17", 40.0)])
+        assert _stored_dates(db_conn) == {1: "2026-03-16", 2: "2026-03-17"}
+
+    def test_genuine_same_date_pair_keeps_higher_score(self, db_conn):
+        n = queries.replace_whoop_recovery_history(
+            db_conn, [_recovery(1, "2026-03-17", 30.0), _recovery(2, "2026-03-17", 60.0)])
+        assert n == 1
+        assert _stored_dates(db_conn) == {2: "2026-03-17"}
+
+    def test_stored_row_whoop_no_longer_returns_loses_a_contested_date(self, db_conn):
+        """A row absent from WHOOP's history gives up a date WHOOP assigns to another cycle."""
+        queries.upsert_whoop_recovery(db_conn, cycle_id=99, date="2026-03-17", recovery_score=95.0,
+                                      hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        queries.upsert_whoop_sleep(db_conn, sleep_id="s99", date="2026-03-17", recovery_cycle_id=99)
+        queries.replace_whoop_recovery_history(db_conn, [_recovery(1, "2026-03-17", 40.0)])
+        assert _stored_dates(db_conn) == {1: "2026-03-17"}
+        assert queries.get_sleep_by_date(db_conn, "2026-03-17")["recovery_cycle_id"] is None
+
+    def test_rows_outside_the_history_are_left_alone(self, db_conn):
+        queries.upsert_whoop_recovery(db_conn, cycle_id=99, date="2020-01-01", recovery_score=50.0,
+                                      hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        queries.replace_whoop_recovery_history(db_conn, [_recovery(1, "2026-03-17")])
+        assert _stored_dates(db_conn) == {99: "2020-01-01", 1: "2026-03-17"}
+
+    def test_keeps_sleep_links_of_moved_rows(self, db_conn):
+        queries.upsert_whoop_recovery(db_conn, cycle_id=1, date="2026-03-16", recovery_score=50.0,
+                                      hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        queries.upsert_whoop_sleep(db_conn, sleep_id="s1", date="2026-03-16", recovery_cycle_id=1)
+        queries.replace_whoop_recovery_history(db_conn, [_recovery(1, "2026-03-17")])
+        assert queries.get_sleep_by_date(db_conn, "2026-03-16")["recovery_cycle_id"] == 1
+
+    def test_all_or_nothing_on_failure(self, db_conn):
+        queries.upsert_whoop_recovery(db_conn, cycle_id=1, date="2026-03-16", recovery_score=50.0,
+                                      hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        bad = {**_recovery(2, None)}  # date is NOT NULL → the write fails
+        with pytest.raises(Exception):
+            queries.replace_whoop_recovery_history(db_conn, [_recovery(1, "2026-03-17"), bad])
+        assert _stored_dates(db_conn) == {1: "2026-03-16"}
+
+    def test_empty_history_changes_nothing(self, db_conn):
+        queries.upsert_whoop_recovery(db_conn, cycle_id=1, date="2026-03-16", recovery_score=50.0,
+                                      hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        assert queries.replace_whoop_recovery_history(db_conn, []) == 0
+        assert _stored_dates(db_conn) == {1: "2026-03-16"}
+
 
 class TestGetRecoveriesInRange:
     def test_returns_records_in_range(self, db_conn):

@@ -251,6 +251,34 @@ def update_song_availability_batch(
 # WHOOP recovery
 # ---------------------------------------------------------------------------
 
+_UPSERT_RECOVERY_SQL = """INSERT INTO whoop_recovery
+       (cycle_id, date, recovery_score, hrv_rmssd_milli, ln_rmssd,
+        resting_heart_rate, spo2, skin_temp)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+   ON CONFLICT(cycle_id) DO UPDATE SET
+       date = excluded.date,
+       recovery_score = excluded.recovery_score,
+       hrv_rmssd_milli = excluded.hrv_rmssd_milli,
+       ln_rmssd = excluded.ln_rmssd,
+       resting_heart_rate = excluded.resting_heart_rate,
+       spo2 = excluded.spo2,
+       skin_temp = excluded.skin_temp"""
+
+
+def _recovery_row(cycle_id, date, recovery_score, hrv_rmssd_milli, resting_heart_rate,
+                  spo2=None, skin_temp=None) -> tuple:
+    """Values for _UPSERT_RECOVERY_SQL. Computes ln_rmssd."""
+    ln_rmssd = math.log(hrv_rmssd_milli) if hrv_rmssd_milli and hrv_rmssd_milli > 0 else None
+    return (cycle_id, date, recovery_score, hrv_rmssd_milli, ln_rmssd,
+            resting_heart_rate, spo2, skin_temp)
+
+
+def _delete_recovery(conn: sqlite3.Connection, cycle_id: int) -> None:
+    """Delete a recovery row, first unlinking sleeps that point at it (foreign keys are on)."""
+    conn.execute("UPDATE whoop_sleep SET recovery_cycle_id = NULL WHERE recovery_cycle_id = ?", (cycle_id,))
+    conn.execute("DELETE FROM whoop_recovery WHERE cycle_id = ?", (cycle_id,))
+
+
 def upsert_whoop_recovery(
     conn: sqlite3.Connection,
     cycle_id: int,
@@ -262,7 +290,6 @@ def upsert_whoop_recovery(
     skin_temp: float | None = None,
 ) -> None:
     """Insert or update a WHOOP recovery record. Computes ln_rmssd on write."""
-    ln_rmssd = math.log(hrv_rmssd_milli) if hrv_rmssd_milli and hrv_rmssd_milli > 0 else None
     # Check if this date already has a recovery from a different cycle
     existing = conn.execute(
         "SELECT cycle_id, recovery_score FROM whoop_recovery WHERE date = ?", (date,)
@@ -273,25 +300,50 @@ def upsert_whoop_recovery(
         if (recovery_score or 0) <= (existing["recovery_score"] or 0):
             return  # existing is better or equal, skip
         # New one is better — delete old, insert new
-        conn.execute("DELETE FROM whoop_recovery WHERE cycle_id = ?", (existing["cycle_id"],))
+        _delete_recovery(conn, existing["cycle_id"])
 
-    conn.execute(
-        """INSERT INTO whoop_recovery
-               (cycle_id, date, recovery_score, hrv_rmssd_milli, ln_rmssd,
-                resting_heart_rate, spo2, skin_temp)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(cycle_id) DO UPDATE SET
-               date = excluded.date,
-               recovery_score = excluded.recovery_score,
-               hrv_rmssd_milli = excluded.hrv_rmssd_milli,
-               ln_rmssd = excluded.ln_rmssd,
-               resting_heart_rate = excluded.resting_heart_rate,
-               spo2 = excluded.spo2,
-               skin_temp = excluded.skin_temp""",
-        (cycle_id, date, recovery_score, hrv_rmssd_milli, ln_rmssd,
-         resting_heart_rate, spo2, skin_temp),
-    )
+    conn.execute(_UPSERT_RECOVERY_SQL, _recovery_row(
+        cycle_id, date, recovery_score, hrv_rmssd_milli, resting_heart_rate, spo2, skin_temp))
     conn.commit()
+
+
+def replace_whoop_recovery_history(conn: sqlite3.Connection, recoveries: list[dict]) -> int:
+    """Store WHOOP's full recovery history, moving already-stored rows to their dates.
+
+    `recoveries` are parsed records (whoop.client._parse_recovery_response). A
+    stored row can need a date another stored row still holds until that row
+    moves too (e.g. when dates switched from UTC to local), so this frees every
+    date first and writes in one transaction: all or nothing.
+
+    WHOOP's history decides every date it covers. Two records on one date: the
+    higher recovery score wins (as in upsert_whoop_recovery). Stored rows that
+    lose a date are deleted. Stored rows on other dates are left alone.
+    Returns the number of records written.
+    """
+    winners: dict[str, dict] = {}
+    for r in recoveries:
+        held = winners.get(r["date"])
+        if held is None or (r["recovery_score"] or 0) > (held["recovery_score"] or 0):
+            winners[r["date"]] = r
+    written_ids = {r["cycle_id"] for r in winners.values()}
+
+    with conn:
+        losers = {r["cycle_id"] for r in recoveries} - written_ids
+        for r in winners.values():
+            row = conn.execute("SELECT cycle_id FROM whoop_recovery WHERE date = ?", (r["date"],)).fetchone()
+            if row and row["cycle_id"] not in written_ids:
+                losers.add(row["cycle_id"])
+        for cycle_id in losers:
+            _delete_recovery(conn, cycle_id)
+        # Free the dates of rows about to be rewritten; no real date starts with "moving:"
+        conn.executemany("UPDATE whoop_recovery SET date = 'moving:' || cycle_id WHERE cycle_id = ?",
+                         [(cycle_id,) for cycle_id in written_ids])
+        conn.executemany(_UPSERT_RECOVERY_SQL, [
+            _recovery_row(r["cycle_id"], r["date"], r["recovery_score"], r["hrv_rmssd_milli"],
+                          r["resting_heart_rate"], r.get("spo2"), r.get("skin_temp"))
+            for r in winners.values()
+        ])
+    return len(winners)
 
 
 def get_recoveries_in_range(
