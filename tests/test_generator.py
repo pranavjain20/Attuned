@@ -5,7 +5,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 import spotipy
 
+from intelligence.continuous_profile import pick_state, profile_at
 from matching.generator import (
+    NAME_DEEP_SHARE,
     GenerationError,
     _filter_unavailable_tracks,
     _get_dominant_moods,
@@ -23,80 +25,68 @@ from spotify.playlist import SpotifyPlaylistError
 # format_playlist_name
 # ---------------------------------------------------------------------------
 
+CALM = {"para": 0.60, "symp": 0.10, "grnd": 0.30}
+STEADY = {"para": 0.25, "symp": 0.25, "grnd": 0.50}
+LIFT = {"para": 0.10, "symp": 0.60, "grnd": 0.30}
+
+
 class TestFormatPlaylistName:
-    def test_fatigue_slow_down(self):
-        name = format_playlist_name(
-            "2026-03-19", {"para": 0.95, "symp": 0.00, "grnd": 0.05}, 19.0)
-        assert name == "Mar 19 — Slow Down"
+    def test_date_then_label(self):
+        assert format_playlist_name("2026-03-19", CALM, 0.05) == "Mar 19 — Rest & Repair"
 
-    def test_peak_full_send(self):
-        name = format_playlist_name(
-            "2026-03-05", {"para": 0.00, "symp": 0.90, "grnd": 0.10}, 92.0)
-        assert name == "Mar 5 — Full Send"
+    def test_single_digit_day_not_padded(self):
+        assert format_playlist_name("2026-03-05", LIFT, 0.95) == "Mar 5 — Stay Sharp"
 
-    def test_baseline_high_recovery_stay_sharp(self):
-        name = format_playlist_name(
-            "2026-01-01", {"para": 0.15, "symp": 0.50, "grnd": 0.35}, 78.0)
-        assert name == "Jan 1 — Stay Sharp"
-
-    def test_baseline_low_recovery_fuel_up(self):
-        name = format_playlist_name(
-            "2026-12-25", {"para": 0.15, "symp": 0.50, "grnd": 0.35}, 62.0)
-        assert name == "Dec 25 — Fuel Up"
-
-    def test_emotional_sit_with_it(self):
-        name = format_playlist_name(
-            "2026-06-15", {"para": 0.10, "symp": 0.00, "grnd": 0.90}, 45.0)
-        assert name == "Jun 15 — Sit With It"
-
-    def test_poor_recovery_ease_into_it(self):
-        name = format_playlist_name(
-            "2026-03-10", {"para": 0.25, "symp": 0.30, "grnd": 0.45}, 35.0)
-        assert name == "Mar 10 — Ease Into It"
-
-    def test_poor_sleep_ground_yourself(self):
-        name = format_playlist_name(
-            "2026-03-10", {"para": 0.55, "symp": 0.00, "grnd": 0.45}, 55.0)
-        assert name == "Mar 10 — Settle In"
-
-    def test_physical_recovery_rest_and_repair(self):
-        name = format_playlist_name(
-            "2026-03-10", {"para": 0.60, "symp": 0.00, "grnd": 0.40}, 40.0)
-        assert name == "Mar 10 — Rest & Repair"
-
-    def test_none_recovery_uses_default(self):
-        name = format_playlist_name(
-            "2026-03-10", {"para": 0.15, "symp": 0.50, "grnd": 0.35})
-        assert "Fuel Up" in name  # default recovery 50 → not > 70
+    def test_unscored_day(self):
+        assert format_playlist_name("2026-12-25", STEADY, None) == "Dec 25 — Ground Yourself"
 
 
 class TestPickNameLabel:
-    def test_para_very_high(self):
-        assert _pick_name_label({"para": 0.95, "symp": 0.00, "grnd": 0.05}) == "Slow Down"
+    """The name follows the day's state (the profile's lead) and the Attuned score's position
+    (0 = your lowest day so far, 1 = your best), never WHOOP recovery."""
 
-    def test_para_moderate_low_recovery(self):
-        assert _pick_name_label({"para": 0.60, "symp": 0.00, "grnd": 0.40}, 35.0) == "Rest & Repair"
+    @pytest.mark.parametrize("position, label", [
+        (0.0, "Rest & Repair"), (NAME_DEEP_SHARE - 0.001, "Rest & Repair"),
+        (NAME_DEEP_SHARE, "Settle In"), (0.28, "Settle In"),
+    ])
+    def test_rest(self, position, label):
+        assert _pick_name_label(CALM, position) == label
 
-    def test_para_moderate_high_recovery(self):
-        assert _pick_name_label({"para": 0.55, "symp": 0.00, "grnd": 0.45}, 65.0) == "Settle In"
+    @pytest.mark.parametrize("position, label", [
+        (1.0, "Stay Sharp"), (1 - NAME_DEEP_SHARE + 0.001, "Stay Sharp"),
+        (1 - NAME_DEEP_SHARE, "Fuel Up"), (0.72, "Fuel Up"),
+    ])
+    def test_energy(self, position, label):
+        assert _pick_name_label(LIFT, position) == label
 
-    def test_symp_very_high(self):
-        assert _pick_name_label({"para": 0.00, "symp": 0.90, "grnd": 0.10}) == "Full Send"
+    @pytest.mark.parametrize("position, label", [
+        (0.30, "Ground Yourself"), (0.499, "Ground Yourself"), (0.5, "Ease Into It"), (0.70, "Ease Into It"),
+    ])
+    def test_grounding_leans_by_side_of_your_usual(self, position, label):
+        assert _pick_name_label(STEADY, position) == label
 
-    def test_symp_moderate_high_recovery(self):
-        assert _pick_name_label({"para": 0.15, "symp": 0.50, "grnd": 0.35}, 75.0) == "Stay Sharp"
+    @pytest.mark.parametrize("profile, label", [
+        (CALM, "Settle In"), (LIFT, "Fuel Up"), (STEADY, "Ground Yourself"),
+    ])
+    def test_no_position_gets_the_plain_name_for_the_state(self, profile, label):
+        assert _pick_name_label(profile, None) == label
 
-    def test_symp_moderate_low_recovery(self):
-        assert _pick_name_label({"para": 0.15, "symp": 0.50, "grnd": 0.35}, 60.0) == "Fuel Up"
+    def test_every_real_position_names_its_own_state(self):
+        """Across the whole score line, the name always belongs to the playlist's state."""
+        names = {"rest": {"Rest & Repair", "Settle In"}, "energy": {"Stay Sharp", "Fuel Up"},
+                 "grounding": {"Ground Yourself", "Ease Into It"}}
+        seen = set()
+        for i in range(1001):
+            profile = profile_at(i / 1000)
+            label = _pick_name_label(profile, i / 1000)
+            assert label in names[pick_state(profile)[0]], i
+            seen.add(label)
+        assert seen == set().union(*names.values())  # every name is reachable
 
-    def test_grnd_very_high(self):
-        assert _pick_name_label({"para": 0.10, "symp": 0.00, "grnd": 0.90}) == "Sit With It"
-
-    def test_grnd_moderate_with_symp(self):
-        assert _pick_name_label({"para": 0.25, "symp": 0.30, "grnd": 0.45}) == "Ease Into It"
-
-    def test_grnd_moderate_without_symp(self):
-        assert _pick_name_label({"para": 0.15, "symp": 0.10, "grnd": 0.45}) == "Ground Yourself"
+    def test_lower_position_never_gets_a_more_upbeat_name(self):
+        order = ["Rest & Repair", "Settle In", "Ground Yourself", "Ease Into It", "Fuel Up", "Stay Sharp"]
+        ranks = [order.index(_pick_name_label(profile_at(i / 1000), i / 1000)) for i in range(1001)]
+        assert ranks == sorted(ranks)
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +107,7 @@ class TestGenerateDescription:
             songs=self._make_songs(["calm", "soothing", "peaceful"]),
             cohesion_stats={"dominant_genre": "bollywood"},
         )
-        assert "Calming your nervous system" in desc
+        assert "Built to help you settle" in desc
         assert "Bollywood" in desc
 
     def test_symp_dominant_description(self):
@@ -126,7 +116,7 @@ class TestGenerateDescription:
             songs=self._make_songs(["energetic", "uplifting"]),
             cohesion_stats={"dominant_genre": "rock"},
         )
-        assert "Matching your energy" in desc
+        assert "Built to give you a lift" in desc
         assert "Rock" in desc
 
     def test_grnd_dominant_description(self):
@@ -135,7 +125,7 @@ class TestGenerateDescription:
             songs=self._make_songs(["reflective", "nostalgic"]),
             cohesion_stats={"dominant_genre": "bollywood"},
         )
-        assert "Grounding your emotions" in desc
+        assert "Built to keep you level" in desc
 
     def test_includes_mood_tags(self):
         desc = generate_description(
@@ -190,13 +180,13 @@ class TestGetDominantMoods:
 
 class TestGetNeuroPurpose:
     def test_para(self):
-        assert _get_neuro_purpose({"para": 0.9, "symp": 0.0, "grnd": 0.1}) == "Calming your nervous system"
+        assert _get_neuro_purpose({"para": 0.9, "symp": 0.0, "grnd": 0.1}) == "Built to help you settle"
 
     def test_symp(self):
-        assert _get_neuro_purpose({"para": 0.1, "symp": 0.8, "grnd": 0.1}) == "Matching your energy"
+        assert _get_neuro_purpose({"para": 0.1, "symp": 0.8, "grnd": 0.1}) == "Built to give you a lift"
 
     def test_grnd(self):
-        assert _get_neuro_purpose({"para": 0.1, "symp": 0.0, "grnd": 0.9}) == "Grounding your emotions"
+        assert _get_neuro_purpose({"para": 0.1, "symp": 0.0, "grnd": 0.9}) == "Built to keep you level"
 
 
 # ---------------------------------------------------------------------------
@@ -465,8 +455,25 @@ class TestGeneratePlaylist:
         assert result["state"] == "baseline"
         assert len(result["songs"]) == 18
         assert "Mar 19" in result["name"]
-        assert "Fuel Up" in result["name"]  # baseline symp-dominant, no recovery → default
+        assert "Fuel Up" in result["name"]  # symp-dominant, no Attuned score → plain energy name
         conn.close()
+
+    @pytest.mark.parametrize("position, profile, recovery, name", [
+        (0.95, LIFT, 20.0, "Mar 19 — Stay Sharp"),     # WHOOP red, Attuned near your best
+        (0.05, CALM, 90.0, "Mar 19 — Rest & Repair"),  # WHOOP green, Attuned near your lowest
+    ])
+    @patch("matching.generator.select_songs")
+    @patch("matching.generator.classify_state")
+    def test_name_follows_attuned_score_not_whoop(self, mock_classify, mock_select,
+                                                  position, profile, recovery, name, db_conn):
+        mock_classify.return_value = _make_classification(metrics={"recovery_score": recovery})
+        mock_select.side_effect = lambda *a, **kw: {**_make_match_result(),
+                                                    "neuro_profile": kw["neuro_profile_override"]}
+        continuous = {"profile": profile, "target_valence": 0.5, "position": position,
+                      "z_scores": {}, "signals_used": 0}
+        with patch("intelligence.continuous_profile.compute_continuous_profile", return_value=continuous):
+            result = generate_playlist(db_conn, sp=None, date_str="2026-03-19", dry_run=True)
+        assert result["name"] == name
 
     @patch("matching.generator.select_songs")
     @patch("matching.generator.classify_state")
@@ -597,7 +604,7 @@ class TestGeneratePlaylist:
         result = generate_playlist(conn, sp=None, date_str="2026-03-19", dry_run=True)
 
         assert len(result["description"]) <= 300
-        assert "Matching your energy" in result["description"]  # symp-dominant baseline
+        assert "Built to give you a lift" in result["description"]  # symp-dominant baseline
         assert "Rock" in result["description"]  # dominant genre from mock
         conn.close()
 

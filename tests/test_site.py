@@ -398,19 +398,33 @@ def recoveries(db_conn):
 
 @pytest.fixture
 def stubbed(monkeypatch):
-    calls = {"single": [], "range": [], "history": []}
-    monkeypatch.setattr(site, "compute_composite_history",
-                        lambda conn, before: calls["history"].append(before) or {})
-    monkeypatch.setattr(site, "build_page_day", _page_day)
-    monkeypatch.setattr(site, "build_day_playlists",
-                        lambda c, s, e: calls["range"].append((s, e)) or _range_playlists(c, s, e))
+    calls = {"single": [], "range": [], "history": [], "histories": []}
+    shared = {"history": "shared"}
 
-    def single(conn, date):
+    def history(conn, before):
+        calls["history"].append(before)
+        return shared
+    monkeypatch.setattr(site, "compute_composite_history", history)
+
+    def page_day(conn, date, history=None):
+        calls["histories"].append(("page", history))
+        return _page_day(conn, date, history)
+    monkeypatch.setattr(site, "build_page_day", page_day)
+
+    def range_playlists(conn, start, end, history=None):
+        calls["range"].append((start, end))
+        calls["histories"].append(("range", history))
+        return _range_playlists(conn, start, end)
+    monkeypatch.setattr(site, "build_day_playlists", range_playlists)
+
+    def single(conn, date, history=None):
         calls["single"].append(date)
+        calls["histories"].append(("single", history))
         if date == "2026-04-07":
             raise GenerationError("too little data")
         return PLAYLIST
     monkeypatch.setattr(site, "build_day_playlist", single)
+    calls["shared"] = shared
     return calls
 
 
@@ -442,6 +456,16 @@ class TestBuildSiteDays:
     def test_history_computed_once(self, recoveries, stubbed):
         _build(recoveries)
         assert stubbed["history"] == ["2026-10-22"]
+
+    def test_one_history_shared_by_scores_and_playlists(self, recoveries, stubbed):
+        _build(recoveries)
+        kinds = {kind for kind, _ in stubbed["histories"]}
+        assert kinds == {"page", "range", "single"}
+        assert all(h is stubbed["shared"] for _, h in stubbed["histories"])
+
+    def test_history_covers_a_notable_day_after_the_window(self, recoveries, stubbed):
+        _build(recoveries, notable_dates=("2026-11-02",))
+        assert stubbed["history"] == ["2026-11-03"]
 
     def test_failed_playlist_is_none(self, recoveries, stubbed):
         days = {d["date"]: d for d in _build(recoveries)}

@@ -27,7 +27,7 @@ class TestGeneratePlaylistPublic:
         selection = (
             {"state": "baseline", "confidence": "high", "metrics": {"recovery_score": 60.0}},
             {"songs": [{"spotify_uri": "spotify:track:1", "name": "S", "artist": "A"}],
-             "neuro_profile": {"para": 0.6, "symp": 0.2, "grnd": 0.2},
+             "neuro_profile": {"para": 0.6, "symp": 0.2, "grnd": 0.2}, "position": 0.1,
              "match_stats": {"cohesion_stats": {}}},
         )
         with patch.object(generator, "select_day_songs", return_value=selection), \

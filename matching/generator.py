@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta as _timedelta
 import spotipy
 
 from db.queries import insert_generated_playlist
+from intelligence.continuous_profile import pick_state
 from intelligence.state_classifier import classify_state
 from matching.query_engine import select_songs
 from spotify.playlist import (
@@ -17,6 +18,10 @@ from spotify.playlist import (
 )
 
 logger = logging.getLogger(__name__)
+
+# A rest day among your lowest NAME_DEEP_SHARE of days (energy: your highest) gets the
+# stronger name of its pair. Design choice: splits each end state roughly in half.
+NAME_DEEP_SHARE = 0.15
 
 
 def _filter_unavailable_tracks(
@@ -109,51 +114,46 @@ class GenerationError(Exception):
 def format_playlist_name(
     date_str: str,
     neuro_profile: dict[str, float],
-    recovery_score: float | None = None,
+    position: float | None = None,
 ) -> str:
-    """Dynamic playlist name based on neuro profile + recovery intensity.
+    """Dynamic playlist name: "Mar 19 — Rest & Repair".
 
-    Names reflect what the music is doing for the body, not clinical state names.
-    Recovery score adds intensity variation so no two days feel the same.
+    Names reflect what the music is doing for you, not clinical state names.
+    position is the Attuned score's position (see _pick_name_label).
     """
     dt = datetime.strptime(date_str, "%Y-%m-%d")
     month_day = dt.strftime("%b %-d")
 
-    label = _pick_name_label(neuro_profile, recovery_score)
+    label = _pick_name_label(neuro_profile, position)
     return f"{month_day} — {label}"
 
 
 def _pick_name_label(
     neuro_profile: dict[str, float],
-    recovery_score: float | None = None,
+    position: float | None = None,
 ) -> str:
-    """Pick a human-readable label from neuro profile + recovery."""
-    para = neuro_profile.get("para", 0)
-    symp = neuro_profile.get("symp", 0)
-    grnd = neuro_profile.get("grnd", 0)
-    recovery = recovery_score if recovery_score is not None else 50.0
+    """Pick a human-readable label from the day's state and the Attuned score's position.
 
-    top_dim = max(neuro_profile, key=neuro_profile.get)
+    The state is the profile's lead (as on the page and for the songs). position is
+    where the Attuned score sits among your own earlier days (0 = your lowest, 1 =
+    your best; None when the day has no score), so each state's name gets stronger
+    the further the day is from your usual. WHOOP recovery plays no part.
+    """
+    state, _label = pick_state(neuro_profile)
 
-    if top_dim == "para":
-        if para > 0.80:
-            return "Slow Down"
-        if recovery < 50:
+    if state == "rest":
+        if position is not None and position < NAME_DEEP_SHARE:
             return "Rest & Repair"
         return "Settle In"
 
-    if top_dim == "symp":
-        if symp > 0.80:
-            return "Full Send"
-        if recovery > 70:
+    if state == "energy":
+        if position is not None and position > 1 - NAME_DEEP_SHARE:
             return "Stay Sharp"
         return "Fuel Up"
 
-    # grnd dominant
-    if grnd > 0.80:
-        return "Sit With It"
-    if symp > 0.20:
-        return "Ease Into It"  # mixed grnd+symp = gentle lift
+    # grounding: a usual day, leaning toward a gentle lift when at or above your middle
+    if position is not None and position >= 0.5:
+        return "Ease Into It"
     return "Ground Yourself"
 
 
@@ -161,9 +161,9 @@ def _get_neuro_purpose(neuro_profile: dict[str, float]) -> str:
     """Human-readable phrase for what the music is doing."""
     top_dim = max(neuro_profile, key=neuro_profile.get)
     purposes = {
-        "para": "Calming your nervous system",
-        "symp": "Matching your energy",
-        "grnd": "Grounding your emotions",
+        "para": "Built to help you settle",
+        "symp": "Built to give you a lift",
+        "grnd": "Built to keep you level",
     }
     return purposes.get(top_dim, "Tuned for you")
 
@@ -268,15 +268,19 @@ def select_day_songs(
     date_str: str,
     point_in_time: bool = False,
     prior_playlists: dict[str, list[str]] | None = None,
+    history: dict[str, dict] | None = None,
 ) -> tuple[dict, dict]:
     """Classify the day's state and match songs to it — no Spotify, no DB writes.
 
     Over-selects by AVAILABILITY_BUFFER_SIZE so callers can drop unavailable
     tracks and still fill MAX_PLAYLIST_SIZE. point_in_time replays a past day
     using only the library as it stood that morning; prior_playlists counts
-    earlier replayed days for rotation (see select_songs).
+    earlier replayed days for rotation (see select_songs). history (from
+    feeling_score.compute_composite_history) saves rescoring every earlier day
+    (~3 s) when building many days; the result is the same without it.
 
-    Returns (classification, match_result).
+    Returns (classification, match_result). match_result["position"] is the
+    Attuned score's position (0-1, None when the day has no score).
     Raises GenerationError on insufficient WHOOP data or no matching songs.
     """
     # 1. Classify state
@@ -288,9 +292,9 @@ def select_day_songs(
             "Cannot generate playlist — insufficient WHOOP data (need 14+ days of HRV)"
         )
 
-    # 1b. Continuous profile — weighted function of all physiological signals
+    # 1b. Playlist target, set by the Attuned score's position
     from intelligence.continuous_profile import compute_continuous_profile
-    continuous = compute_continuous_profile(conn, date_str)
+    continuous = compute_continuous_profile(conn, date_str, history)
     neuro_profile_override = continuous["profile"]
     target_valence = continuous.get("target_valence")
 
@@ -299,9 +303,6 @@ def select_day_songs(
         "Continuous profile: %d signals, z-scores: %s",
         continuous["signals_used"], z_summary,
     )
-    if continuous["interactions"]:
-        for interaction in continuous["interactions"]:
-            logger.info("Interaction: %s", interaction)
 
     # 2. Match songs (over-select by buffer to absorb unavailable drops)
     from config import AVAILABILITY_BUFFER_SIZE, MAX_PLAYLIST_SIZE
@@ -320,6 +321,7 @@ def select_day_songs(
             f"No songs matched for state '{state}'. "
             "Is the library classified? Run: python main.py classify-songs"
         )
+    match_result["position"] = continuous["position"]
     return classification, match_result
 
 
@@ -372,11 +374,10 @@ def generate_playlist(
     songs = songs[:MAX_PLAYLIST_SIZE]
 
     # 3. Format outputs
-    metrics = classification.get("metrics", {})
     neuro_profile = match_result["neuro_profile"]
     cohesion_stats = match_result["match_stats"].get("cohesion_stats", {})
 
-    name = format_playlist_name(date_str, neuro_profile, metrics.get("recovery_score"))
+    name = format_playlist_name(date_str, neuro_profile, match_result["position"])
     description = generate_description(neuro_profile, songs, cohesion_stats)
     reasoning = format_reasoning(classification, match_result)
     track_uris = [s["spotify_uri"] for s in songs]

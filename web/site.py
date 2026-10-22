@@ -319,17 +319,18 @@ def _site_playlist(conn: sqlite3.Connection, playlist: dict, attuned: dict,
     return enriched
 
 
-def _playlists_by_date(conn: sqlite3.Connection, recent: list[str], others: list[str]) -> dict[str, dict | None]:
+def _playlists_by_date(conn: sqlite3.Connection, recent: list[str], others: list[str],
+                       history: dict[str, dict]) -> dict[str, dict | None]:
     """Recent days replayed as one chain (rotation carries over); other days on their own."""
     playlists: dict[str, dict | None] = {}
     if recent:
-        for result in build_day_playlists(conn, recent[0], recent[-1]):
+        for result in build_day_playlists(conn, recent[0], recent[-1], history=history):
             if result["error"]:
                 logger.warning("No playlist for %s: %s", result["date"], result["error"])
             playlists[result["date"]] = result["playlist"]
     for date in others:
         try:
-            playlists[date] = build_day_playlist(conn, date)
+            playlists[date] = build_day_playlist(conn, date, history=history)
         except GenerationError as e:
             logger.warning("No playlist for %s: %s", date, e)
             playlists[date] = None
@@ -360,12 +361,15 @@ def build_site_days(
     recent = [row["date"] for row in get_recoveries_in_range(conn, start, end_date)]
     others = sorted(set(notable_dates) - set(recent))
 
-    # Scoring a day replays every earlier day; compute that history once for all of them.
-    history = compute_composite_history(conn, (end + timedelta(days=1)).isoformat())
-    playlists = _playlists_by_date(conn, recent, others)
+    dates = sorted(recent + others)
+    # Scoring a day replays every earlier day; compute that history once, up to the
+    # latest day shown, and share it between the scores and the playlists.
+    last = date_cls.fromisoformat(max([end_date, *dates]))
+    history = compute_composite_history(conn, (last + timedelta(days=1)).isoformat())
+    playlists = _playlists_by_date(conn, recent, others, history)
 
     days = []
-    for date in sorted(recent + others):
+    for date in dates:
         day = build_page_day(conn, date, history)
         day["attuned"]["compare"] = compare_copy(day["attuned"], day["whoop"])
         playlist = playlists.get(date)

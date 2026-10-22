@@ -265,7 +265,6 @@ def compute_continuous_profile(
         position: where the score sits among earlier days, 0-1 (None likewise)
         z_scores: the feeling-score signals behind the score
         signals_used: count of those signals present
-        interactions: always [] (kept for callers; the score has no interaction terms)
     """
     # Imported here, not at the top: feeling_score builds on this module's z-scores.
     from intelligence.feeling_score import locate_day
@@ -303,5 +302,4 @@ def compute_continuous_profile(
         "position": position,
         "z_scores": z_scores,
         "signals_used": sum(v is not None for v in z_scores.values()),
-        "interactions": [],
     }

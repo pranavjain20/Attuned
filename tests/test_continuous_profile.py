@@ -315,11 +315,10 @@ class TestComputeContinuousProfile:
         _ready(db_conn)
         result = compute_continuous_profile(db_conn, TARGET)
         assert set(result) == {"profile", "target_valence", "state", "state_label", "score",
-                               "position", "z_scores", "signals_used", "interactions"}
+                               "position", "z_scores", "signals_used"}
         assert set(result["profile"]) == {"para", "symp", "grnd"}
         assert sum(result["profile"].values()) == pytest.approx(1.0)
         assert 0.0 < result["target_valence"] < 1.0
-        assert result["interactions"] == []
         assert result["signals_used"] == sum(v is not None for v in result["z_scores"].values()) > 0
 
     def test_is_the_feeling_scores_position_on_the_line(self, db_conn):

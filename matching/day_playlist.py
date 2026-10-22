@@ -11,7 +11,8 @@ from datetime import date as date_cls, timedelta
 
 from config import MAX_PLAYLIST_SIZE
 from db.queries import get_all_classified_songs
-from intelligence.feeling_score import pick_state
+from intelligence.continuous_profile import pick_state
+from intelligence.feeling_score import compute_composite_history
 from matching.generator import GenerationError, format_playlist_name, select_day_songs
 from matching.query_engine import play_dates_before, rewind_songs_to_date
 from matching.why_lines import build_context, explain_playlist
@@ -23,22 +24,33 @@ def build_day_playlist(
     conn: sqlite3.Connection,
     date_str: str,
     prior_playlists: dict[str, list[str]] | None = None,
+    history: dict[str, dict] | None = None,
 ) -> dict:
     """The playlist the daily pipeline picks for date_str, with a why-line per song.
 
     prior_playlists: earlier replayed days ({date: track URIs}) that count for
     rotation as if pushed. Pushed playlists in the DB always count.
+    history: the Attuned score history (feeling_score.compute_composite_history,
+    built up to at least date_str); saves rescoring every earlier day.
 
     Returns {"name", "spotify_url" (None until a real playlist exists),
     "state" (rest|energy|grounding), "tracks": [{title, artist, spotify_url, why}]}.
     Raises GenerationError when the day can't be generated (e.g. too little WHOOP data).
     """
-    page, _uris = _build(conn, date_str, prior_playlists)
+    page, _uris = _build(conn, date_str, prior_playlists, history)
     return page
 
 
-def build_day_playlists(conn: sqlite3.Connection, start: str, end: str) -> list[dict]:
+def build_day_playlists(
+    conn: sqlite3.Connection,
+    start: str,
+    end: str,
+    history: dict[str, dict] | None = None,
+) -> list[dict]:
     """Replay every day from start to end (inclusive), oldest first, chaining rotation.
+
+    history: the Attuned score history, built up to at least end; computed once
+    here when not given, so scoring each day doesn't replay every earlier day.
 
     Returns [{"date", "playlist" (page dict or None), "error" (str or None)}].
     A day that can't be generated is reported and skipped; the chain continues.
@@ -46,6 +58,8 @@ def build_day_playlists(conn: sqlite3.Connection, start: str, end: str) -> list[
     first, last = date_cls.fromisoformat(start), date_cls.fromisoformat(end)
     if first > last:
         raise ValueError(f"start {start} is after end {end}")
+    if history is None:
+        history = compute_composite_history(conn, (last + timedelta(days=1)).isoformat())
 
     prior: dict[str, list[str]] = {}
     results = []
@@ -53,7 +67,7 @@ def build_day_playlists(conn: sqlite3.Connection, start: str, end: str) -> list[
     while day <= last:
         date_str = day.isoformat()
         try:
-            page, uris = _build(conn, date_str, prior)
+            page, uris = _build(conn, date_str, prior, history)
         except GenerationError as e:
             results.append({"date": date_str, "playlist": None, "error": str(e)})
         else:
@@ -67,10 +81,11 @@ def _build(
     conn: sqlite3.Connection,
     date_str: str,
     prior_playlists: dict[str, list[str]] | None,
+    history: dict[str, dict] | None,
 ) -> tuple[dict, list[str]]:
     """(page, track URIs shown) for one day."""
-    classification, match_result = select_day_songs(
-        conn, date_str, point_in_time=True, prior_playlists=prior_playlists,
+    _classification, match_result = select_day_songs(
+        conn, date_str, point_in_time=True, prior_playlists=prior_playlists, history=history,
     )
     songs = match_result["songs"][:MAX_PLAYLIST_SIZE]
     profile = match_result["neuro_profile"]
@@ -80,9 +95,8 @@ def _build(
     context = build_context(library, date_str, play_dates_before(conn, date_str))
     whys = explain_playlist(songs, state, context)
 
-    recovery = classification.get("metrics", {}).get("recovery_score")
     page = {
-        "name": format_playlist_name(date_str, profile, recovery),
+        "name": format_playlist_name(date_str, profile, match_result["position"]),
         "spotify_url": None,
         "state": state,
         "tracks": [

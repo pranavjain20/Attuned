@@ -180,9 +180,11 @@ class TestMergeDaysAgo:
 
 
 class TestBuildDayPlaylists:
-    def _fake(self, calls, fail_on=()):
-        def fake(conn, date_str, point_in_time, prior_playlists=None):
+    def _fake(self, calls, fail_on=(), histories=None):
+        def fake(conn, date_str, point_in_time, prior_playlists=None, history=None):
             calls.append((date_str, {d: list(u) for d, u in (prior_playlists or {}).items()}))
+            if histories is not None:
+                histories.append(history)
             if date_str in fail_on:
                 raise GenerationError("insufficient WHOOP data")
             classification, match = _fake_selection()
@@ -219,6 +221,23 @@ class TestBuildDayPlaylists:
         with pytest.raises(ValueError):
             build_day_playlists(db_conn, "2026-10-03", "2026-10-01")
 
+    def test_score_history_built_once_and_shared(self, db_conn):
+        """Scoring a day replays every earlier day: do that once per range, not once per day."""
+        histories, shared = [], {"2026-09-30": {"composite": 0.1, "recovery": 50}}
+        with patch("matching.day_playlist.compute_composite_history", return_value=shared) as build, \
+             patch("matching.day_playlist.select_day_songs", side_effect=self._fake([], histories=histories)):
+            build_day_playlists(db_conn, "2026-10-01", "2026-10-03")
+        build.assert_called_once_with(db_conn, "2026-10-04")  # covers every day in the range
+        assert len(histories) == 3 and all(h is shared for h in histories)
+
+    def test_given_history_is_used_as_is(self, db_conn):
+        histories, given = [], {}
+        with patch("matching.day_playlist.compute_composite_history") as build, \
+             patch("matching.day_playlist.select_day_songs", side_effect=self._fake([], histories=histories)):
+            build_day_playlists(db_conn, "2026-10-01", "2026-10-02", history=given)
+        build.assert_not_called()
+        assert all(h is given for h in histories)
+
 
 class TestBangerReferenceDate:
     def test_recent_relative_to_reference(self):
@@ -234,7 +253,7 @@ def _fake_selection(n=25):
               "engagement_score": None, "last_played": None, "energy": 0.4}
              for i in range(n)]
     classification = {"state": "poor_recovery", "metrics": {"recovery_score": 30.0}}
-    match = {"songs": songs, "neuro_profile": {"para": 0.7, "symp": 0.1, "grnd": 0.2}}
+    match = {"songs": songs, "neuro_profile": {"para": 0.7, "symp": 0.1, "grnd": 0.2}, "position": 0.05}
     return classification, match
 
 
@@ -242,7 +261,7 @@ class TestBuildDayPlaylist:
     def test_page_shape(self, db_conn):
         with patch("matching.day_playlist.select_day_songs", return_value=_fake_selection()) as sel:
             page = build_day_playlist(db_conn, DAY)
-        sel.assert_called_once_with(db_conn, DAY, point_in_time=True, prior_playlists=None)
+        sel.assert_called_once_with(db_conn, DAY, point_in_time=True, prior_playlists=None, history=None)
         assert page["name"] == "Apr 8 — Rest & Repair"
         assert page["spotify_url"] is None
         assert page["state"] == "rest"
@@ -263,6 +282,20 @@ class TestBuildDayPlaylist:
         with patch("matching.day_playlist.select_day_songs", return_value=(classification, match)):
             assert build_day_playlist(db_conn, DAY)["state"] == state
 
+    def test_name_follows_attuned_position_not_whoop(self, db_conn):
+        """WHOOP recovery 30 used to force "Rest & Repair"; a rest day near the top of the
+        rest range is "Settle In" whatever WHOOP says."""
+        classification, match = _fake_selection()
+        match["position"] = 0.25
+        with patch("matching.day_playlist.select_day_songs", return_value=(classification, match)):
+            assert build_day_playlist(db_conn, DAY)["name"] == "Apr 8 — Settle In"
+
+    def test_history_passed_through(self, db_conn):
+        history = {}
+        with patch("matching.day_playlist.select_day_songs", return_value=_fake_selection()) as sel:
+            build_day_playlist(db_conn, DAY, history=history)
+        assert sel.call_args.kwargs["history"] is history
+
 
 class TestSelectDaySongs:
     def _patches(self, state="baseline"):
@@ -270,8 +303,17 @@ class TestSelectDaySongs:
             patch("matching.generator.classify_state", return_value={"state": state, "metrics": {}}),
             patch("intelligence.continuous_profile.compute_continuous_profile", return_value={
                 "profile": {"para": 0.6, "symp": 0.2, "grnd": 0.2}, "target_valence": None,
-                "z_scores": {}, "signals_used": 0, "interactions": []}),
+                "position": 0.1, "z_scores": {}, "signals_used": 0}),
         )
+
+    def test_passes_history_and_returns_position(self, library):
+        conn, _, _ = library
+        a, b = self._patches()
+        history = {}
+        with a, b as profile:
+            _, match = select_day_songs(conn, DAY, point_in_time=True, history=history)
+        profile.assert_called_once_with(conn, DAY, history)
+        assert match["position"] == 0.1
 
     def test_writes_nothing(self, library):
         conn, _, _ = library
@@ -291,3 +333,29 @@ class TestSelectDaySongs:
         a, b = self._patches()
         with a, b, pytest.raises(GenerationError):
             select_day_songs(db_conn, DAY, point_in_time=True)
+
+
+class TestSharedHistoryMatchesPerDay:
+    """Real scoring + selection: a range built on one shared score history gives exactly the
+    playlists each day gets when it rebuilds its own history."""
+
+    def test_range_identical_with_and_without_shared_history(self, db_conn):
+        from tests.test_feeling_score import HOUR, _insert_day, _seed_history
+        days = ["2026-06-01", "2026-06-02", "2026-06-03"]
+        _seed_history(db_conn, days[0], 90)
+        for i, (total_h, eff, hrv) in enumerate([(3.9, 78, 40), (7.2, 88, 48), (9.0, 95, 56)]):
+            _insert_day(db_conn, days[i], 1 + i, total_ms=total_h * HOUR, eff=eff, hrv=hrv, rhr=56, recovery=55)
+        for i in range(40):
+            _add_song(db_conn, i, [f"2026-03-{k + 1:02d}T12:00:00Z" for k in range(1 + i % 5)], para=i / 40)
+        db_conn.commit()
+
+        shared = build_day_playlists(db_conn, days[0], days[-1])
+
+        prior, per_day = {}, []
+        for d in days:
+            page = build_day_playlist(db_conn, d, prior)  # no history: each day rebuilds its own
+            prior[d] = ["spotify:track:" + t["spotify_url"].rsplit("/", 1)[-1] for t in page["tracks"]]
+            per_day.append({"date": d, "playlist": page, "error": None})
+
+        assert shared == per_day
+        assert {r["playlist"]["state"] for r in shared} == {"rest", "grounding", "energy"}
