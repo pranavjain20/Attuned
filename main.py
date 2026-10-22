@@ -41,6 +41,7 @@ COMMANDS = {
     "sync-whoop-history": "Pull full WHOOP recovery + sleep history",
     "feeling-score": "Attuned 0-100 feeling score for a day (--date YYYY-MM-DD, --json)",
     "playlist-json": "Playlist + why-lines as JSON, read-only (--date D, or --from A --to B --out DIR)",
+    "build-site": "Write the showcase page, read-only (--days 30, --end YYYY-MM-DD, --out web/dist)",
 }
 
 
@@ -113,6 +114,8 @@ def main() -> None:
         _cmd_feeling_score(db_path)
     elif command == "playlist-json":
         _cmd_playlist_json(db_path)
+    elif command == "build-site":
+        _cmd_build_site(db_path)
     elif command == "backfill-release-years":
         _cmd_backfill_release_years(db_path)
     elif command == "match-songs":
@@ -466,6 +469,42 @@ def _cmd_playlist_json(db_path: Path) -> None:
         print(f"Wrote {path}")
     if failed:
         sys.exit(1)
+
+
+def _cmd_build_site(db_path: Path) -> None:
+    """Write OUT/index.html: the showcase page for every WHOOP day in the last --days up to --end.
+
+    Read-only: no Spotify API calls and no DB writes. Album art comes from
+    Spotify's public oEmbed endpoint, cached in web/.art_cache.json.
+    """
+    import time
+
+    from web import site
+
+    raw_days = _flag_value("--days") or "30"
+    if not raw_days.isdigit() or int(raw_days) < 1:
+        print(f"Error: --days must be a whole number of at least 1, got {raw_days!r}")
+        sys.exit(1)
+    end_date = _parse_date_flag("--end")
+    out_dir = Path(_flag_value("--out") or site.WEB_DIR / "dist")
+
+    started = time.monotonic()
+    logging.getLogger().setLevel(logging.WARNING)
+    art = site.OembedArtCache()
+    conn = get_connection(db_path)
+    try:
+        days = site.build_site_days(conn, end_date, int(raw_days), art_lookup=art,
+                                    published=site.load_published())
+    finally:
+        conn.close()
+        art.save()
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "index.html"
+    out_path.write_text(site.render(site.TEMPLATE_PATH.read_text(), days))
+    with_playlist = sum(1 for day in days if day["playlist"])
+    print(f"Wrote {out_path}: {len(days)} days, {with_playlist} with playlists "
+          f"({time.monotonic() - started:.0f}s)")
 
 
 def _cmd_feeling_score(db_path: Path) -> None:

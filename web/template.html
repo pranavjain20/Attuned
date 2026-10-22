@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attuned — Daily Feeling</title>
+<meta name="description" content="Attuned turns last night's sleep into a 'how do I feel?' score and a Spotify playlist from my own library.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #000000;
+    --bg-2: #0d1114;
+    --card: #14191d;
+    --card-2: #1a2025;
+    --line: #262d33;
+    --text: #ffffff;
+    --text-2: #a9b3bb;
+    --text-3: #7d8891;
+    --green: #16ec06;
+    --yellow: #ffde00;
+    --red: #ff2d3f;
+    --track: #20272c;
+    --accent: #3fa9ff;
+    --spotify: #1ed760;
+    --num: "Archivo", system-ui, sans-serif;
+    --body: "Figtree", system-ui, -apple-system, Segoe UI, sans-serif;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    background-image: radial-gradient(120% 60% at 50% -10%, #12202b 0%, rgba(0,0,0,0) 60%);
+    background-repeat: no-repeat;
+    color: var(--text);
+    font-family: var(--body);
+    font-stretch: 108%;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px 48px; }
+  .card { background: var(--card); border-radius: var(--radius); padding: 20px; border: 1px solid #1c2227; }
+
+  /* ---------- Header ---------- */
+  header.top { display: flex; align-items: center; justify-content: space-between; padding: 18px 0 6px; gap: 12px; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .brand svg { display: block; }
+  .brand span { font-family: var(--num); font-weight: 800; font-size: 24px; letter-spacing: -.01em; }
+  .top-link { font-size: 13px; color: var(--text-2); text-decoration: none; font-weight: 500; }
+  .top-link:hover { color: var(--text); }
+
+  .daybar { display: flex; align-items: center; justify-content: space-between; margin: 14px auto 0; gap: 8px; max-width: 440px; }
+  .navbtn {
+    width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line);
+    background: var(--card); color: var(--text); display: grid; place-items: center; cursor: pointer; flex: none;
+  }
+  .navbtn:hover:not(:disabled) { background: var(--card-2); }
+  .navbtn:disabled { opacity: .3; cursor: default; }
+  .navbtn:focus-visible, .chip:focus-visible, .btn:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .date { text-align: center; min-width: 0; }
+  .date .dow { font-weight: 600; font-size: 14px; color: var(--text-3); }
+  .date .full { font-family: var(--num); font-weight: 800; font-size: 26px; letter-spacing: -.01em; line-height: 1.1; }
+
+  .chips { display: flex; gap: 8px; justify-content: center; margin: 14px 0 22px; flex-wrap: wrap; }
+  .chip {
+    font-family: var(--body); font-weight: 600; font-size: 14px;
+    padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent;
+    color: var(--text-2); cursor: pointer;
+  }
+  .chip[aria-current="true"] { background: var(--text); color: #000; border-color: var(--text); }
+
+  /* ---------- Grid ---------- */
+  .reason-card { display: flex; flex-direction: column; }
+  .reason { font-family: var(--num); font-weight: 700; font-size: 24px; line-height: 1.2; margin: 0 0 18px; text-wrap: balance; }
+  .reason-line { color: var(--text-2); margin: -8px 0 18px; font-size: 15.5px; line-height: 1.5; }
+  .night { margin-top: auto; padding-top: 18px; }
+  .night summary { cursor: pointer; color: var(--text-3); font-size: 14px; list-style: none; }
+  .night summary::-webkit-details-marker { display: none; }
+  .night summary::before { content: "+ "; }
+  .night[open] summary::before { content: "− "; }
+  .night .metrics { margin-top: 12px; }
+  .sp-head { display: flex; align-items: flex-end; gap: 20px; }
+  .mosaic { width: 132px; height: 132px; flex: none; display: grid; grid-template-columns: 1fr 1fr; border-radius: 6px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,.5); background: linear-gradient(135deg, var(--state), #0b0f12); }
+  .mosaic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .sp-meta { min-width: 0; flex: 1; }
+  .sp-head .btn { align-self: flex-start; }
+  .sp-meta .kind { font-size: 13px; font-weight: 600; color: var(--text-2); }
+  .sp-title { font-family: var(--num); font-weight: 800; font-size: clamp(26px, 5vw, 44px); line-height: 1.05; margin: 4px 0 8px; letter-spacing: -.01em; }
+  .sp-sub { font-size: 13.5px; color: var(--text-2); }
+  .sp-summary { margin-top: 20px; max-width: 70ch; }
+  .sp-summary .lead { font-size: 17px; color: var(--text); font-weight: 600; }
+  .sp-summary p { color: var(--text-2); margin: 0 0 6px; }
+  .sp-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 12px 0 0; }
+  .sp-facts dt { color: var(--text-3); font-size: 14px; }
+  .sp-facts dd { margin: 0; color: var(--text-2); }
+  .sp-facts .cites { color: var(--text-3); font-size: 13px; white-space: nowrap; }
+  .sp-facts .cites a { color: var(--text-3); }
+  .sp-facts .cites a:hover { color: var(--text); }
+  @media (max-width: 560px) { .sp-facts { grid-template-columns: 1fr; } .sp-facts dd { margin-bottom: 8px; } }
+  .sp-actions { display: flex; align-items: center; gap: 16px; margin-top: 18px; }
+  .more { background: none; border: 1px solid var(--line); color: var(--text); font: 600 14px var(--body); padding: 10px 16px; border-radius: 999px; cursor: pointer; }
+  .more:hover { border-color: var(--text-2); }
+  .sp-list { margin-top: 18px; }
+  .row { display: grid; grid-template-columns: 28px minmax(0, 1.3fr) minmax(0, 1fr) 48px; gap: 14px; align-items: center; padding: 8px 10px; border-radius: 6px; text-decoration: none; }
+  .row:hover { background: rgba(255,255,255,.07); }
+  .row.head { color: var(--text-3); font-size: 13px; border-bottom: 1px solid var(--line); border-radius: 0; margin-bottom: 8px; padding-bottom: 8px; }
+  .row.head:hover { background: none; }
+  .row .n { color: var(--text-3); text-align: right; font-variant-numeric: tabular-nums; }
+  .row .tt { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .row .tt img, .row .tt .noart { width: 40px; height: 40px; border-radius: 4px; flex: none; object-fit: cover; background: var(--card-2); }
+  .row .tx { min-width: 0; display: flex; flex-direction: column; }
+  .row .t1 { color: var(--text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .t2 { color: var(--text-3); font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .tw { color: var(--text-2); font-size: 13.5px; }
+  .row .tw.m { display: none; }
+  .row .du { color: var(--text-3); font-size: 13.5px; text-align: right; font-variant-numeric: tabular-nums; }
+  @media (max-width: 700px) {
+    .row { grid-template-columns: 22px minmax(0, 1fr) 40px; }
+    .row .tw.d, .row.head .d { display: none; }
+    .row .tw.m { display: block; white-space: normal; margin-top: 2px; }
+    .mosaic { width: 104px; height: 104px; }
+    .sp-head { flex-wrap: wrap; }
+    .sp-head .btn { order: 3; }
+  }
+  .grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
+  @media (min-width: 900px) {
+    .grid { grid-template-columns: 1.15fr 1fr; gap: 18px; }
+    .span-2 { grid-column: 1 / -1; }
+    .date .full { font-size: 30px; }
+  }
+
+  /* ---------- Rings ---------- */
+  .rings-card { padding: 24px 16px 20px; }
+  .rings { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .ring { text-align: center; }
+  .ring svg { width: 100%; max-width: 168px; height: auto; display: block; margin: 0 auto; overflow: visible; }
+  .ring .arc { filter: drop-shadow(0 0 6px color-mix(in srgb, currentColor 45%, transparent)); transition: stroke-dashoffset 900ms cubic-bezier(.2,.8,.2,1), stroke 300ms; }
+  .ring .val { font-family: var(--num); font-weight: 700; fill: var(--text); }
+  .ring .pct { font-family: var(--num); font-weight: 600; fill: var(--text-2); }
+  .ring .label { margin-top: 10px; font-family: var(--num); font-weight: 800; font-size: 18px; letter-spacing: -.005em; }
+  .ring .sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+  .ring .band { display: inline-block; margin-top: 8px; font-family: var(--num); font-weight: 700; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; padding: 2px 9px; border-radius: 999px; }
+  .compare {
+    margin: 20px 0 0; padding-top: 16px; border-top: 1px solid var(--line);
+    text-align: center; font-family: var(--num); font-weight: 700; font-size: 20px;
+    color: var(--text-2);
+  }
+  .compare b { font-weight: 700; font-size: 24px; }
+  .compare .dot { color: var(--text-3); margin: 0 6px; }
+  .compare-note { text-align: center; font-size: 12.5px; color: var(--text-3); margin-top: 4px; }
+
+  /* ---------- Why ---------- */
+  .why p { margin: 0 0 10px; color: #d6dde2; }
+  .drivers { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+  .driver {
+    display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px;
+    background: var(--card-2); border-radius: 10px; padding: 10px 12px;
+  }
+  .driver .arrow { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; }
+  .driver .arrow.down { background: rgba(255,45,63,.14); color: var(--red); }
+  .driver .arrow.up { background: rgba(22,236,6,.12); color: var(--green); }
+  .driver .name { font-weight: 600; font-size: 14px; }
+  .driver .vs { font-size: 12.5px; color: var(--text-3); }
+  .driver .z { font-family: var(--num); font-weight: 700; font-size: 18px; letter-spacing: .02em; text-align: right; }
+  .driver .z small { display: block; font-family: var(--body); font-weight: 500; font-size: 11px; color: var(--text-3); letter-spacing: 0; }
+
+  /* ---------- Metrics ---------- */
+  .metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--line); border-radius: 10px; overflow: hidden; }
+  .metric { background: var(--card); padding: 14px 12px; }
+  .metric .k { font-family: var(--num); font-weight: 700; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--text-3); }
+  .metric .v { font-family: var(--num); font-weight: 700; font-size: 30px; line-height: 1.1; margin-top: 2px; }
+  .metric .v small { font-size: 15px; font-weight: 600; color: var(--text-2); margin-left: 2px; letter-spacing: .04em; }
+  .metric.debt { grid-column: span 2; }
+  @media (min-width: 560px) { .metrics { grid-template-columns: repeat(4, 1fr); } }
+  @media (min-width: 900px) {
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+    .metric { padding: 16px; }
+    .metric .v { font-size: 34px; }
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+    background: var(--spotify); color: #000; font-weight: 700; font-size: 14px;
+    padding: 11px 18px; border-radius: 999px; white-space: nowrap;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  button.btn { border: 0; cursor: pointer; font-family: var(--body); }
+  .btn-note { font-size: 12.5px; color: var(--text-3); align-self: center; }
+  .empty { text-align: center; padding: 20px 8px 6px; color: var(--text-2); }
+
+  /* ---------- Footer / explainer ---------- */
+  .foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--text-2); }
+  .foot a { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+  .foot a:hover { color: var(--text); }
+  #how { margin-top: 28px; }
+  #how h2 { font-family: var(--num); font-weight: 800; font-size: 28px; text-transform: uppercase; letter-spacing: .04em; margin: 0 0 12px; }
+  #how p { color: #cdd5db; margin: 0 0 12px; max-width: 70ch; }
+  .fine { font-size: 12px; color: var(--text-3); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  @media (prefers-reduced-motion: reduce) { .ring .arc { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#" aria-label="Attuned home">
+      <!-- Original mark: a sound wave resolving into a ring -->
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true">
+        <circle cx="15" cy="15" r="12.5" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="58 21" stroke-linecap="round" transform="rotate(-50 15 15)"/>
+        <path d="M9 15h2l1.6-4 2.4 8 2.4-6 1.3 2H21" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Attuned</span>
+    </a>
+  </header>
+
+  <nav class="daybar" aria-label="Choose day">
+    <button class="navbtn" id="prev" aria-label="Previous day">
+      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="date" aria-live="polite">
+      <div class="dow" id="dow"></div>
+      <div class="full" id="fulldate"></div>
+    </div>
+    <button class="navbtn" id="next" aria-label="Next day">
+      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </nav>
+  <div class="chips" id="chips" role="group" aria-label="Notable days"></div>
+
+  <main class="grid" id="main"></main>
+
+
+  <footer class="foot">
+    <a href="https://github.com/pranavjain20/Attuned" rel="noopener">
+      <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></svg>
+      View on GitHub
+    </a>
+  </footer>
+</div>
+
+<script id="data" type="application/json">__ATTUNED_DATA__</script>
+
+<script>
+(function () {
+  "use strict";
+
+  var DAYS = [];
+  try { DAYS = JSON.parse(document.getElementById("data").textContent) || []; } catch (e) { DAYS = []; }
+  DAYS.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+
+  var BAND_COLOR = { green: "var(--green)", yellow: "var(--yellow)", red: "var(--red)" };
+  var BAND_LABEL = { green: "High", yellow: "Medium", red: "Low" };
+  var STATES = {
+    rest:      { color: "#8f7bff", meaning: "Go gentle. Low-energy music to ease into the day.",
+                 icon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>' },
+    energy:    { color: "#ff8a1f", meaning: "You have something in the tank. Upbeat music to match.",
+                 icon: '<path d="M13 2L4 14h7l-1 8 9-12h-7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>' },
+    grounding: { color: "#3fb8ff", meaning: "Steady and even. Mid-tempo music to keep you level.",
+                 icon: '<path d="M3 12c2.5-4 5.5-4 8 0s5.5 4 8 0M3 18h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' }
+  };
+  var MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  var DOW = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function safeUrl(u) { return /^https:\/\//.test(u || "") ? u : "#"; }
+  function parseDate(iso) { var p = iso.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function bandFor(score, band) {
+    if (BAND_COLOR[band]) return band;
+    return score >= 67 ? "green" : score >= 34 ? "yellow" : "red";
+  }
+  function num(v, digits) {
+    if (v == null || isNaN(v)) return "—";
+    return digits ? Number(v).toFixed(digits) : String(Math.round(v));
+  }
+  function chipLabel(i) {
+    if (i === DAYS.length - 1) return "Latest";
+    var d = parseDate(DAYS[i].date);
+    return MONTHS[d.getMonth()] + " " + d.getDate();
+  }
+
+  // Ring: 270-degree arc like a gauge would feel too "dashboard"; WHOOP uses a full circle starting at top.
+  var R = 70, C = 2 * Math.PI * R;
+  function ring(score, band, label, sub) {
+    var b = bandFor(score, band);
+    var pct = Math.max(0, Math.min(100, Number(score) || 0));
+    return '' +
+      '<div class="ring">' +
+        '<svg viewBox="0 0 180 180" role="img" aria-label="' + esc(label) + ': ' + pct + ' percent, ' + BAND_LABEL[b].toLowerCase() + '">' +
+          '<circle cx="90" cy="90" r="' + R + '" fill="none" stroke="var(--track)" stroke-width="14"/>' +
+          '<circle class="arc" style="color:' + BAND_COLOR[b] + '" cx="90" cy="90" r="' + R + '" fill="none" stroke="' + BAND_COLOR[b] + '" stroke-width="14" stroke-linecap="round"' +
+            ' stroke-dasharray="' + C.toFixed(2) + '" stroke-dashoffset="' + C.toFixed(2) + '" data-target="' + (C * (1 - pct / 100)).toFixed(2) + '"' +
+            ' transform="rotate(-90 90 90)"/>' +
+          '<text class="val" x="90" y="104" text-anchor="middle" font-size="50">' + pct + '<tspan class="pct" font-size="24" dx="2" dy="-18">%</tspan></text>' +
+        '</svg>' +
+        '<div class="label">' + esc(label) + '</div>' +
+        '<div class="sub">' + esc(sub) + '</div>' +
+      '</div>';
+  }
+
+  function arrow(dir) {
+    var d = dir === "up" ? "M12 19V5M5 12l7-7 7 7" : "M12 5v14M5 12l7 7 7-7";
+    return '<span class="arrow ' + (dir === "up" ? "up" : "down") + '" aria-label="' + (dir === "up" ? "raised your score" : "lowered your score") + '">' +
+      '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="' + d + '" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+  }
+
+
+  function playlistHtml(pl) {
+    if (!pl || !pl.tracks || !pl.tracks.length) return '<div class="empty">No playlist for this day.</div>';
+    var s = pl.summary;
+    var arts = pl.tracks.map(function (t) { return t.art; }).filter(Boolean).slice(0, 4);
+    var cover = arts.length === 4
+      ? '<div class="mosaic">' + arts.map(function (u) { return '<img src="' + esc(u) + '" alt="">'; }).join("") + '</div>'
+      : '<div class="mosaic solo"></div>';
+    var logo = '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#000"/><path d="M6.5 9.3c3.8-1.1 8-.8 11 1M7.2 12.5c3.1-.9 6.4-.6 9 .9M7.8 15.5c2.5-.6 5-.4 7 .7" fill="none" stroke="#1ed760" stroke-width="1.7" stroke-linecap="round"/></svg>';
+    var open = pl.spotify_url
+      ? '<a class="btn" href="' + esc(safeUrl(pl.spotify_url)) + '" target="_blank" rel="noopener">' + logo + 'Open in Spotify</a>'
+      : '<button class="btn" type="button" onclick="this.nextElementSibling.hidden=false">' + logo + 'Open in Spotify</button><span class="btn-note" hidden>Not saved to Spotify yet</span>';
+    var rows = pl.tracks.map(function (t, i) {
+      return '<a class="row" href="' + esc(safeUrl(t.spotify_url)) + '" target="_blank" rel="noopener">' +
+        '<span class="n">' + (i + 1) + '</span>' +
+        '<span class="tt">' + (t.art ? '<img src="' + esc(t.art) + '" alt="" loading="lazy">' : '<i class="noart"></i>') +
+          '<span class="tx"><span class="t1">' + esc(t.title) + '</span><span class="t2">' + esc(t.artist) + '</span><span class="tw m">' + esc(t.why || "") + '</span></span></span>' +
+        '<span class="tw d">' + esc(t.why || "") + '</span>' +
+        '<span class="du">' + esc(t.duration) + '</span></a>';
+    }).join("");
+    return '<div class="sp-head">' + cover +
+        '<div class="sp-meta"><span class="kind">Playlist</span><h2 class="sp-title">' + esc(pl.name) + '</h2>' +
+        '<span class="sp-sub">Attuned · ' + pl.tracks.length + ' songs, ' + esc(pl.total_time) + '</span></div>' + open + '</div>' +
+      '<div class="sp-summary">' +
+        '<p class="lead">' + esc(s.lead) + '</p>' +
+        '<dl class="sp-facts"><dt>What\'s in it</dt><dd>' + esc(s.kinds) + '</dd>' +
+        '<dt>Why it helps</dt><dd>' + esc(s.why) + ' <span class="cites">' + s.cites.map(function (c) {
+          return '<a href="' + esc(safeUrl(c[1])) + '" target="_blank" rel="noopener">' + esc(c[0]) + '</a>'; }).join(", ") + '</span></dd></dl>' +
+      '</div>' +
+      '<div class="sp-actions">' +
+        '<button class="more" aria-expanded="false" onclick="var l=this.parentNode.nextElementSibling;var o=l.hidden;l.hidden=!o;this.setAttribute(\'aria-expanded\',o);this.textContent=o?\'Hide playlist\':\'Show playlist\';">Show playlist</button>' +
+      '</div>' +
+      '<div class="sp-list" hidden><div class="row head"><span class="n">#</span><span>Title</span><span class="d">Why it\'s here</span><span class="du"><svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="2"/></svg></span></div>' + rows + '</div>';
+  }
+
+  function render(i) {
+    var day = DAYS[i];
+    var main = document.getElementById("main");
+    if (!day) { main.innerHTML = '<div class="card span-2 empty"><b>No days yet</b>Data will appear here once it is exported.</div>'; return; }
+
+    var a = day.attuned || {}, w = day.whoop || {}, m = day.metrics || {};
+    var st = STATES[a.state] || STATES.grounding;
+    document.documentElement.style.setProperty("--state", st.color);
+
+    var d = parseDate(day.date);
+    document.getElementById("dow").textContent = DOW[d.getDay()];
+    document.getElementById("fulldate").textContent = MONTHS[d.getMonth()] + " " + d.getDate() + ", " + d.getFullYear();
+    document.getElementById("prev").disabled = i === 0;
+    document.getElementById("next").disabled = i === DAYS.length - 1;
+    Array.prototype.forEach.call(document.querySelectorAll(".chip"), function (c, ci) { c.setAttribute("aria-current", ci === i ? "true" : "false"); });
+
+    var cmp = a.compare || {};
+
+    var drivers = (a.drivers || []).map(function (dr) {
+      var z = Number(dr.z);
+      return '<div class="driver">' + arrow(dr.effect) +
+        '<div><div class="name">' + esc(dr.label) + '</div><div class="vs">' + esc(dr.value) + ' vs usual ' + esc(dr.usual) + '</div></div>' +
+        '<div class="z" style="color:' + (dr.effect === "up" ? "var(--green)" : "var(--red)") + '">' + (isNaN(z) ? "" : (z > 0 ? "+" : "") + z.toFixed(1)) +
+        '<small>vs normal</small></div></div>';
+    }).join("");
+
+    var metrics = [
+      ["HRV", num(m.hrv_ms), "ms"], ["Resting HR", num(m.rhr_bpm), "bpm"], ["Sleep", num(m.sleep_hours, 1), "h"],
+      ["REM", num(m.rem_hours, 1), "h"], ["Deep", num(m.deep_hours, 1), "h"], ["Efficiency", num(m.sleep_efficiency_pct), "%"],
+      ["Sleep debt 7d", num(m.sleep_debt_hours_7d, 1), "h", "debt"]
+    ].map(function (x) {
+      return '<div class="metric ' + (x[3] || "") + '"><div class="k">' + x[0] + '</div><div class="v">' + x[1] + '<small>' + (x[1] === "—" ? "" : x[2]) + '</small></div></div>';
+    }).join("");
+
+    var playlist = playlistHtml(day.playlist);
+
+    main.innerHTML =
+      '<section class="card rings-card" aria-label="Scores">' +
+        '<div class="rings">' +
+          ring(a.score, a.band, "Attuned Recovery", "How you'll feel") +
+          ring(w.recovery, w.band, "WHOOP Recovery", "Ready to train?") +
+        '</div>' +
+        '<p class="compare">You likely feel <b style="color:' + BAND_COLOR[bandFor(a.score, a.band)] + '">' + num(a.score) + '</b><span class="dot">·</span>WHOOP says <b style="color:' + BAND_COLOR[bandFor(w.recovery, w.band)] + '">' + num(w.recovery) + '</b></p>' +
+        '<div class="compare-note">' + esc(cmp.note) + '</div>' +
+      '</section>' +
+
+      '<section class="card reason-card" aria-label="Why">' +
+        '<p class="reason">' + esc(cmp.title) + '</p><p class="reason-line">' + esc(cmp.line) + '</p>' +
+        '<div class="drivers">' + drivers + '</div>' +
+        '<details class="night"><summary>Health metrics</summary><div class="metrics">' + metrics + '</div></details>' +
+      '</section>' +
+
+      '<section class="card span-2" aria-label="Today\'s playlist">' +
+        playlist +
+      '</section>';
+
+    // animate rings in
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        Array.prototype.forEach.call(main.querySelectorAll(".arc"), function (el) {
+          el.setAttribute("stroke-dashoffset", el.getAttribute("data-target"));
+        });
+      });
+    });
+  }
+
+  var current = DAYS.length - 1;
+  function go(i, push) {
+    if (i < 0 || i >= DAYS.length) return;
+    current = i;
+    render(i);
+    if (push && history.replaceState) history.replaceState(null, "", "#" + DAYS[i].date);
+  }
+
+  var chips = document.getElementById("chips");
+  chips.innerHTML = DAYS.map(function (d, i) { return (d.notable || i === DAYS.length - 1) ? '<button class="chip" data-i="' + i + '">' + esc(chipLabel(i)) + '</button>' : ''; }).join("");
+  chips.addEventListener("click", function (e) { var b = e.target.closest(".chip"); if (b) go(+b.getAttribute("data-i"), true); });
+  document.getElementById("prev").addEventListener("click", function () { go(current - 1, true); });
+  document.getElementById("next").addEventListener("click", function () { go(current + 1, true); });
+  document.addEventListener("keydown", function (e) {
+    if (e.target.closest && e.target.closest("input,textarea")) return;
+    if (e.key === "ArrowLeft") go(current - 1, true);
+    if (e.key === "ArrowRight") go(current + 1, true);
+  });
+
+  var fromHash = DAYS.findIndex(function (d) { return "#" + d.date === location.hash; });
+  go(fromHash >= 0 ? fromHash : DAYS.length - 1, false);
+  if (!DAYS.length) render(0);
+})();
+</script>
+</body>
+</html>
