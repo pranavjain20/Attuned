@@ -3,9 +3,6 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
-
-# Claude Code project memory (local, not project code)
-.claude/
 venv/
 dist/
 build/
@@ -61,7 +58,6 @@ logs/
 devlog/
 tasks/
 STATUS.md
-CLAUDE.md
 docs/BUILD_PLAN.md
 docs/BLOG_IDEAS.md
 docs/WORKFLOW.md
