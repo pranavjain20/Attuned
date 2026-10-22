@@ -54,6 +54,7 @@ SPOTIFY_SCOPES = [
     "user-read-recently-played",
     "user-top-read",
     "playlist-modify-private",
+    "playlist-modify-public",
     "user-read-private",
 ]
 SPOTIFY_PROGRESS_LOG_INTERVAL = 50

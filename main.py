@@ -40,6 +40,7 @@ COMMANDS = {
     "backfill-release-years": "Backfill release_year from Spotify for songs missing it",
     "sync-whoop-history": "Pull full WHOOP recovery + sleep history",
     "feeling-score": "Attuned 0-100 feeling score for a day (--date YYYY-MM-DD, --json)",
+    "playlist-json": "Playlist + why-lines as JSON, read-only (--date D, or --from A --to B --out DIR)",
 }
 
 
@@ -110,6 +111,8 @@ def main() -> None:
         _cmd_sync_whoop_history(db_path)
     elif command == "feeling-score":
         _cmd_feeling_score(db_path)
+    elif command == "playlist-json":
+        _cmd_playlist_json(db_path)
     elif command == "backfill-release-years":
         _cmd_backfill_release_years(db_path)
     elif command == "match-songs":
@@ -381,25 +384,97 @@ def _cmd_sync_whoop_history(db_path: Path) -> None:
         conn.close()
 
 
-def _cmd_feeling_score(db_path: Path) -> None:
-    """Print the feeling score for --date (default today); --json prints the page data contract."""
-    import json
+def _flag_value(flag: str) -> str | None:
+    """Value after `flag` in argv, None if the flag is absent; exits if the value is missing."""
+    if flag not in sys.argv:
+        return None
+    idx = sys.argv.index(flag)
+    if idx + 1 >= len(sys.argv):
+        print(f"Error: {flag} requires a value")
+        sys.exit(1)
+    return sys.argv[idx + 1]
+
+
+def _parse_date_flag(flag: str = "--date", default_today: bool = True) -> str | None:
+    """`flag` YYYY-MM-DD from argv (default today, or None); exits with a message if malformed."""
     from datetime import date
 
-    from intelligence.feeling_score import build_page_day
-
-    target_date = date.today().isoformat()
-    if "--date" in sys.argv:
-        idx = sys.argv.index("--date")
-        if idx + 1 >= len(sys.argv):
-            print("Error: --date requires a value (YYYY-MM-DD)")
-            sys.exit(1)
-        target_date = sys.argv[idx + 1]
+    target_date = _flag_value(flag)
+    if target_date is None:
+        return date.today().isoformat() if default_today else None
     try:
         date.fromisoformat(target_date)
     except ValueError:
-        print(f"Error: --date must be YYYY-MM-DD, got {target_date!r}")
+        print(f"Error: {flag} must be YYYY-MM-DD, got {target_date!r}")
         sys.exit(1)
+    return target_date
+
+
+def _cmd_playlist_json(db_path: Path) -> None:
+    """A day's playlist + why-lines as JSON. Read-only: no Spotify, no DB writes.
+
+    --date D prints one day. --from A --to B --out DIR replays the range oldest
+    first, chaining rotation between days, and writes DIR/<date>.json per day.
+    """
+    import json
+
+    from matching.day_playlist import build_day_playlist, build_day_playlists
+    from matching.generator import GenerationError
+
+    start = _parse_date_flag("--from", default_today=False)
+    end = _parse_date_flag("--to", default_today=False)
+    if start is None and end is None:
+        target_date = _parse_date_flag()
+        # Keep stdout pure JSON: the pipeline's INFO logs would bury it.
+        logging.getLogger().setLevel(logging.WARNING)
+        conn = get_connection(db_path)
+        try:
+            playlist = build_day_playlist(conn, target_date)
+        except GenerationError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        finally:
+            conn.close()
+        print(json.dumps(playlist, indent=2, ensure_ascii=False))
+        return
+
+    out = _flag_value("--out")
+    if start is None or end is None or out is None or "--date" in sys.argv:
+        print("Error: a range needs --from YYYY-MM-DD --to YYYY-MM-DD --out DIR (and no --date)")
+        sys.exit(1)
+    if start > end:
+        print(f"Error: --from {start} must be on or before --to {end}")
+        sys.exit(1)
+
+    logging.getLogger().setLevel(logging.WARNING)
+    conn = get_connection(db_path)
+    try:
+        results = build_day_playlists(conn, start, end)
+    finally:
+        conn.close()
+
+    out_dir = Path(out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    failed = False
+    for result in results:
+        if result["error"]:
+            failed = True
+            print(f"Error: {result['date']}: {result['error']}", file=sys.stderr)
+            continue
+        path = out_dir / f"{result['date']}.json"
+        path.write_text(json.dumps(result["playlist"], indent=2, ensure_ascii=False) + "\n")
+        print(f"Wrote {path}")
+    if failed:
+        sys.exit(1)
+
+
+def _cmd_feeling_score(db_path: Path) -> None:
+    """Print the feeling score for --date (default today); --json prints the page data contract."""
+    import json
+
+    from intelligence.feeling_score import build_page_day
+
+    target_date = _parse_date_flag()
 
     # Scoring replays every earlier day; their per-day INFO logs would bury the output.
     logging.getLogger("intelligence").setLevel(logging.WARNING)

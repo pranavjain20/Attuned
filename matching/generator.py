@@ -263,35 +263,22 @@ def format_reasoning(
 # Pipeline
 # ---------------------------------------------------------------------------
 
-def generate_playlist(
+def select_day_songs(
     conn: sqlite3.Connection,
-    sp: spotipy.Spotify | None,
-    date_str: str | None = None,
-    dry_run: bool = False,
-) -> dict:
-    """End-to-end playlist generation pipeline.
+    date_str: str,
+    point_in_time: bool = False,
+    prior_playlists: dict[str, list[str]] | None = None,
+) -> tuple[dict, dict]:
+    """Classify the day's state and match songs to it — no Spotify, no DB writes.
 
-    1. Classify physiological state
-    2. Match songs to state
-    3. Create Spotify playlist (unless dry_run)
-    4. Log to DB
+    Over-selects by AVAILABILITY_BUFFER_SIZE so callers can drop unavailable
+    tracks and still fill MAX_PLAYLIST_SIZE. point_in_time replays a past day
+    using only the library as it stood that morning; prior_playlists counts
+    earlier replayed days for rotation (see select_songs).
 
-    Args:
-        conn: Database connection.
-        sp: Authenticated Spotipy client (None allowed only if dry_run).
-        date_str: Date to generate for (YYYY-MM-DD). Defaults to today.
-        dry_run: Preview without creating Spotify playlist.
-
-    Returns:
-        Dict with: name, state, description, reasoning, songs, match_stats,
-                   neuro_profile, playlist_id, playlist_url, dry_run.
-
-    Raises:
-        GenerationError: On insufficient data, no songs, or Spotify failure.
+    Returns (classification, match_result).
+    Raises GenerationError on insufficient WHOOP data or no matching songs.
     """
-    if date_str is None:
-        date_str = date.today().isoformat()
-
     # 1. Classify state
     classification = classify_state(conn, date_str)
     state = classification["state"]
@@ -319,14 +306,61 @@ def generate_playlist(
     # 2. Match songs (over-select by buffer to absorb unavailable drops)
     from config import AVAILABILITY_BUFFER_SIZE, MAX_PLAYLIST_SIZE
     buffer_size = MAX_PLAYLIST_SIZE + AVAILABILITY_BUFFER_SIZE
-    match_result = select_songs(conn, state, date_str, neuro_profile_override=neuro_profile_override, target_valence=target_valence, target_size=buffer_size)
-    songs = match_result["songs"]
+    match_result = select_songs(
+        conn, state, date_str,
+        neuro_profile_override=neuro_profile_override,
+        target_valence=target_valence,
+        target_size=buffer_size,
+        point_in_time=point_in_time,
+        prior_playlists=prior_playlists,
+    )
 
-    if not songs:
+    if not match_result["songs"]:
         raise GenerationError(
             f"No songs matched for state '{state}'. "
             "Is the library classified? Run: python main.py classify-songs"
         )
+    return classification, match_result
+
+
+def generate_playlist(
+    conn: sqlite3.Connection,
+    sp: spotipy.Spotify | None,
+    date_str: str | None = None,
+    dry_run: bool = False,
+    public: bool = False,
+) -> dict:
+    """End-to-end playlist generation pipeline.
+
+    1. Classify physiological state
+    2. Match songs to state
+    3. Create Spotify playlist (unless dry_run)
+    4. Log to DB
+
+    Args:
+        conn: Database connection.
+        sp: Authenticated Spotipy client (None allowed only if dry_run).
+        date_str: Date to generate for (YYYY-MM-DD). Defaults to today.
+        dry_run: Preview without creating Spotify playlist.
+        public: Create the Spotify playlist as public (needs the
+            playlist-modify-public scope). Default private.
+
+    Returns:
+        Dict with: name, state, description, reasoning, songs, match_stats,
+                   neuro_profile, playlist_id, playlist_url, dry_run.
+
+    Raises:
+        GenerationError: On insufficient data, no songs, or Spotify failure.
+    """
+    from config import MAX_PLAYLIST_SIZE
+
+    if date_str is None:
+        date_str = date.today().isoformat()
+
+    # 1-2. Classify state, compute profile, match songs
+    classification, match_result = select_day_songs(conn, date_str)
+    state = classification["state"]
+    songs = match_result["songs"]
 
     # 2b. Filter unavailable tracks (Spotify may have removed them), then trim to target
     if sp is not None:
@@ -355,7 +389,7 @@ def generate_playlist(
         if sp is None:
             raise GenerationError("Spotify client required for live playlist creation")
         try:
-            result = create_playlist(sp, name, description, track_uris)
+            result = create_playlist(sp, name, description, track_uris, public=public)
             playlist_id = result["playlist_id"]
             playlist_url = result["playlist_url"]
         except SpotifyPlaylistError as e:

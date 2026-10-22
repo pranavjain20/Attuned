@@ -202,6 +202,8 @@ def compute_confidence_multiplier(confidence: float | None) -> float:
 # breaks ties among similarly-scored songs, never overrides a clearly
 # better neurological match. Typical adjacent-song gap is 0.005-0.012.
 FRESHNESS_NUDGE = {1: 0.04, 2: 0.03, 3: 0.02, 4: 0.01}  # days_ago → subtraction
+FRESHNESS_LOOKBACK_DAYS = max(FRESHNESS_NUDGE)
+REPEAT_LOOKBACK_DAYS = 7  # how far back the hard repeat cap looks
 
 # Familiarity multiplier: songs without engagement data (< 5 meaningful
 # plays) get a small penalty. Doesn't override a genuinely better neuro
@@ -233,10 +235,12 @@ def compute_min_repeat_gap(library_size: int, is_current_banger: bool) -> int:
 def is_current_banger(
     song: dict[str, Any],
     engagement_p75: float,
+    reference_date: str | None = None,
 ) -> bool:
     """Check if a song is a current banger (high engagement + recent).
 
-    Top quartile engagement AND played in the last 30 days.
+    Top quartile engagement AND played in the 30 days before reference_date
+    (YYYY-MM-DD, default today).
     """
     engagement = song.get("engagement_score")
     if engagement is None or engagement < engagement_p75:
@@ -247,10 +251,85 @@ def is_current_banger(
     from datetime import date as date_cls, datetime, timedelta
     try:
         lp_date = datetime.strptime(last_played[:10], "%Y-%m-%d").date()
-        cutoff = date_cls.today() - timedelta(days=BANGER_RECENCY_DAYS)
+        ref = (datetime.strptime(reference_date, "%Y-%m-%d").date()
+               if reference_date else date_cls.today())
+        cutoff = ref - timedelta(days=BANGER_RECENCY_DAYS)
         return lp_date >= cutoff
     except (ValueError, TypeError):
         return False
+
+
+def rewind_songs_to_date(
+    conn: sqlite3.Connection,
+    songs: list[dict[str, Any]],
+    date: str,
+) -> list[dict[str, Any]]:
+    """Restate the library as it stood on the morning of `date`.
+
+    Keeps only songs with a meaningful play (>= MIN_PLAY_DURATION_MS) before
+    `date` (UTC midnight), and replaces play_count / last_played with their
+    values from those plays alone — so a past day's playlist can't draw on
+    songs found later or treat a song played since as "recent".
+    engagement_score is not rewound (it's a stored composite).
+    """
+    from config import MIN_PLAY_DURATION_MS
+
+    rows = conn.execute(
+        """SELECT spotify_uri, COUNT(*) AS cnt,
+                  MIN(played_at) AS first_ts, MAX(played_at) AS last_ts
+           FROM listening_history
+           WHERE ms_played >= ? AND played_at < ?
+           GROUP BY spotify_uri""",
+        (MIN_PLAY_DURATION_MS, date),
+    ).fetchall()
+    as_of = {row["spotify_uri"]: row for row in rows}
+
+    rewound = []
+    for song in songs:
+        stats = as_of.get(song["spotify_uri"])
+        if stats is None:
+            continue
+        rewound.append({**song, "play_count": stats["cnt"],
+                        "first_played": stats["first_ts"], "last_played": stats["last_ts"]})
+    return rewound
+
+
+def play_dates_before(conn: sqlite3.Connection, date: str) -> list[str]:
+    """Sorted YYYY-MM-DD days with a meaningful play before `date` (UTC)."""
+    from config import MIN_PLAY_DURATION_MS
+
+    rows = conn.execute(
+        """SELECT DISTINCT substr(played_at, 1, 10) AS day
+           FROM listening_history
+           WHERE ms_played >= ? AND played_at < ?
+           ORDER BY day""",
+        (MIN_PLAY_DURATION_MS, date),
+    ).fetchall()
+    return [row["day"] for row in rows]
+
+
+def merge_prior_days_ago(
+    db_days_ago: dict[str, int],
+    prior_playlists: dict[str, list[str]] | None,
+    date: str,
+    max_days: int,
+) -> dict[str, int]:
+    """Add replayed playlists (date → track URIs) to a DB {uri: days_ago} map.
+
+    Only playlists 1..max_days before `date` count, matching the DB lookups.
+    A song in both keeps its most recent appearance (smallest days_ago).
+    """
+    from datetime import date as date_cls
+
+    merged = dict(db_days_ago)
+    ref = date_cls.fromisoformat(date)
+    for playlist_date, uris in (prior_playlists or {}).items():
+        days_ago = (ref - date_cls.fromisoformat(playlist_date)).days
+        if not 1 <= days_ago <= max_days:
+            continue
+        for uri in uris:
+            merged[uri] = min(days_ago, merged.get(uri, days_ago))
+    return merged
 
 
 def compute_engagement_p75(songs: list[dict[str, Any]]) -> float:
@@ -584,10 +663,16 @@ def _build_result_song(
         "play_count": song.get("play_count"),
         "engagement_score": song.get("engagement_score"),
         "bpm": song.get("bpm"),
+        "felt_tempo": song.get("felt_tempo"),
         "energy": song.get("energy"),
+        "valence": song.get("valence"),
+        "acousticness": song.get("acousticness"),
         "genre_tags": song.get("genre_tags"),
         "mood_tags": song.get("mood_tags"),
         "release_year": song.get("release_year"),
+        "original_release_year": song.get("original_release_year"),
+        "first_played": song.get("first_played"),
+        "is_anchor": False,
         "selection_score": round(sel_score, 4),
         "breakdown": breakdown,
     }
@@ -658,6 +743,8 @@ def select_songs(
     genre_filter: list[str] | None = None,
     era_filter: str | None = None,
     artist_filter: list[str] | None = None,
+    point_in_time: bool = False,
+    prior_playlists: dict[str, list[str]] | None = None,
 ) -> dict[str, Any]:
     """Select songs matching the given physiological state.
 
@@ -680,6 +767,10 @@ def select_songs(
         mood_filter: If provided, restrict to songs with at least one matching mood tag.
         genre_filter: If provided, restrict to songs with at least one matching genre tag.
         era_filter: If provided, restrict to songs from that era (e.g. "1990s").
+        point_in_time: Rebuild the library as of `date` (see rewind_songs_to_date)
+            so a past day replays with only what was known that morning.
+        prior_playlists: Replayed playlists ({date: track URIs}) that count for
+            rotation as if they'd been pushed — lets a range replay chain day to day.
 
     Returns:
         Dict with keys: songs, state, neuro_profile, match_stats.
@@ -687,6 +778,8 @@ def select_songs(
     neuro_profile = neuro_profile_override if neuro_profile_override is not None else get_state_neuro_profile(state)
 
     all_songs = get_all_classified_songs(conn)
+    if point_in_time:
+        all_songs = rewind_songs_to_date(conn, all_songs, date)
     if not all_songs:
         logger.warning("No classified songs in database")
         return {
@@ -712,17 +805,23 @@ def select_songs(
     all_songs = _apply_nl_filters(all_songs, mood_filter, genre_filter, era_filter, artist_filter)
 
     # Get recent playlist URIs for freshness nudge
-    recent_playlist_uris = get_recent_playlist_track_uris(conn, before_date=date, days=4)
+    recent_playlist_uris = merge_prior_days_ago(
+        get_recent_playlist_track_uris(conn, before_date=date, days=FRESHNESS_LOOKBACK_DAYS),
+        prior_playlists, date, max_days=FRESHNESS_LOOKBACK_DAYS,
+    )
 
     # Hard cap: exclude songs that appeared too recently
-    days_since = get_days_since_last_appearance(conn, before_date=date)
+    days_since = merge_prior_days_ago(
+        get_days_since_last_appearance(conn, before_date=date, max_lookback=REPEAT_LOOKBACK_DAYS),
+        prior_playlists, date, max_days=REPEAT_LOOKBACK_DAYS,
+    )
     blocked_uris: set[str] = set()
     if days_since:
         library_size = len(all_songs)
         eng_p75 = compute_engagement_p75(all_songs)
         for uri, last_days_ago in days_since.items():
             song_data = next((s for s in all_songs if s["spotify_uri"] == uri), None)
-            banger = song_data is not None and is_current_banger(song_data, eng_p75)
+            banger = song_data is not None and is_current_banger(song_data, eng_p75, reference_date=date)
             min_gap = compute_min_repeat_gap(library_size, banger)
             if last_days_ago < min_gap and min_gap > 0:
                 blocked_uris.add(uri)
@@ -786,9 +885,12 @@ def select_songs(
 
     # Build result from cohesion-selected indices
     selected_songs = []
+    anchor_uris = {scored[i][0]["spotify_uri"] for i in anchor_indices}
     for idx in cohesion_indices:
         song, sel_score, breakdown = scored[idx]
-        selected_songs.append(_build_result_song(song, sel_score, breakdown))
+        result_song = _build_result_song(song, sel_score, breakdown)
+        result_song["is_anchor"] = song["spotify_uri"] in anchor_uris
+        selected_songs.append(result_song)
 
     # Dedup near-duplicates (e.g., same song from different albums)
     pre_dedup_count = len(selected_songs)
