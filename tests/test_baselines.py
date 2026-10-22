@@ -290,9 +290,30 @@ class TestComputeSleepDebt:
         _insert_sleeps(db_conn, dates, actual_deep, actual_rem, actual_light,
                        baseline_ms=needed_baseline)
 
-        result = compute_sleep_debt(db_conn, "2026-03-17", window=7)
+        # Window is the 7 nights ending on the date itself: 03-10 … 03-16
+        result = compute_sleep_debt(db_conn, "2026-03-16", window=7)
         assert result is not None
         assert abs(result - 7.0) < 0.01
+
+    def test_counts_last_night(self, db_conn):
+        """The date's own sleep is last night: its shortfall counts the same morning.
+
+        2026-10-18 (3.9 h asleep) showed 15.7 h of debt that day and 20.6 h the
+        next, because the window used to stop the day before.
+        """
+        # Need 8h, got 4h on the date itself only → 4h debt
+        _insert_sleeps(db_conn, ["2026-03-17"], [4_800_000], [4_800_000], [4_800_000],
+                       baseline_ms=[28_800_000])
+        assert compute_sleep_debt(db_conn, "2026-03-17", window=7) == pytest.approx(4.0)
+
+    def test_window_is_seven_nights_ending_on_the_date(self, db_conn):
+        """03-11 … 03-17 count; 03-10 (eight nights back) does not; tomorrow does not."""
+        dates = ["2026-03-10", "2026-03-11", "2026-03-17", "2026-03-18"]
+        # Need 8h each night; got 4h, 7h, 7h, 4h → shortfalls 4h, 1h, 1h, 4h
+        light = [2_400_000, 13_200_000, 13_200_000, 2_400_000]
+        _insert_sleeps(db_conn, dates, [7_200_000] * 4, [4_800_000] * 4, light,
+                       baseline_ms=[28_800_000] * 4)
+        assert compute_sleep_debt(db_conn, "2026-03-17", window=7) == pytest.approx(2.0)
 
     def test_no_debt_when_enough_sleep(self, db_conn):
         dates = _generate_dates("2026-03-17", 7)

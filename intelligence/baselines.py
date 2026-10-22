@@ -123,7 +123,12 @@ def compute_sleep_debt(
     date: str,
     window: int = ROLLING_WINDOW_DAYS,
 ) -> float | None:
-    """Compute rolling sleep debt in hours over the last `window` days.
+    """Compute rolling sleep debt in hours over the last `window` nights.
+
+    The window ends on `date` itself: a date's sleep is the night that ended
+    that morning ("last night"), so its shortfall counts the same day. Window
+    covers [date - window + 1, date]. (Baselines, by contrast, stop the day
+    before so today is compared against its past.)
 
     daily_debt = max(0, sleep_needed - actual_sleep)
     sleep_needed = baseline + debt + strain (nap offset NOT subtracted — conservative)
@@ -136,8 +141,9 @@ def compute_sleep_debt(
 
     Returns total debt in hours, or None if no valid days.
     """
-    start, end = _date_range(date, window)
-    sleeps = get_sleeps_in_range(conn, start, end)
+    d = datetime.strptime(date, "%Y-%m-%d")
+    start = (d - timedelta(days=window - 1)).strftime("%Y-%m-%d")
+    sleeps = get_sleeps_in_range(conn, start, date)
 
     by_date: dict[str, list[dict]] = {}
     for s in sleeps:
