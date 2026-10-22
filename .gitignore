@@ -56,3 +56,18 @@ logs/
 # SQLite WAL/SHM files
 *.db-wal
 *.db-shm
+
+# Working notes (kept locally, not published)
+devlog/
+tasks/
+STATUS.md
+CLAUDE.md
+docs/PRD.md
+docs/BUILD_PLAN.md
+docs/BLOG_IDEAS.md
+docs/WORKFLOW.md
+
+# Experiments (kept locally, not published)
+scripts/*
+!scripts/daily.sh
+!scripts/parallel_download.py
