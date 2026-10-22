@@ -2,16 +2,19 @@
 
 Computes parasympathetic, sympathetic, and grounding scores from song
 properties (BPM, energy, acousticness, etc.) and mood tags using sigmoid
-and Gaussian functions. Weights and curve shapes are our design choices.
+and Gaussian functions. Weights and curve shapes are my design choices.
 
 Audio properties provide the base signal. Mood tags add a semantic dimension
 orthogonal to audio — "reflective" vs "melancholy" can't be heard in BPM
 or energy, but they differentiate grounding from parasympathetic.
 """
 
+import logging
 import math
 
 from config import MOOD_AFFINITY, MOOD_TAG_WEIGHT
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Neutral defaults — used when a property is None (unknown)
@@ -197,14 +200,18 @@ def compute_grounding(
 def scoring_tempo(classification: dict) -> float | None:
     """The tempo to score a song with.
 
-    tempo is the corrected felt tempo (classification.tempo decides it). Rows
-    from before that column existed fall back to the old choice: the LLM's
-    felt_tempo, else bpm.
+    tempo is the corrected felt tempo (classification.tempo decides it). Until
+    it has been decided for a song, falls back to the LLM's bpm and logs a
+    warning: that number can be an octave off. felt_tempo (an older LLM guess,
+    kept as history) is never used. None if neither exists.
     """
-    for column in ("tempo", "felt_tempo", "bpm"):
-        if classification.get(column) is not None:
-            return classification[column]
-    return None
+    if classification.get("tempo") is not None:
+        return classification["tempo"]
+    bpm = classification.get("bpm")
+    if bpm is not None:
+        logger.warning("No corrected tempo for %s — scoring at the LLM's bpm %s (run update-tempos)",
+                       classification.get("spotify_uri", "a song"), bpm)
+    return bpm
 
 
 def compute_neurological_profile(

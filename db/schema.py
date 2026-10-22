@@ -30,6 +30,7 @@ def create_tables(conn: sqlite3.Connection) -> None:
     _migrate_add_availability(conn)
     _migrate_add_sleep_nap(conn)
     _migrate_add_tempo_columns(conn)
+    _migrate_add_soundcharts_checked_at(conn)
 
 
 def _migrate_add_recent_play_ratio(conn: sqlite3.Connection) -> None:
@@ -163,6 +164,22 @@ def _migrate_add_tempo_columns(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError as e:
             if "duplicate column" not in str(e).lower():
                 raise
+
+
+
+def _migrate_add_soundcharts_checked_at(conn: sqlite3.Connection) -> None:
+    """Add soundcharts_checked_at to song_classifications.
+
+    When Soundcharts last answered for the song (ISO 8601 UTC), even with no
+    tempo; NULL = never asked. fetch-soundcharts-tempos skips songs that have
+    it, so a song with no tempo there doesn't cost quota every run.
+    """
+    try:
+        conn.execute("ALTER TABLE song_classifications ADD COLUMN soundcharts_checked_at TEXT")
+        conn.commit()
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
 
 
 _SCHEMA_SQL = """

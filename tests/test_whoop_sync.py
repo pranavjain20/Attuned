@@ -10,7 +10,7 @@ from whoop.sync import sync_date, sync_full_history, sync_today
 
 
 class TestSyncDate:
-    @patch("whoop.sync.get_records_for_date")
+    @patch("whoop.sync.get_records_near_date")
     @patch("whoop.sync.get_valid_token", return_value="test_token")
     def test_stores_recovery_and_sleep(
         self, mock_token, mock_records, db_conn,
@@ -34,7 +34,7 @@ class TestSyncDate:
         assert sleep["deep_sleep_ms"] == 5400000
         assert sleep["recovery_cycle_id"] == 12345
 
-    @patch("whoop.sync.get_records_for_date")
+    @patch("whoop.sync.get_records_near_date")
     @patch("whoop.sync.get_valid_token", return_value="test_token")
     def test_stores_every_sleep_record_with_nap_flag(
         self, mock_token, mock_records, db_conn, sample_whoop_sleep,
@@ -48,7 +48,7 @@ class TestSyncDate:
         rows = queries.get_sleeps_in_range(db_conn, "2026-03-17", "2026-03-17")
         assert {r["sleep_id"]: r["nap"] for r in rows} == {"nap": 1, "night": 0}
 
-    @patch("whoop.sync.get_records_for_date", return_value={"recoveries": [], "sleeps": []})
+    @patch("whoop.sync.get_records_near_date", return_value={"recoveries": [], "sleeps": []})
     @patch("whoop.sync.get_valid_token", return_value="test_token")
     def test_handles_no_data(self, mock_token, mock_records, db_conn):
         result = sync_date(db_conn, "2026-03-17")
@@ -58,10 +58,83 @@ class TestSyncDate:
     @patch("whoop.sync.get_valid_token")
     def test_sync_today_calls_sync_date(self, mock_token, db_conn):
         mock_token.return_value = "test_token"
-        with patch("whoop.sync.get_records_for_date", return_value={"recoveries": [], "sleeps": []}):
+        with patch("whoop.sync.get_records_near_date", return_value={"recoveries": [], "sleeps": []}):
             result = sync_today(db_conn)
             assert "recovery" in result
             assert "sleep" in result
+
+
+class TestSyncDateRedates:
+    """The daily sync stores its window the way the full-history sync does: WHOOP decides each date."""
+
+    @staticmethod
+    def _window(*nights):
+        recoveries, sleeps = zip(*nights)
+        sleeps = [_parse_sleep_response(s) for s in sleeps]
+        dates = {s["sleep_id"]: s["date"] for s in sleeps}
+        return {"recoveries": [_parse_recovery_response(r, dates) for r in recoveries], "sleeps": sleeps}
+
+    @patch("whoop.sync.get_records_near_date")
+    @patch("whoop.sync.get_valid_token", return_value="test_token")
+    def test_old_utc_dated_row_no_longer_blocks_the_dates_recovery(
+        self, mock_token, mock_records, db_conn, sample_whoop_sleep, sample_whoop_recovery,
+    ):
+        """India: old UTC dating put each night a day early. Mar 17 held cycle 2 (really Mar 18),
+        with a higher score than Mar 17's own cycle 1, so a plain upsert kept the wrong one."""
+        n1 = _night(sample_whoop_sleep, sample_whoop_recovery, 1, "2026-03-16T22:30:00.000Z", "+05:30", 40.0)
+        n2 = _night(sample_whoop_sleep, sample_whoop_recovery, 2, "2026-03-17T22:00:00.000Z", "+05:30", 80.0)
+        for cycle_id, d, score in [(1, "2026-03-16", 40.0), (2, "2026-03-17", 80.0)]:
+            queries.upsert_whoop_recovery(db_conn, cycle_id=cycle_id, date=d, recovery_score=score,
+                                          hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+            queries.upsert_whoop_sleep(db_conn, sleep_id=f"s{cycle_id}", date=d, recovery_cycle_id=cycle_id)
+        mock_records.return_value = self._window(n1, n2)
+
+        result = sync_date(db_conn, "2026-03-17")
+
+        assert result == {"recovery": True, "sleep": True}
+        dates = dict(db_conn.execute("SELECT cycle_id, date FROM whoop_recovery").fetchall())
+        assert dates == {1: "2026-03-17", 2: "2026-03-18"}
+        sleeps = db_conn.execute("SELECT sleep_id, date, recovery_cycle_id FROM whoop_sleep ORDER BY sleep_id")
+        assert [tuple(r) for r in sleeps] == [("s1", "2026-03-17", 1), ("s2", "2026-03-18", 2)]
+
+    @patch("whoop.sync.get_records_near_date")
+    @patch("whoop.sync.get_valid_token", return_value="test_token")
+    def test_stored_row_whoop_no_longer_dates_there_is_replaced(
+        self, mock_token, mock_records, db_conn, sample_whoop_sleep, sample_whoop_recovery,
+    ):
+        """A higher-scored row WHOOP doesn't place on Mar 17 gives the date up (as in the full sync)."""
+        queries.upsert_whoop_recovery(db_conn, cycle_id=9, date="2026-03-17", recovery_score=95.0,
+                                      hrv_rmssd_milli=50.0, resting_heart_rate=60.0)
+        mock_records.return_value = self._window(
+            _night(sample_whoop_sleep, sample_whoop_recovery, 1, "2026-03-17T11:00:00.000Z", "-04:00", 40.0))
+        sync_date(db_conn, "2026-03-17")
+        assert queries.get_recovery_by_date(db_conn, "2026-03-17")["cycle_id"] == 1
+
+    @patch("whoop.sync.get_records_near_date")
+    @patch("whoop.sync.get_valid_token", return_value="test_token")
+    def test_result_reports_only_the_target_date(
+        self, mock_token, mock_records, db_conn, sample_whoop_sleep, sample_whoop_recovery,
+    ):
+        """Only yesterday is in WHOOP yet: it is stored, but today is reported missing."""
+        mock_records.return_value = self._window(
+            _night(sample_whoop_sleep, sample_whoop_recovery, 1, "2026-03-16T11:00:00.000Z", "-04:00"))
+        assert sync_date(db_conn, "2026-03-17") == {"recovery": False, "sleep": False}
+        assert queries.get_recovery_by_date(db_conn, "2026-03-16")["cycle_id"] == 1
+
+    @patch("whoop.sync.get_records_near_date")
+    @patch("whoop.sync.get_valid_token", return_value="test_token")
+    def test_running_twice_changes_nothing(
+        self, mock_token, mock_records, db_conn, sample_whoop_sleep, sample_whoop_recovery,
+    ):
+        mock_records.return_value = self._window(
+            _night(sample_whoop_sleep, sample_whoop_recovery, 1, "2026-03-16T22:30:00.000Z", "+05:30"),
+            _night(sample_whoop_sleep, sample_whoop_recovery, 2, "2026-03-17T22:00:00.000Z", "+05:30"))
+        sync_date(db_conn, "2026-03-17")
+        snapshot = lambda: (db_conn.execute("SELECT * FROM whoop_recovery ORDER BY cycle_id").fetchall(),
+                            db_conn.execute("SELECT * FROM whoop_sleep ORDER BY sleep_id").fetchall())
+        first = [list(map(tuple, t)) for t in snapshot()]
+        sync_date(db_conn, "2026-03-17")
+        assert [list(map(tuple, t)) for t in snapshot()] == first
 
 
 def _fake_api(recoveries, sleeps):
@@ -81,7 +154,7 @@ def _night(sample_sleep, sample_recovery, n, end_utc, offset, score=50.0):
 
 
 class TestSyncFullHistory:
-    @patch("whoop.sync._paginated_get")
+    @patch("whoop.client._paginated_get")
     @patch("whoop.sync.get_valid_token", return_value="test_token")
     def test_stores_nap_flag(self, mock_token, mock_paginate, db_conn, sample_whoop_sleep):
         """Full history sync carries WHOOP's nap flag through to the DB."""
@@ -95,7 +168,7 @@ class TestSyncFullHistory:
         rows = queries.get_sleeps_in_range(db_conn, "2026-03-17", "2026-03-17")
         assert {r["sleep_id"]: r["nap"] for r in rows} == {"nap": 1, "night": 0}
 
-    @patch("whoop.sync._paginated_get")
+    @patch("whoop.client._paginated_get")
     @patch("whoop.sync.get_valid_token", return_value="test_token")
     def test_india_nights_get_one_local_date_each(
         self, mock_token, mock_paginate, db_conn, sample_whoop_sleep, sample_whoop_recovery,
@@ -113,7 +186,7 @@ class TestSyncFullHistory:
         assert (sleeps["s1"]["date"], sleeps["s1"]["recovery_cycle_id"]) == ("2026-03-16", 1)
         assert (sleeps["s2"]["date"], sleeps["s2"]["recovery_cycle_id"]) == ("2026-03-17", 2)
 
-    @patch("whoop.sync._paginated_get")
+    @patch("whoop.client._paginated_get")
     @patch("whoop.sync.get_valid_token", return_value="test_token")
     def test_resync_redates_stored_rows_without_duplicating(
         self, mock_token, mock_paginate, db_conn, sample_whoop_sleep, sample_whoop_recovery,
@@ -133,7 +206,7 @@ class TestSyncFullHistory:
         sleeps = db_conn.execute("SELECT sleep_id, date, recovery_cycle_id FROM whoop_sleep ORDER BY sleep_id").fetchall()
         assert [tuple(r) for r in sleeps] == [("s1", "2026-03-17", 1), ("s2", "2026-03-18", 2)]
 
-    @patch("whoop.sync._paginated_get")
+    @patch("whoop.client._paginated_get")
     @patch("whoop.sync.get_valid_token", return_value="test_token")
     def test_recovery_takes_its_sleeps_date(
         self, mock_token, mock_paginate, db_conn, sample_whoop_sleep, sample_whoop_recovery,

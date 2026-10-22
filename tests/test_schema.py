@@ -120,6 +120,19 @@ class TestGetConnection:
                 "tempocnn_bpm", "soundcharts_tempo", "tempo", "tempo_source",
                 "tempo_confidence"} <= cols
 
+    def test_soundcharts_checked_at_migration(self):
+        """An existing database gains soundcharts_checked_at, NULL (never checked) for old rows."""
+        import sqlite3
+        from db.schema import create_tables
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE song_classifications (spotify_uri TEXT PRIMARY KEY, bpm REAL, energy REAL)")
+        conn.execute("INSERT INTO song_classifications VALUES ('uri:old', 120, 0.5)")
+        create_tables(conn)
+        create_tables(conn)  # idempotent
+        row = conn.execute("SELECT soundcharts_checked_at FROM song_classifications").fetchone()
+        assert row[0] is None
+        conn.close()
+
     def test_tempo_migration_keeps_existing_bpm(self):
         """An existing database gains the tempo columns; bpm is untouched, tempo starts NULL."""
         import sqlite3

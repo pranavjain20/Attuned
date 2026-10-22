@@ -18,7 +18,7 @@ from classification.llm_classifier import (
     _validate_song_result,
     classify_songs,
 )
-from classification.profiler import compute_neurological_profile
+from classification.profiler import compute_neurological_profile, scoring_tempo
 from db import queries
 
 
@@ -179,10 +179,11 @@ class TestSystemPrompt:
         assert "devotional" in _SYSTEM_PROMPT.lower()
         assert "nostalgic" in _SYSTEM_PROMPT.lower() or "melancholy" in _SYSTEM_PROMPT.lower()
 
-    def test_system_prompt_includes_felt_tempo(self):
-        """Prompt should request felt_tempo field."""
+    def test_system_prompt_no_longer_asks_for_felt_tempo(self):
+        """The corrected tempo (classification.tempo) replaced the LLM's felt-tempo guess."""
         from classification.llm_classifier import _SYSTEM_PROMPT
-        assert "felt_tempo" in _SYSTEM_PROMPT
+        assert "felt_tempo" not in _SYSTEM_PROMPT
+        assert "felt tempo" not in _SYSTEM_PROMPT.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -294,40 +295,13 @@ class TestValidateSongResult:
         validated = _validate_song_result(result)
         assert validated["para_score"] is None
 
-    def test_felt_tempo_valid(self):
+    def test_old_style_felt_tempo_is_ignored(self):
+        """An old stored response carrying felt_tempo still validates; the field is dropped."""
         result = _make_llm_result()
         result["felt_tempo"] = 80
         validated = _validate_song_result(result)
-        assert validated["felt_tempo"] == 80
-
-    def test_felt_tempo_none_when_absent(self):
-        result = _make_llm_result()
-        validated = _validate_song_result(result)
-        assert validated["felt_tempo"] is None
-
-    def test_felt_tempo_clamped_to_range(self):
-        result = _make_llm_result()
-        result["felt_tempo"] = 10
-        validated = _validate_song_result(result)
-        assert validated["felt_tempo"] == 30  # Clamped to minimum
-
-        result2 = _make_llm_result()
-        result2["felt_tempo"] = 500
-        validated2 = _validate_song_result(result2)
-        assert validated2["felt_tempo"] == 300  # Clamped to maximum
-
-    def test_felt_tempo_rounded_to_int(self):
-        result = _make_llm_result()
-        result["felt_tempo"] = 82.7
-        validated = _validate_song_result(result)
-        assert validated["felt_tempo"] == 83
-        assert isinstance(validated["felt_tempo"], int)
-
-    def test_felt_tempo_invalid_type_becomes_none(self):
-        result = _make_llm_result()
-        result["felt_tempo"] = "slow"
-        validated = _validate_song_result(result)
-        assert validated["felt_tempo"] is None
+        assert validated is not None
+        assert "felt_tempo" not in validated
 
 
 # ---------------------------------------------------------------------------
@@ -678,23 +652,14 @@ class TestMergeWithEssentia:
         assert merged["llm_symp_score"] is None
         assert merged["llm_grounding_score"] is None
 
-    def test_felt_tempo_passed_through(self):
-        """Felt tempo from LLM is stored in merged dict."""
+    def test_felt_tempo_not_merged(self):
+        """felt_tempo is history only: a new classification never writes it."""
         llm = {"bpm": 120, "valence": 0.6, "danceability": 0.7,
                "instrumentalness": 0.1, "genre_tags": ["pop"],
                "mood_tags": ["happy"], "felt_tempo": 60}
         song = _make_song(classification_source=None)
         merged = _merge_with_essentia(llm, song)
-        assert merged["felt_tempo"] == 60
-
-    def test_felt_tempo_none_when_absent(self):
-        """Missing felt_tempo is None in merged dict."""
-        llm = {"bpm": 120, "valence": 0.6, "danceability": 0.7,
-               "instrumentalness": 0.1, "genre_tags": ["pop"],
-               "mood_tags": ["happy"]}
-        song = _make_song(classification_source=None)
-        merged = _merge_with_essentia(llm, song)
-        assert merged["felt_tempo"] is None
+        assert "felt_tempo" not in merged
 
     def test_essentia_key_mode_preserved(self):
         """Essentia always provides key/mode."""
@@ -1105,70 +1070,38 @@ class TestClassifySongs:
         mock_call.assert_called()
 
     @patch("classification.llm_classifier._call_openai")
-    def test_felt_tempo_used_for_neuro_scoring(self, mock_call, db_conn):
-        """When felt_tempo is returned, it should be used for neurological scoring."""
+    def test_a_felt_tempo_in_the_response_does_not_change_scoring(self, mock_call, db_conn):
+        """No corrected tempo yet: scored at the LLM's bpm, even if it still sends felt_tempo."""
         self._seed_songs(db_conn, 1)
-
-        def mock_response(prompt):
-            return _make_llm_response([{
-                "title": "Song 0", "artist": "Artist 0",
-                "bpm": 120, "felt_tempo": 60,
-                "danceability": 0.3, "instrumentalness": 0.5,
-                "valence": 0.3, "mood_tags": ["devotional"],
-                "genre_tags": ["bollywood", "devotional"],
-            }])
-
-        mock_call.side_effect = mock_response
-        classify_songs(db_conn, provider="openai")
-
-        rows = queries.get_song_classifications(db_conn, ["uri:0"])
-        assert rows[0]["felt_tempo"] == 60
-        assert rows[0]["bpm"] is not None
-        # With felt_tempo=60, para should be higher than if BPM=120 was used
-        assert rows[0]["parasympathetic"] is not None
+        mock_call.side_effect = lambda prompt: _make_llm_response([{
+            "title": "Song 0", "artist": "Artist 0",
+            "bpm": 120, "felt_tempo": 60,
+            "danceability": 0.3, "instrumentalness": 0.5,
+            "valence": 0.3, "mood_tags": ["devotional"],
+            "genre_tags": ["bollywood", "devotional"],
+        }])
+        with patch("classification.llm_classifier.compute_neurological_profile",
+                   wraps=compute_neurological_profile) as profile:
+            classify_songs(db_conn, provider="openai")
+        row = queries.get_song_classifications(db_conn, ["uri:0"])[0]
+        assert profile.call_args.kwargs["bpm"] == row["tempo"]
+        assert row["felt_tempo"] is None
 
     @patch("classification.llm_classifier._call_openai")
-    def test_felt_tempo_none_falls_back_to_bpm(self, mock_call, db_conn):
-        """When felt_tempo is None, regular BPM is used for scoring."""
+    def test_reclassify_keeps_the_stored_felt_tempo_as_history(self, mock_call, db_conn):
         self._seed_songs(db_conn, 1)
-
-        def mock_response(prompt):
-            return _make_llm_response([{
-                "title": "Song 0", "artist": "Artist 0",
-                "bpm": 120, "felt_tempo": None,
-                "danceability": 0.7, "instrumentalness": 0.1,
-                "valence": 0.6, "mood_tags": ["happy"],
-                "genre_tags": ["pop"],
-            }])
-
-        mock_call.side_effect = mock_response
+        mock_call.side_effect = lambda prompt: _make_llm_response([{
+            "title": "Song 0", "artist": "Artist 0", "bpm": 120,
+            "valence": 0.6, "mood_tags": ["happy"], "genre_tags": ["pop"],
+        }])
         classify_songs(db_conn, provider="openai")
-
-        rows = queries.get_song_classifications(db_conn, ["uri:0"])
-        assert rows[0]["felt_tempo"] is None
-        assert rows[0]["bpm"] is not None
-
-    @patch("classification.llm_classifier._call_openai")
-    def test_felt_tempo_stored_in_db(self, mock_call, db_conn):
-        """Felt tempo should be persisted to song_classifications."""
-        self._seed_songs(db_conn, 1)
-
-        def mock_response(prompt):
-            return _make_llm_response([{
-                "title": "Song 0", "artist": "Artist 0",
-                "bpm": 120, "felt_tempo": 80,
-                "danceability": 0.5, "instrumentalness": 0.2,
-                "valence": 0.4, "mood_tags": ["reflective"],
-                "genre_tags": ["hindi", "devotional"],
-            }])
-
-        mock_call.side_effect = mock_response
-        classify_songs(db_conn, provider="openai")
-
+        db_conn.execute("UPDATE song_classifications SET felt_tempo = 72 WHERE spotify_uri = 'uri:0'")
+        db_conn.commit()
+        classify_songs(db_conn, provider="openai", reclassify=True)
         row = db_conn.execute(
             "SELECT felt_tempo FROM song_classifications WHERE spotify_uri = 'uri:0'"
         ).fetchone()
-        assert row["felt_tempo"] == 80
+        assert row["felt_tempo"] == 72
 
 
 # ---------------------------------------------------------------------------
@@ -1328,7 +1261,7 @@ class TestRecomputeScores:
         """Smoke test: recompute-scores reads classified songs and updates their scores."""
         import json
         from classification.llm_classifier import _blend_neuro_scores
-        from classification.profiler import compute_neurological_profile
+        from classification.profiler import compute_neurological_profile, scoring_tempo
 
         # Seed a song with a classification including raw_response
         queries.upsert_song(db_conn, "uri:recomp", "Recompute Song", "Recompute Artist")
@@ -1377,7 +1310,7 @@ class TestRecomputeScores:
 
         assert len(rows) == 1
         d = dict(rows[0])
-        scoring_bpm = d.get("felt_tempo") or d.get("bpm")
+        scoring_bpm = scoring_tempo(d)
 
         neuro = compute_neurological_profile(
             bpm=scoring_bpm,
@@ -1449,7 +1382,7 @@ class TestRecomputeIdempotency:
             _merge_acousticness,
             _merge_energy,
         )
-        from classification.profiler import compute_neurological_profile
+        from classification.profiler import compute_neurological_profile, scoring_tempo
 
         # Seed song
         queries.upsert_song(db_conn, "uri:idem", "Idempotent Song", "Idempotent Artist")
@@ -1522,7 +1455,7 @@ class TestRecomputeIdempotency:
                 if source == "essentia+llm" and llm_acousticness is not None:
                     acousticness = _merge_acousticness(d.get("essentia_acousticness"), _clamp01(llm_acousticness))
 
-                scoring_bpm = d.get("felt_tempo") or d.get("bpm")
+                scoring_bpm = scoring_tempo(d)
                 neuro = compute_neurological_profile(
                     bpm=scoring_bpm, energy=energy, acousticness=acousticness,
                     instrumentalness=d.get("instrumentalness"), valence=d.get("valence"),

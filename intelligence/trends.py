@@ -1,19 +1,12 @@
 """7-day trend analysis: slopes, consecutive-day detection for HRV and RHR."""
 
 import sqlite3
-from datetime import datetime, timedelta
 
 import numpy as np
 
 from config import HRV_DECLINE_DAYS, HRV_DECLINE_SD, RHR_ELEVATED_BPM, ROLLING_WINDOW_DAYS
 from db.queries import get_recoveries_in_range
-
-
-def _date_range(date: str, window: int) -> tuple[str, str]:
-    """Return (start_date, end_date) where end_date = date itself (inclusive)."""
-    d = datetime.strptime(date, "%Y-%m-%d")
-    start = d - timedelta(days=window - 1)
-    return start.strftime("%Y-%m-%d"), date
+from intelligence.dates import shift_date
 
 
 def compute_hrv_trend(
@@ -25,8 +18,7 @@ def compute_hrv_trend(
 
     Returns dict(slope, mean, sd, cv, values, count) or None if <3 valid days.
     """
-    start, end = _date_range(date, window)
-    recoveries = get_recoveries_in_range(conn, start, end)
+    recoveries = get_recoveries_in_range(conn, shift_date(date, 1 - window), date)
     values = [r["ln_rmssd"] for r in recoveries if r["ln_rmssd"] is not None]
     if len(values) < 3:
         return None
@@ -48,8 +40,7 @@ def compute_rhr_trend(
 
     Returns dict(slope, mean, values, count) or None if <3 valid days.
     """
-    start, end = _date_range(date, window)
-    recoveries = get_recoveries_in_range(conn, start, end)
+    recoveries = get_recoveries_in_range(conn, shift_date(date, 1 - window), date)
     values = [r["resting_heart_rate"] for r in recoveries if r["resting_heart_rate"] is not None]
     if len(values) < 3:
         return None

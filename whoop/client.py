@@ -11,31 +11,41 @@ from config import WHOOP_BASE_URL, WHOOP_PAGE_SIZE
 logger = logging.getLogger(__name__)
 
 
-def get_records_for_date(token: str, date: str) -> dict[str, list[dict[str, Any]]]:
-    """Fetch every recovery and sleep record whose local date is `date` (YYYY-MM-DD).
+def get_records_near_date(token: str, date: str) -> dict[str, list[dict[str, Any]]]:
+    """Fetch every recovery and sleep record WHOOP has around `date` (YYYY-MM-DD).
 
-    Returns {"recoveries": [...], "sleeps": [...]}. Sleeps include naps — a date
-    can hold a night plus naps, and keeping only the first would store whichever
-    the API listed first (often a nap). A recovery is dated by the sleep it scores.
+    Returns {"recoveries": [...], "sleeps": [...]}, each record dated by the
+    wearer's local date (see _get_records) — including records of neighbouring
+    dates. Sleeps include naps: a date can hold a night plus naps.
 
     WHOOP filters by UTC time, and a local date spans UTC from the day before to
-    the day after (UTC+14 to UTC−12), so a three-day window is asked for and the
-    records are kept by their local date.
+    the day after (UTC+14 to UTC−12), so the window runs from two days before to
+    the end of the day after; every record whose local date is `date` is in it.
     """
     day = datetime.strptime(date, "%Y-%m-%d")
-    params = {
+    return _get_records(token, {
         "start": f"{(day - timedelta(days=2)):%Y-%m-%d}T00:00:00.000Z",
         "end": f"{(day + timedelta(days=1)):%Y-%m-%d}T23:59:59.999Z",
-    }
-    sleeps = [_parse_sleep_response(r) for r in _paginated_get(token, f"{WHOOP_BASE_URL}/v2/activity/sleep", params=params)]
-    sleeps = [s for s in sleeps if s]
+    })
+
+
+def get_all_records(token: str) -> dict[str, list[dict[str, Any]]]:
+    """Fetch WHOOP's whole recovery and sleep history, dated as in get_records_near_date."""
+    return _get_records(token, {})
+
+
+def _get_records(token: str, params: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """Fetch and parse sleeps and recoveries for `params`; unscored or undated records are dropped.
+
+    Sleeps are fetched first: a recovery takes the local date of the sleep it scores.
+    """
+    sleeps = [_parse_sleep_response(r)
+              for r in _paginated_get(token, f"{WHOOP_BASE_URL}/v2/activity/sleep", params=params)]
+    sleeps = [s for s in sleeps if s and s["date"]]
     sleep_dates = {s["sleep_id"]: s["date"] for s in sleeps}
     recoveries = [_parse_recovery_response(r, sleep_dates)
                   for r in _paginated_get(token, f"{WHOOP_BASE_URL}/v2/recovery", params=params)]
-    return {
-        "recoveries": [r for r in recoveries if r and r["date"] == date],
-        "sleeps": [s for s in sleeps if s["date"] == date],
-    }
+    return {"recoveries": [r for r in recoveries if r and r["date"]], "sleeps": sleeps}
 
 
 def _paginated_get(

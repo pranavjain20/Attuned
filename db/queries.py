@@ -626,7 +626,7 @@ def upsert_song_classification(conn: sqlite3.Connection, data: dict[str, Any]) -
                classification_source = excluded.classification_source,
                raw_response = excluded.raw_response,
                classified_at = excluded.classified_at,
-               felt_tempo = excluded.felt_tempo,
+               felt_tempo = COALESCE(excluded.felt_tempo, felt_tempo),  -- history: never erased
                essentia_energy = excluded.essentia_energy,
                essentia_acousticness = excluded.essentia_acousticness,
                original_release_year = excluded.original_release_year,

@@ -11,21 +11,28 @@ from intelligence.feeling_score import (
     FEELING_WEIGHTS,
     HEART_SIGNALS,
     MIN_CALIBRATION_DAYS,
+    SAME_BAND_HEADLINE,
+    SIGNAL_PHRASES,
+    SIGNAL_TEXT,
     SLEEP_SIGNALS,
+    _describe_drivers,
+    _explain_direction,
     _headline,
+    _sentence,
+    _value_and_usual,
     band,
     build_page_day,
     compute_composite,
     compute_composite_history,
     compute_feeling_score,
-    compute_feeling_signals,
     hrv_week_endpoints,
     locate_day,
     map_to_score,
     percentile_position,
     pick_drivers,
-    pick_state,
 )
+from intelligence.playlist_target import pick_state, profile_at
+from intelligence.signals import SIGNALS
 
 HOUR = 3_600_000
 
@@ -266,8 +273,43 @@ class TestHeadline:
     def test_same_band(self):
         assert _headline("yellow", "yellow", [], short_night=True) == "A middle-of-the-road day"
 
+    def test_below_a_green_whoop_says_ready_but(self):
+        assert _headline("yellow", "green", [{"signal": "rem_sleep_z"}]) == \
+            "WHOOP says ready, but your sleep says go easy"
+
+    def test_below_a_yellow_whoop_does_not_claim_whoop_says_ready(self):
+        """WHOOP yellow isn't 'ready': the wording follows WHOOP's band."""
+        headline = _headline("red", "yellow", [{"signal": "rem_sleep_z"}])
+        assert headline == "Lower than WHOOP's number: your sleep says go easy"
+        assert "ready" not in headline
+
+    def test_below_led_by_heart_blames_the_body(self):
+        assert _headline("red", "green", [{"signal": "hrv_z"}]) == \
+            "WHOOP says ready, but your body says go easy"
+        assert _headline("red", "yellow", [{"signal": "hrv_z"}]) == \
+            "Lower than WHOOP's number: your body says go easy"
+
+    def test_below_with_no_drivers_blames_the_body(self):
+        assert _headline("red", "green", []) == "WHOOP says ready, but your body says go easy"
+
+    @pytest.mark.parametrize("attuned", ["red", "yellow", "green"])
+    def test_no_whoop_band_describes_the_band(self, attuned):
+        assert _headline(attuned, None, [{"signal": "hrv_z"}]) == SAME_BAND_HEADLINE[attuned]
+
 
 class TestHrvWeekEndpoints:
+    def test_exact_endpoints_of_the_fitted_line(self):
+        """7 days, slope 0.02 ln-ms/day around ln 50: the line runs ±3 days × 0.02 from the middle."""
+        start, end = hrv_week_endpoints({"slope": 0.02, "mean": math.log(50), "values": [0.0] * 7})
+        assert start == pytest.approx(47.0882267, abs=1e-6)   # 50 · e^−0.06
+        assert end == pytest.approx(53.0918273, abs=1e-6)     # 50 · e^+0.06
+
+    def test_exact_endpoints_for_a_six_day_week(self):
+        """A missing day: the line spans 5 days, ±2.5 from the middle."""
+        start, end = hrv_week_endpoints({"slope": -0.04, "mean": math.log(40), "values": [0.0] * 6})
+        assert start == pytest.approx(44.2068367, abs=1e-6)   # 40 · e^+0.10
+        assert end == pytest.approx(36.1934967, abs=1e-6)     # 40 · e^−0.10
+
     def test_follows_the_slope_not_the_raw_endpoints(self):
         """Zig-zag week whose first and last days are equal but which rises overall."""
         import numpy as np
@@ -318,59 +360,6 @@ def _insert_day(conn, d, cycle_id, total_ms, eff, hrv, rhr, recovery, deep_share
 
 
 TARGET = "2026-06-01"
-
-
-class TestComputeFeelingSignals:
-    def test_drops_whoop_recovery_and_adds_total_sleep(self, db_conn):
-        _seed_history(db_conn, TARGET, 40)
-        _insert_day(db_conn, TARGET, 1, total_ms=7 * HOUR, eff=88, hrv=48, rhr=56, recovery=55)
-        z = compute_feeling_signals(db_conn, TARGET)
-        assert "recovery_z" not in z and "recovery_delta_z" not in z
-        assert z["total_sleep_z"] is not None
-
-    def test_short_night_gives_strongly_negative_total_sleep(self, db_conn):
-        _seed_history(db_conn, TARGET, 40)
-        _insert_day(db_conn, TARGET, 1, total_ms=3.9 * HOUR, eff=92, hrv=48, rhr=56, recovery=55)
-        assert compute_feeling_signals(db_conn, TARGET)["total_sleep_z"] < -2.0
-
-    def test_nap_does_not_change_signals(self, db_conn):
-        """A nap the same day leaves every sleep signal exactly as the night alone gives."""
-        _seed_history(db_conn, TARGET, 40)
-        _insert_day(db_conn, TARGET, 1, total_ms=5 * HOUR, eff=82, hrv=48, rhr=56, recovery=55)
-        before = compute_feeling_signals(db_conn, TARGET)
-        upsert_whoop_sleep(db_conn, sleep_id="nap-today", date=TARGET, nap=True,
-                           deep_sleep_ms=2 * HOUR, rem_sleep_ms=0, light_sleep_ms=0,
-                           sleep_efficiency=99.0)
-        after = compute_feeling_signals(db_conn, TARGET)
-        for s in ("deep_sleep_z", "rem_sleep_z", "total_sleep_z", "sleep_efficiency_z", "deep_ratio_z"):
-            assert after[s] == pytest.approx(before[s])
-
-    def test_efficiency_usual_ignores_naps(self, db_conn):
-        """Naps (~99% efficiency) in the baseline window must not raise 'usual'."""
-        _seed_history(db_conn, TARGET, 40)
-        _insert_day(db_conn, TARGET, 1, total_ms=7 * HOUR, eff=88, hrv=48, rhr=56, recovery=55)
-        before = compute_feeling_signals(db_conn, TARGET)["sleep_efficiency_z"]
-        start = date_cls.fromisoformat(TARGET)
-        for i in range(1, 31):
-            upsert_whoop_sleep(db_conn, sleep_id=f"nap-{i}", date=(start - timedelta(days=i)).isoformat(),
-                               nap=True, deep_sleep_ms=1, rem_sleep_ms=1, light_sleep_ms=1,
-                               sleep_efficiency=99.0)
-        after = compute_feeling_signals(db_conn, TARGET)["sleep_efficiency_z"]
-        assert after == pytest.approx(before)
-
-    def test_no_recovery_row_returns_empty(self, db_conn):
-        assert compute_feeling_signals(db_conn, TARGET) == {}
-
-    def test_shares_the_playlist_profiles_sleep_signals(self, db_conn):
-        """One place computes efficiency (baseline + short-night cap): the profile."""
-        from intelligence.continuous_profile import compute_z_scores
-        _seed_history(db_conn, TARGET, 40)
-        _insert_day(db_conn, TARGET, 1, total_ms=2.5 * HOUR, eff=99, hrv=48, rhr=56, recovery=55)
-        z = compute_feeling_signals(db_conn, TARGET)
-        profile_z = compute_z_scores(db_conn, TARGET)
-        assert z["sleep_efficiency_z"] == profile_z["sleep_efficiency_z"] == 0.0
-        for s in ("deep_sleep_z", "rem_sleep_z", "deep_ratio_z", "sleep_debt_z", "hrv_z"):
-            assert z[s] == profile_z[s]
 
 
 class TestComputeFeelingScore:
@@ -476,7 +465,6 @@ class TestComputeFeelingScore:
 
     def test_position_and_state_follow_the_score(self, db_conn):
         """Low score → rest, high → energy; the state is the playlist's (profile_at(position))."""
-        from intelligence.continuous_profile import profile_at
         self._ready(db_conn, total_ms=3.9 * HOUR, eff=78, hrv=40, rhr=60)
         low = compute_feeling_score(db_conn, TARGET)
         _insert_day(db_conn, TARGET, 1, total_ms=9.0 * HOUR, eff=95, hrv=55, rhr=53, recovery=55)
@@ -553,3 +541,213 @@ class TestBuildPageDay:
         assert day["attuned"]["reason"]
         assert day["whoop"] == {"recovery": None, "band": None}
         assert day["playlist"] is None
+
+
+# ─── Signal wording ──────────────────────────────────────────────────────────
+
+
+VALUES = {
+    "eff": 91.0, "usual_eff": 87.0, "deep_h": 1.6, "usual_deep_h": 1.4,
+    "rem_h": 1.9, "usual_rem_h": 1.7, "total_h": 7.5, "usual_total_h": 7.0,
+    "debt_h": 3.0, "usual_debt_h": 5.5, "deep_share": 0.21, "usual_deep_share": 0.19,
+    "hrv_ms": 52.0, "usual_hrv_ms": 47.0, "rhr": 54.0, "usual_rhr": 56.0,
+    "hrv_week": (45.0, 52.0), "hrv_yesterday": 44.0, "rhr_yesterday": 57.0,
+}
+
+VALUE_AND_USUAL = {
+    "sleep_efficiency_z": ("91%", "87%"),
+    "deep_sleep_z": ("1.6 h", "1.4 h"),
+    "rem_sleep_z": ("1.9 h", "1.7 h"),
+    "total_sleep_z": ("7.5 h", "7.0 h"),
+    "sleep_debt_z": ("3.0 h", "5.5 h"),
+    "deep_ratio_z": ("21%", "19%"),
+    "hrv_z": ("52 ms", "47 ms"),
+    "rhr_z": ("54 bpm", "56 bpm"),
+    "hrv_trend_z": ("45 → 52 ms", "steady"),
+    "hrv_delta_z": ("52 ms", "44 ms yesterday"),
+    "rhr_delta_z": ("54 bpm", "57 bpm yesterday"),
+}
+
+SENTENCES = {
+    ("sleep_efficiency_z", True): "Your sleep was unbroken: asleep for 91% of your time in bed (usual 87%).",
+    ("sleep_efficiency_z", False): "Your sleep was broken: asleep for only 91% of your time in bed (usual 87%).",
+    ("deep_sleep_z", True): "You got 1.6 h of deep sleep, more than your usual 1.4 h.",
+    ("deep_sleep_z", False): "You got 1.6 h of deep sleep, less than your usual 1.4 h.",
+    ("rem_sleep_z", True): "You got 1.9 h of REM sleep, more than your usual 1.7 h.",
+    ("rem_sleep_z", False): "You got 1.9 h of REM sleep, less than your usual 1.7 h.",
+    ("total_sleep_z", True): "You slept 7.5 h, more than your usual 7.0 h.",
+    ("total_sleep_z", False): "You slept 7.5 h, less than your usual 7.0 h.",
+    ("sleep_debt_z", True): "Over the past 7 nights you've carried less sleep debt than usual (3.0 h vs 5.5 h).",
+    ("sleep_debt_z", False): "Over the past 7 nights you've built up 3.0 h of sleep debt, more than your usual 5.5 h.",
+    ("deep_ratio_z", True): "Deep sleep made up 21% of your night, above your usual 19%.",
+    ("deep_ratio_z", False): "Deep sleep made up 21% of your night, below your usual 19%.",
+    ("hrv_z", True): "Your HRV was 52 ms, above your usual 47 ms.",
+    ("hrv_z", False): "Your HRV was 52 ms, below your usual 47 ms.",
+    # Resting heart rate is inverted: lower than usual is the good direction.
+    ("rhr_z", True): "Your resting heart rate was 54 bpm, below your usual 56 bpm.",
+    ("rhr_z", False): "Your resting heart rate was 54 bpm, above your usual 56 bpm.",
+    ("hrv_trend_z", True): "Your HRV has been climbing over the past week (45 → 52 ms).",
+    ("hrv_trend_z", False): "Your HRV has been drifting down over the past week (45 → 52 ms).",
+    ("hrv_delta_z", True): "Your HRV rose to 52 ms from 44 ms yesterday.",
+    ("hrv_delta_z", False): "Your HRV fell to 52 ms from 44 ms yesterday.",
+    ("rhr_delta_z", True): "Your resting heart rate dropped to 54 bpm from 57 bpm yesterday.",
+    ("rhr_delta_z", False): "Your resting heart rate rose to 54 bpm from 57 bpm yesterday.",
+}
+
+
+class TestSignalText:
+    def test_one_entry_per_weighted_signal(self):
+        assert set(SIGNAL_TEXT) == set(FEELING_WEIGHTS) == set(SIGNALS)
+
+    def test_the_tests_cover_every_signal_both_ways(self):
+        assert set(VALUE_AND_USUAL) == set(FEELING_WEIGHTS)
+        assert set(SENTENCES) == {(s, up) for s in FEELING_WEIGHTS for up in (True, False)}
+
+    @pytest.mark.parametrize("signal", sorted(VALUE_AND_USUAL))
+    def test_value_and_usual(self, signal):
+        assert _value_and_usual(signal, VALUES) == VALUE_AND_USUAL[signal]
+
+    @pytest.mark.parametrize("signal, up", sorted(SENTENCES))
+    def test_sentence(self, signal, up):
+        value, usual = _value_and_usual(signal, VALUES)
+        assert _sentence(signal, up, value, usual) == SENTENCES[(signal, up)]
+
+    def test_phrases_are_the_pages_wording(self):
+        assert SIGNAL_PHRASES == {
+            "deep_sleep_z": ("more deep sleep", "less deep sleep"),
+            "deep_ratio_z": ("a bigger share of deep sleep", "a smaller share of deep sleep"),
+            "rem_sleep_z": ("more REM", "less REM"),
+            "total_sleep_z": ("a longer night", "a shorter night"),
+            "sleep_efficiency_z": ("less broken sleep", "more broken sleep"),
+            "sleep_debt_z": ("less sleep debt", "built-up sleep debt"),
+            "hrv_z": ("a higher HRV", "a lower HRV"),
+            "hrv_delta_z": ("HRV up since yesterday", "HRV down since yesterday"),
+            "hrv_trend_z": ("HRV trending up this week", "HRV drifting down this week"),
+            "rhr_z": ("a lower resting heart rate", "a higher resting heart rate"),
+            "rhr_delta_z": ("resting heart rate down since yesterday", "resting heart rate up since yesterday"),
+        }
+
+    def test_phrases_come_from_the_table(self):
+        assert SIGNAL_PHRASES == {s: (t.helped, t.hurt) for s, t in SIGNAL_TEXT.items()}
+
+
+class TestDescribeDrivers:
+    def test_fills_in_real_numbers(self):
+        drivers = _describe_drivers([("hrv_z", -0.12)], {"hrv_z": -1.234}, VALUES)
+        assert drivers == [{"signal": "hrv_z", "label": "HRV", "value": "52 ms", "usual": "47 ms",
+                            "z": -1.23, "effect": "down", "contribution": -0.12}]
+
+    def test_a_driver_without_its_numbers_is_left_out(self):
+        """Never a sentence that says 'None': no number, no mention."""
+        values = dict(VALUES, hrv_yesterday=None)
+        picked = [("hrv_delta_z", 0.1), ("hrv_z", 0.08)]
+        drivers = _describe_drivers(picked, {"hrv_delta_z": 1.0, "hrv_z": 1.0}, values)
+        assert [d["signal"] for d in drivers] == ["hrv_z"]
+
+
+class TestExplainDirection:
+    REFS = [-1.0, 0.0, 1.0]   # median 0.0
+
+    def test_at_the_median_explains_up(self):
+        assert _explain_direction(0.0, self.REFS, "yellow", "yellow") == 1
+
+    def test_just_below_the_median_explains_down(self):
+        assert _explain_direction(-1e-9, self.REFS, "yellow", "yellow") == -1
+
+    def test_attuned_below_whoop_explains_down_even_above_median(self):
+        assert _explain_direction(5.0, self.REFS, "red", "yellow") == -1
+
+    def test_attuned_above_whoop_explains_up_even_below_median(self):
+        assert _explain_direction(-5.0, self.REFS, "green", "yellow") == 1
+
+    def test_no_whoop_band_uses_the_median(self):
+        assert _explain_direction(0.5, self.REFS, "green", None) == 1
+        assert _explain_direction(-0.5, self.REFS, "green", None) == -1
+
+
+class TestMissingReason:
+    """Each reason a day with WHOOP data can't be scored names the real cause."""
+
+    def test_null_stage_data_says_stages_are_missing_not_history(self, db_conn):
+        _seed_history(db_conn, TARGET, 120)
+        upsert_whoop_recovery(db_conn, cycle_id=1, date=TARGET, recovery_score=50,
+                              hrv_rmssd_milli=48, resting_heart_rate=56)
+        upsert_whoop_sleep(db_conn, sleep_id=f"s-{TARGET}", date=TARGET, recovery_cycle_id=1, nap=False,
+                           deep_sleep_ms=None, rem_sleep_ms=None, light_sleep_ms=None,
+                           sleep_efficiency=90.0, sleep_needed_baseline_ms=8 * HOUR)
+        result = compute_feeling_score(db_conn, TARGET)
+        assert result["score"] is None
+        assert result["reason"] == "Last night's sleep stages are missing, so the night can't be scored."
+
+    def test_too_many_signals_missing(self, db_conn):
+        """Night and history are fine, but HRV, resting HR and efficiency are all blank today."""
+        _seed_history(db_conn, TARGET, 120)
+        _insert_day(db_conn, TARGET, 1, total_ms=7 * HOUR, eff=None, hrv=None, rhr=None, recovery=50)
+        result = compute_feeling_score(db_conn, TARGET)
+        assert result["score"] is None
+        assert result["reason"] == "Too many signals are missing today to give a fair score."
+
+    def test_short_history_says_so(self, db_conn):
+        _seed_history(db_conn, TARGET, 10)
+        _insert_day(db_conn, TARGET, 1, total_ms=7 * HOUR, eff=88, hrv=48, rhr=56, recovery=55)
+        assert compute_feeling_score(db_conn, TARGET)["reason"] == (
+            "Not enough history yet: your personal normal needs at least 14 days of data.")
+
+    def test_no_night_says_so(self, db_conn):
+        _seed_history(db_conn, TARGET, 120)
+        upsert_whoop_recovery(db_conn, cycle_id=1, date=TARGET, recovery_score=50,
+                              hrv_rmssd_milli=48, resting_heart_rate=56)
+        assert compute_feeling_score(db_conn, TARGET)["reason"] == (
+            "No night's sleep recorded for this date (naps don't count).")
+
+
+class TestReferenceChecks:
+    def test_percentile_position_needs_references(self):
+        with pytest.raises(ValueError, match="no reference"):
+            percentile_position(0.5, [])
+
+    def test_map_to_score_needs_references(self):
+        with pytest.raises(ValueError, match="no reference"):
+            map_to_score(0.5, [], [])
+
+    def test_map_to_score_needs_one_recovery_per_composite(self):
+        with pytest.raises(ValueError, match="2 reference composites but 1 recoveries"):
+            map_to_score(0.5, [0.0, 1.0], [50.0])
+
+    @pytest.mark.parametrize("composite", [-1.0, 1.0, 9.0])
+    def test_single_reference_maps_to_its_recovery(self, composite):
+        """Degenerate but defined: one earlier day, so every score is that day's recovery."""
+        assert map_to_score(composite, [1.0], [42.0]) == 42
+
+
+# compute_feeling_score on _seed_history(seed 0, 120 days) + a 6 h / 85% / HRV 45 / RHR 57 day.
+# Identical before and after signals moved into intelligence/signals.py.
+PINNED_SCORE = (24, "red", "rest")
+PINNED_COMPOSITE = -1.2304830430964468
+PINNED_POSITION = 4 / 106         # above 4 of the 106 earlier scored days
+
+
+class TestRealDays:
+    """End to end on a seeded history."""
+
+    def test_happy_path_exact_score(self, db_conn):
+        """Regression pin: the seeded history (seed 0, 120 days) and this day give exactly these numbers."""
+        _seed_history(db_conn, TARGET, 120)
+        _insert_day(db_conn, TARGET, 1, total_ms=6 * HOUR, eff=85, hrv=45, rhr=57, recovery=40)
+        result = compute_feeling_score(db_conn, TARGET)
+        assert (result["score"], result["band"], result["state"]) == PINNED_SCORE
+        assert result["composite"] == pytest.approx(PINNED_COMPOSITE, abs=1e-9)
+        assert result["position"] == pytest.approx(PINNED_POSITION, abs=1e-9)
+
+    @pytest.mark.parametrize("seed", range(6))
+    def test_no_sentence_says_none(self, db_conn, seed):
+        rng = random.Random(seed)
+        _seed_history(db_conn, TARGET, 120, seed=seed)
+        _insert_day(db_conn, TARGET, 1, total_ms=rng.uniform(3, 10) * HOUR, eff=rng.uniform(70, 99),
+                    hrv=rng.uniform(30, 80), rhr=rng.uniform(48, 66), recovery=rng.uniform(1, 99),
+                    deep_share=rng.uniform(0.1, 0.4))
+        day = build_page_day(db_conn, TARGET)
+        assert day["attuned"]["score"] is not None
+        text = [day["attuned"]["headline"]] + day["attuned"]["explanation"]
+        assert not any("None" in line for line in text)
+        assert all(d["value"] is not None and d["usual"] is not None for d in day["attuned"]["drivers"])

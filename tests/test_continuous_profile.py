@@ -1,21 +1,24 @@
-"""Tests for intelligence/continuous_profile.py — the playlist target set by the Attuned score."""
+"""Tests for intelligence/continuous_profile.py and intelligence/playlist_target.py —
+the playlist target set by the Attuned score."""
+
+from unittest.mock import patch
 
 import pytest
 
-from config import BASELINE_CALM_ANCHOR, BASELINE_ENERGY_ANCHOR, BASELINE_STEADY_ANCHOR
-from intelligence.continuous_profile import (
-    NAME_DEEP_SHARE,
-    SLEEP_DEBT_POSITIVE_THRESHOLD,
-    STATE_PURPOSE,
-    STATES,
-    Z_CLAMP,
-    compute_continuous_profile,
-    compute_z_scores,
-    is_top_energy_day,
-    pick_state,
-    profile_at,
-    _safe_z,
+from config import (
+    BASELINE_CALM_ANCHOR,
+    BASELINE_ENERGY_ANCHOR,
+    BASELINE_STEADY_ANCHOR,
+    VALENCE_TARGET_GRND,
+    VALENCE_TARGET_PARA,
+    VALENCE_TARGET_SYMP,
 )
+from db.queries import upsert_whoop_recovery
+from intelligence.continuous_profile import NAME_DEEP_SHARE, compute_continuous_profile, is_top_energy_day
+from intelligence.feeling_score import compute_composite_history, compute_feeling_score
+from intelligence.playlist_target import STATE_PURPOSE, STATES, pick_state, profile_at
+from intelligence.signals import compute_z_scores
+from tests.test_feeling_score import HOUR, TARGET, _insert_day, _seed_history
 
 GRID = [i / 1000 for i in range(1001)]
 
@@ -149,187 +152,15 @@ class TestIsTopEnergyDay:
 
 
 # ---------------------------------------------------------------------------
-# Sleep debt z-score cap tests
-# ---------------------------------------------------------------------------
-
-
-class TestSleepDebtCap:
-    """Verify sleep_debt_z is capped when debt exceeds the research threshold."""
-
-    def test_threshold_matches_van_dongen(self):
-        """Threshold should be 7h (Van Dongen 2003: 1h/night onset of impairment)."""
-        assert SLEEP_DEBT_POSITIVE_THRESHOLD == 7.0
-
-    def test_high_debt_caps_at_zero(self):
-        """Debt above threshold should never produce positive z, even if below personal baseline."""
-        # Simulate: 16h debt, baseline mean 23h, sd 3.2h
-        # raw_z = (16 - 23) / 3.2 = -2.19, inverted = +2.19
-        # But 16h > 7h threshold, so should be capped to 0
-        from unittest.mock import patch, MagicMock
-        import sqlite3
-
-        # We can't easily unit-test compute_z_scores without a full DB,
-        # so test the cap logic directly
-        debt = 16.0
-        debt_mean = 23.0
-        debt_sd = 3.2
-        raw_z = _safe_z(debt, debt_mean, debt_sd)
-        inverted = -raw_z
-        assert inverted > 0, "Without cap, this would be positive"
-
-        # Apply the cap
-        if debt > SLEEP_DEBT_POSITIVE_THRESHOLD:
-            capped = min(inverted, 0.0)
-        else:
-            capped = inverted
-        assert capped == 0.0, f"Debt of {debt}h should cap at 0, got {capped}"
-
-    def test_low_debt_allows_positive_z(self):
-        """Debt below threshold can produce positive z (genuinely good sleep week)."""
-        debt = 3.0
-        debt_mean = 23.0
-        debt_sd = 3.2
-        raw_z = _safe_z(debt, debt_mean, debt_sd)
-        inverted = -raw_z
-        assert inverted > 0, "Low debt should produce positive z before cap"
-
-        # Apply the cap — should NOT cap because debt < threshold
-        if debt > SLEEP_DEBT_POSITIVE_THRESHOLD:
-            capped = min(inverted, 0.0)
-        else:
-            capped = inverted
-        assert capped > 0, f"Debt of {debt}h should allow positive z, got {capped}"
-
-    def test_negative_z_unaffected_by_cap(self):
-        """High debt that already produces negative z should pass through unchanged."""
-        debt = 30.0  # Very high debt, above baseline
-        debt_mean = 23.0
-        debt_sd = 3.2
-        raw_z = _safe_z(debt, debt_mean, debt_sd)
-        inverted = -raw_z
-        assert inverted < 0, "Very high debt should naturally produce negative z"
-
-        if debt > SLEEP_DEBT_POSITIVE_THRESHOLD:
-            capped = min(inverted, 0.0)
-        else:
-            capped = inverted
-        assert capped == inverted, "Negative z should pass through unchanged"
-
-
-# ---------------------------------------------------------------------------
-# Sleep efficiency: main-sleep baseline + short-night cap (DB-backed)
-# ---------------------------------------------------------------------------
-
-HOUR = 3_600_000
-TARGET = "2026-06-01"
-
-
-def _history(conn, days=40):
-    from tests.test_feeling_score import _seed_history
-    _seed_history(conn, TARGET, days)
-
-
-def _today(conn, hours, eff, **kwargs):
-    from tests.test_feeling_score import _insert_day
-    _insert_day(conn, TARGET, 1, total_ms=hours * HOUR, eff=eff, hrv=48, rhr=56, recovery=55, **kwargs)
-
-
-class TestSleepEfficiencyBaseline:
-    def test_usual_is_the_main_sleep_baseline(self, db_conn):
-        from intelligence.baselines import compute_sleep_efficiency_baseline
-        _history(db_conn)
-        _today(db_conn, 7, 92)
-        bl = compute_sleep_efficiency_baseline(db_conn, TARGET)
-        assert compute_z_scores(db_conn, TARGET)["sleep_efficiency_z"] == pytest.approx(
-            _safe_z(92, bl["mean"], bl["sd"]))
-
-    def test_naps_in_the_window_do_not_move_usual(self, db_conn):
-        """Naps run ~99% efficient; counting them would make every night look broken."""
-        from datetime import date, timedelta
-        from db.queries import upsert_whoop_sleep
-        _history(db_conn)
-        _today(db_conn, 7, 88)
-        before = compute_z_scores(db_conn, TARGET)["sleep_efficiency_z"]
-        for i in range(1, 31):
-            d = (date.fromisoformat(TARGET) - timedelta(days=i)).isoformat()
-            upsert_whoop_sleep(db_conn, sleep_id=f"nap-{i}", date=d, nap=True, deep_sleep_ms=1,
-                               rem_sleep_ms=1, light_sleep_ms=1, sleep_efficiency=99.0)
-        assert compute_z_scores(db_conn, TARGET)["sleep_efficiency_z"] == pytest.approx(before)
-
-
-class TestShortNightEfficiencyCap:
-    """Under 6 h asleep, high efficiency is not good news: a short sleep is naturally unbroken."""
-
-    def test_short_efficient_night_caps_at_zero(self, db_conn):
-        _history(db_conn)
-        _today(db_conn, 2.5, 99)
-        assert compute_z_scores(db_conn, TARGET)["sleep_efficiency_z"] == 0.0
-
-    def test_exactly_six_hours_is_not_capped(self, db_conn):
-        _history(db_conn)
-        _today(db_conn, 6, 99)
-        assert compute_z_scores(db_conn, TARGET)["sleep_efficiency_z"] > 1.0
-
-    def test_short_broken_night_keeps_its_negative_z(self, db_conn):
-        from intelligence.baselines import compute_sleep_efficiency_baseline
-        _history(db_conn)
-        _today(db_conn, 4, 75)
-        bl = compute_sleep_efficiency_baseline(db_conn, TARGET)
-        z = compute_z_scores(db_conn, TARGET)["sleep_efficiency_z"]
-        assert z < 0 and z == pytest.approx(_safe_z(75, bl["mean"], bl["sd"]))
-
-    def test_missing_stages_leave_efficiency_uncapped(self, db_conn):
-        """Without stage data the night's length is unknown, so no cap is applied."""
-        from db.queries import upsert_whoop_sleep
-        _history(db_conn)
-        _today(db_conn, 2.5, 99)
-        upsert_whoop_sleep(db_conn, sleep_id=f"s-{TARGET}", date=TARGET, recovery_cycle_id=1, nap=False,
-                           deep_sleep_ms=None, rem_sleep_ms=None, light_sleep_ms=None, sleep_efficiency=99.0)
-        assert compute_z_scores(db_conn, TARGET)["sleep_efficiency_z"] > 1.0
-
-    def test_profile_reads_the_capped_z(self, db_conn):
-        """The playlist profile reads the same capped z: a 2.5 h night no longer pushes energy."""
-        _history(db_conn)
-        _today(db_conn, 2.5, 99)
-        assert compute_z_scores(db_conn, TARGET)["sleep_efficiency_z"] == 0.0
-        assert compute_continuous_profile(db_conn, TARGET)["z_scores"]["sleep_efficiency_z"] == 0.0
-
-
-class TestShortNightDeepShareCap:
-    """Under 6 h asleep, a high deep-sleep share is not good news.
-
-    Deep sleep comes early in the night, so a short night is mostly deep sleep
-    by default (2026-10-18: 3.9 h, deep share z +1.84). Same cap as efficiency.
-    """
-
-    def test_short_deep_heavy_night_caps_at_zero(self, db_conn):
-        _history(db_conn)
-        _today(db_conn, 3.9, 90, deep_share=0.40)
-        assert compute_z_scores(db_conn, TARGET)["deep_ratio_z"] == 0.0
-
-    def test_exactly_six_hours_is_not_capped(self, db_conn):
-        _history(db_conn)
-        _today(db_conn, 6, 90, deep_share=0.40)
-        assert compute_z_scores(db_conn, TARGET)["deep_ratio_z"] > 1.0
-
-    def test_just_under_six_hours_is_capped(self, db_conn):
-        _history(db_conn)
-        _today(db_conn, 5.99, 90, deep_share=0.40)
-        assert compute_z_scores(db_conn, TARGET)["deep_ratio_z"] == 0.0
-
-    def test_short_night_low_share_keeps_its_negative_z(self, db_conn):
-        _history(db_conn)
-        _today(db_conn, 4, 90, deep_share=0.10)
-        assert compute_z_scores(db_conn, TARGET)["deep_ratio_z"] < -1.0
-
-
-# ---------------------------------------------------------------------------
 # The day's profile (DB-backed): follows the Attuned score
 # ---------------------------------------------------------------------------
 
 
+def _today(conn, hours, eff, **kwargs):
+    _insert_day(conn, TARGET, 1, total_ms=hours * HOUR, eff=eff, hrv=48, rhr=56, recovery=55, **kwargs)
+
+
 def _ready(conn, days=120, **today):
-    from tests.test_feeling_score import _insert_day, _seed_history
     _seed_history(conn, TARGET, days)
     values = dict(total_ms=7.2 * HOUR, eff=88, hrv=48, rhr=56, recovery=55)
     values.update(today)
@@ -349,7 +180,6 @@ class TestComputeContinuousProfile:
         assert result["signals_used"] == sum(v is not None for v in result["z_scores"].values()) > 0
 
     def test_is_the_feeling_scores_position_on_the_line(self, db_conn):
-        from intelligence.feeling_score import compute_feeling_score
         _ready(db_conn)
         scored = compute_feeling_score(db_conn, TARGET)
         result = compute_continuous_profile(db_conn, TARGET)
@@ -386,13 +216,10 @@ class TestComputeContinuousProfile:
     def test_whoop_recovery_does_not_move_the_profile(self, db_conn):
         _ready(db_conn, recovery=5)
         low = compute_continuous_profile(db_conn, TARGET)
-        from tests.test_feeling_score import _insert_day
         _insert_day(db_conn, TARGET, 1, total_ms=7.2 * HOUR, eff=88, hrv=48, rhr=56, recovery=99)
         assert compute_continuous_profile(db_conn, TARGET)["profile"] == low["profile"]
 
     def test_no_night_recorded_gives_steady(self, db_conn):
-        from db.queries import upsert_whoop_recovery
-        from tests.test_feeling_score import _seed_history
         _seed_history(db_conn, TARGET, 120)
         upsert_whoop_recovery(db_conn, cycle_id=1, date=TARGET, recovery_score=50,
                               hrv_rmssd_milli=48, resting_heart_rate=56)
@@ -417,34 +244,44 @@ class TestComputeContinuousProfile:
         assert BASELINE_STEADY_ANCHOR["para"] == 0.25
 
     def test_precomputed_history_gives_same_result(self, db_conn):
-        from intelligence.feeling_score import compute_composite_history
         _ready(db_conn)
         history = compute_composite_history(db_conn, TARGET)
         assert compute_continuous_profile(db_conn, TARGET, history) == compute_continuous_profile(db_conn, TARGET)
 
+    def test_profile_reads_the_capped_z(self, db_conn):
+        """The playlist profile reads the same capped z: a 2.5 h night no longer pushes energy."""
+        _seed_history(db_conn, TARGET, 40)
+        _today(db_conn, 2.5, 99)
+        assert compute_z_scores(db_conn, TARGET)["sleep_efficiency_z"] == 0.0
+        assert compute_continuous_profile(db_conn, TARGET)["z_scores"]["sleep_efficiency_z"] == 0.0
 
-# ---------------------------------------------------------------------------
-# Helper function tests
-# ---------------------------------------------------------------------------
+
+def _valence(anchor):
+    return (anchor["para"] * VALENCE_TARGET_PARA + anchor["symp"] * VALENCE_TARGET_SYMP
+            + anchor["grnd"] * VALENCE_TARGET_GRND)
 
 
-class TestSafeZ:
-    """Tests for _safe_z helper."""
+class TestTargetValence:
+    """Target valence is the profile's blend of each dimension's valence target."""
 
-    def test_normal_z_score(self):
-        assert _safe_z(50, 45, 5) == pytest.approx(1.0)
+    @pytest.mark.parametrize("position, expected", [
+        (0.0, 0.65 * 0.60 + 0.05 * 0.75 + 0.30 * 0.40),   # calm anchor: 0.5475
+        (0.5, 0.25 * 0.60 + 0.25 * 0.75 + 0.50 * 0.40),   # steady anchor: 0.5375
+        (1.0, 0.05 * 0.60 + 0.65 * 0.75 + 0.30 * 0.40),   # energy anchor: 0.6375
+    ])
+    def test_exact_at_each_anchor(self, position, expected):
+        day = {"position": position, "score": 50, "reason": None, "z": {}}
+        with patch("intelligence.continuous_profile.locate_day", return_value=day):
+            result = compute_continuous_profile(None, TARGET)
+        assert result["target_valence"] == pytest.approx(expected, abs=1e-12)
 
-    def test_negative_z_score(self):
-        assert _safe_z(40, 45, 5) == pytest.approx(-1.0)
+    def test_the_hand_numbers_are_the_config_constants(self):
+        assert _valence(BASELINE_CALM_ANCHOR) == pytest.approx(0.5475)
+        assert _valence(BASELINE_STEADY_ANCHOR) == pytest.approx(0.5375)
+        assert _valence(BASELINE_ENERGY_ANCHOR) == pytest.approx(0.6375)
 
-    def test_clamps_high(self):
-        assert _safe_z(100, 45, 5) == Z_CLAMP
-
-    def test_clamps_low(self):
-        assert _safe_z(0, 45, 5) == -Z_CLAMP
-
-    def test_zero_sd_returns_none(self):
-        assert _safe_z(50, 45, 0) is None
-
-    def test_none_value_returns_none(self):
-        assert _safe_z(None, 45, 5) is None
+    def test_unscored_day_gets_the_steady_valence(self):
+        day = {"position": None, "score": None, "reason": "No WHOOP data", "z": {}}
+        with patch("intelligence.continuous_profile.locate_day", return_value=day):
+            result = compute_continuous_profile(None, TARGET)
+        assert result["target_valence"] == pytest.approx(_valence(BASELINE_STEADY_ANCHOR), abs=1e-12)

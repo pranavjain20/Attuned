@@ -85,7 +85,7 @@ class TestScoredDays:
             assert phrase.lower() not in text.lower()
 
     def test_every_state_has_a_calibration(self):
-        from intelligence.continuous_profile import STATES
+        from intelligence.playlist_target import STATES
         assert set(CALIBRATION) == {name for name, _label in STATES.values()}
 
 

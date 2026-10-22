@@ -1,22 +1,15 @@
 """Attuned feeling score: one 0–100 number for how you're likely to feel today.
 
 The daily playlist follows this score: its position among your own days sets
-the playlist target (see intelligence/continuous_profile.py).
+the playlist target (see intelligence/playlist_target.py).
 
 How a day is scored:
 1. Signals. Each is a z-score — how far today sits from your own last-30-day
    average, in units of your typical day-to-day wobble, clamped to ±2.5, signed
-   so positive always means better. They come from compute_z_scores
-   (intelligence/continuous_profile.py), with two changes:
-   - WHOOP's recovery and its change since yesterday are not inputs. Recovery is
-     itself built from HRV, resting heart rate and sleep, so including it would
-     count those twice and make this score a partial copy of the WHOOP ring
-     shown next to it.
-   - Last night's total sleep (main sleep, naps excluded) is added. Without it a
-     very short night only counts through its deep/REM hours today.
-   After a night under 6 h asleep, neither sleep efficiency nor deep-sleep share
-   can count as good news: a short night is naturally unbroken and front-loaded
-   with deep sleep (see compute_z_scores). Their "usual" excludes naps.
+   so positive always means better. They come from intelligence/signals.py:
+   sleep (efficiency, deep, REM, total, 7-night debt, deep share) and heart
+   (HRV, resting heart rate, HRV's 7-day trend, both changes since yesterday).
+   WHOOP's recovery is not an input (see signals.py for why).
 2. Composite = weighted average of the signals present that day. Positive =
    better than your normal. No score if the signals present carry less than
    MIN_WEIGHT_SHARE of the total weight (e.g. no night's sleep recorded).
@@ -28,38 +21,29 @@ How a day is scored:
    meaning — only which days land where differs. Only earlier days are used, so
    a day's score never changes as new data arrives.
 
-Weights: within each group, signals keep their relative size from the old
-12-signal playlist weight table (|para| + |symp| + |grnd| per signal; that table
-was removed when the playlist moved onto this score). Total sleep weighs the
-same as deep and REM, the other per-night amounts. The sleep group carries
-about twice the heart/autonomic group — Pranav's design choice, informed by research on sleep
-and mood; not a published ratio. Deep and REM weigh the same.
+Weights are my design choice, not a published formula. The sleep group carries
+about twice the weight of the heart group (1.55 vs 0.78, ~2:1), informed by
+research linking sleep to next-day mood; no study gives the ratio. Deep sleep,
+REM and total sleep — the three per-night amounts — weigh the same.
 """
 
+import logging
 import math
 import sqlite3
-from datetime import datetime, timedelta
+from typing import NamedTuple
 
 import numpy as np
 
-from db.queries import get_recoveries_in_range, get_recovery_by_date
-from intelligence.baselines import (
-    compute_hrv_baseline,
-    compute_rhr_baseline,
-    compute_sleep_debt,
-    compute_sleep_debt_baseline,
-    compute_sleep_efficiency_baseline,
-)
-from intelligence.continuous_profile import STATE_PURPOSE, _safe_z, compute_z_scores, pick_state, profile_at
+from config import MIN_BASELINE_DAYS
+from db.queries import get_recoveries_in_range
+from intelligence.dates import shift_date
 from intelligence.main_sleep import asleep_ms, is_short_night
-from intelligence.sleep_analysis import analyze_sleep
-from intelligence.trends import compute_hrv_trend
+from intelligence.playlist_target import STATE_PURPOSE, pick_state, profile_at
+from intelligence.signals import compute_z_scores, read_day, z_scores
 
-# ---------------------------------------------------------------------------
-# Weights. Sleep total 1.55, heart total 0.78 → 1.99 : 1.
-# Sleep values are the old profile table's |para|+|symp|+|grnd|; heart values are
-# the same sums scaled ×2.42 to restore ~2:1 once WHOOP recovery is removed.
-# ---------------------------------------------------------------------------
+logger = logging.getLogger(__name__)
+
+# Weights: my design choice. Sleep group 1.55, heart group 0.78 → ~2:1.
 FEELING_WEIGHTS: dict[str, float] = {
     "sleep_efficiency_z": 0.36,
     "deep_sleep_z": 0.30,
@@ -78,7 +62,6 @@ SLEEP_SIGNALS = frozenset({
     "sleep_debt_z", "deep_ratio_z",
 })
 HEART_SIGNALS = frozenset({"hrv_z", "rhr_z", "hrv_trend_z", "hrv_delta_z", "rhr_delta_z"})
-MULTI_DAY_SIGNALS = frozenset({"sleep_debt_z", "hrv_trend_z"})
 
 MIN_WEIGHT_SHARE = 0.70        # signals present must carry ≥70% of total weight
 MIN_CALIBRATION_DAYS = 60      # earlier scored days needed to map onto 0–100
@@ -97,47 +80,85 @@ SAME_BAND_HEADLINE = {
     "yellow": "A middle-of-the-road day",
     "red": "Expect to feel flat today",
 }
-LABELS = {
-    "sleep_efficiency_z": "Sleep efficiency",
-    "deep_sleep_z": "Deep sleep",
-    "rem_sleep_z": "REM sleep",
-    "total_sleep_z": "Total sleep",
-    "sleep_debt_z": "Sleep debt (7 nights)",
-    "deep_ratio_z": "Deep sleep share",
-    "hrv_z": "HRV",
-    "rhr_z": "Resting heart rate",
-    "hrv_trend_z": "HRV trend (7 days)",
-    "hrv_delta_z": "HRV change since yesterday",
-    "rhr_delta_z": "Resting HR change since yesterday",
-}
 HOUR_MS = 3_600_000
 
 
+class SignalText(NamedTuple):
+    """How one signal reads on the page."""
+    label: str    # its name
+    up: str       # sentence when it helped; {value} and {usual} are filled in
+    down: str     # sentence when it hurt
+    helped: str   # short phrase when it helped, e.g. "more REM"
+    hurt: str     # short phrase when it hurt, e.g. "less REM"
+
+
+# The one wording table for every signal: labels, explanation sentences and short phrases.
+SIGNAL_TEXT: dict[str, SignalText] = {
+    "sleep_efficiency_z": SignalText(
+        "Sleep efficiency",
+        "Your sleep was unbroken: asleep for {value} of your time in bed (usual {usual}).",
+        "Your sleep was broken: asleep for only {value} of your time in bed (usual {usual}).",
+        "less broken sleep", "more broken sleep"),
+    "deep_sleep_z": SignalText(
+        "Deep sleep",
+        "You got {value} of deep sleep, more than your usual {usual}.",
+        "You got {value} of deep sleep, less than your usual {usual}.",
+        "more deep sleep", "less deep sleep"),
+    "rem_sleep_z": SignalText(
+        "REM sleep",
+        "You got {value} of REM sleep, more than your usual {usual}.",
+        "You got {value} of REM sleep, less than your usual {usual}.",
+        "more REM", "less REM"),
+    "total_sleep_z": SignalText(
+        "Total sleep",
+        "You slept {value}, more than your usual {usual}.",
+        "You slept {value}, less than your usual {usual}.",
+        "a longer night", "a shorter night"),
+    "sleep_debt_z": SignalText(
+        "Sleep debt (7 nights)",
+        "Over the past 7 nights you've carried less sleep debt than usual ({value} vs {usual}).",
+        "Over the past 7 nights you've built up {value} of sleep debt, more than your usual {usual}.",
+        "less sleep debt", "built-up sleep debt"),
+    "deep_ratio_z": SignalText(
+        "Deep sleep share",
+        "Deep sleep made up {value} of your night, above your usual {usual}.",
+        "Deep sleep made up {value} of your night, below your usual {usual}.",
+        "a bigger share of deep sleep", "a smaller share of deep sleep"),
+    "hrv_z": SignalText(
+        "HRV",
+        "Your HRV was {value}, above your usual {usual}.",
+        "Your HRV was {value}, below your usual {usual}.",
+        "a higher HRV", "a lower HRV"),
+    # Resting heart rate is inverted: below your usual is the good direction.
+    "rhr_z": SignalText(
+        "Resting heart rate",
+        "Your resting heart rate was {value}, below your usual {usual}.",
+        "Your resting heart rate was {value}, above your usual {usual}.",
+        "a lower resting heart rate", "a higher resting heart rate"),
+    "hrv_trend_z": SignalText(
+        "HRV trend (7 days)",
+        "Your HRV has been climbing over the past week ({value}).",
+        "Your HRV has been drifting down over the past week ({value}).",
+        "HRV trending up this week", "HRV drifting down this week"),
+    "hrv_delta_z": SignalText(
+        "HRV change since yesterday",
+        "Your HRV rose to {value} from {usual}.",
+        "Your HRV fell to {value} from {usual}.",
+        "HRV up since yesterday", "HRV down since yesterday"),
+    "rhr_delta_z": SignalText(
+        "Resting HR change since yesterday",
+        "Your resting heart rate dropped to {value} from {usual}.",
+        "Your resting heart rate rose to {value} from {usual}.",
+        "resting heart rate down since yesterday", "resting heart rate up since yesterday"),
+}
+
+# {signal: (when it helped, when it hurt)} — how each signal reads in a short phrase.
+SIGNAL_PHRASES: dict[str, tuple[str, str]] = {s: (t.helped, t.hurt) for s, t in SIGNAL_TEXT.items()}
+
+
 # ---------------------------------------------------------------------------
-# Signals
+# Composite
 # ---------------------------------------------------------------------------
-
-def compute_feeling_signals(conn: sqlite3.Connection, date: str) -> dict[str, float | None]:
-    """The day's feeling-score z-scores: {signal: z or None}.
-
-    Empty when there is no WHOOP recovery row for `date`.
-    """
-    if get_recovery_by_date(conn, date) is None:
-        return {}
-
-    z = {s: v for s, v in compute_z_scores(conn, date).items() if s in FEELING_WEIGHTS}
-
-    sleep = analyze_sleep(conn, date)
-    last_night = sleep["last_night"] if sleep else None
-    stage_baselines = sleep["baselines"] if sleep else None
-
-    total_ms = asleep_ms(last_night) if last_night else None
-    z["total_sleep_z"] = (
-        _safe_z(total_ms, stage_baselines["total_sleep_ms"]["mean"], stage_baselines["total_sleep_ms"]["sd"])
-        if total_ms is not None and stage_baselines else None
-    )
-    return z
-
 
 def compute_composite(z: dict[str, float | None]) -> tuple[float | None, dict[str, float]]:
     """Weighted average of the z-scores present, plus each signal's share of it.
@@ -161,10 +182,9 @@ def compute_composite_history(conn: sqlite3.Connection, before_date: str) -> dic
     first = conn.execute("SELECT MIN(date) FROM whoop_recovery").fetchone()[0]
     if first is None:
         return {}
-    end = (datetime.strptime(before_date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
     history = {}
-    for row in get_recoveries_in_range(conn, first, end):
-        composite, _ = compute_composite(compute_feeling_signals(conn, row["date"]))
+    for row in get_recoveries_in_range(conn, first, shift_date(before_date, -1)):
+        composite, _ = compute_composite(compute_z_scores(conn, row["date"]))
         history[row["date"]] = {"composite": composite, "recovery": row["recovery_score"]}
     return history
 
@@ -174,7 +194,12 @@ def compute_composite_history(conn: sqlite3.Connection, before_date: str) -> dic
 # ---------------------------------------------------------------------------
 
 def percentile_position(composite: float, ref_composites: list[float]) -> float:
-    """Share of reference composites below `composite` (ties count half), 0–1."""
+    """Share of reference composites below `composite` (ties count half), 0–1.
+
+    Raises ValueError with no reference composites: there is nothing to rank against.
+    """
+    if not ref_composites:
+        raise ValueError("percentile_position: no reference composites to rank against")
     ranked = np.sort(np.asarray(ref_composites, dtype=np.float64))
     below = np.searchsorted(ranked, composite, "left")
     at_or_below = np.searchsorted(ranked, composite, "right")
@@ -185,8 +210,15 @@ def map_to_score(composite: float, ref_composites: list[float], ref_recoveries: 
     """Percentile-match a composite onto the 0–100 WHOOP recovery scale.
 
     Score = the WHOOP recovery at the composite's percentile_position among the
-    reference recoveries.
+    reference recoveries. The two lists are the same earlier days, so they must be
+    the same length; ValueError otherwise, or when empty. One reference day is
+    allowed: every composite then maps to that day's recovery.
     """
+    if not ref_composites:
+        raise ValueError("map_to_score: no reference days to map onto")
+    if len(ref_composites) != len(ref_recoveries):
+        raise ValueError(f"map_to_score got {len(ref_composites)} reference composites "
+                         f"but {len(ref_recoveries)} recoveries")
     rank = percentile_position(composite, ref_composites)
     return int(round(float(np.quantile(np.asarray(ref_recoveries, dtype=np.float64), rank))))
 
@@ -229,37 +261,26 @@ def pick_drivers(
 
 def _sentence(signal: str, up: bool, value: str, usual: str) -> str:
     """One fixed plain-English sentence per signal, with real numbers."""
-    more, above = ("more", "above") if up else ("less", "below")
-    return {
-        "sleep_efficiency_z": (f"Your sleep was unbroken: asleep for {value} of your time in bed (usual {usual})."
-                               if up else
-                               f"Your sleep was broken: asleep for only {value} of your time in bed (usual {usual})."),
-        "deep_sleep_z": f"You got {value} of deep sleep, {more} than your usual {usual}.",
-        "rem_sleep_z": f"You got {value} of REM sleep, {more} than your usual {usual}.",
-        "total_sleep_z": f"You slept {value}, {more} than your usual {usual}.",
-        "sleep_debt_z": (f"Over the past 7 nights you've carried less sleep debt than usual ({value} vs {usual})."
-                         if up else
-                         f"Over the past 7 nights you've built up {value} of sleep debt, more than your usual {usual}."),
-        "deep_ratio_z": f"Deep sleep made up {value} of your night, {above} your usual {usual}.",
-        "hrv_z": f"Your HRV was {value}, {above} your usual {usual}.",
-        "rhr_z": f"Your resting heart rate was {value}, {'below' if up else 'above'} your usual {usual}.",
-        "hrv_trend_z": f"Your HRV has been {'climbing' if up else 'drifting down'} over the past week ({value}).",
-        "hrv_delta_z": f"Your HRV {'rose' if up else 'fell'} to {value} from {usual}.",
-        "rhr_delta_z": f"Your resting heart rate {'dropped' if up else 'rose'} to {value} from {usual}.",
-    }[signal]
+    text = SIGNAL_TEXT[signal]
+    return (text.up if up else text.down).format(value=value, usual=usual)
 
 
 def _headline(attuned_band: str, whoop_band: str | None, drivers: list[dict],
               short_night: bool = False) -> str:
     """Compare with WHOOP's band when they differ; otherwise describe the band.
 
+    Below WHOOP: "WHOOP says ready, but …" only when WHOOP is green.
     After a short night (under 6 h) sleep is never credited for a better-than-WHOOP day.
     """
     if whoop_band is None or attuned_band == whoop_band:
         return SAME_BAND_HEADLINE[attuned_band]
     led_by_sleep = bool(drivers) and drivers[0]["signal"] in SLEEP_SIGNALS
     if BAND_ORDER.index(attuned_band) < BAND_ORDER.index(whoop_band):
-        return f"WHOOP says ready, but {'your sleep' if led_by_sleep else 'your body'} says go easy"
+        cause = "your sleep" if led_by_sleep else "your body"
+        # Only a green WHOOP ring says "ready"; below a yellow one, compare the numbers.
+        if whoop_band == "green":
+            return f"WHOOP says ready, but {cause} says go easy"
+        return f"Lower than WHOOP's number: {cause} says go easy"
     credit_sleep = led_by_sleep and not short_night
     return f"Better than WHOOP's number: {'your sleep' if credit_sleep else 'your body'} held up"
 
@@ -289,21 +310,16 @@ def _fmt(value: float | None, pattern: str) -> str | None:
     return None if value is None else pattern.format(value)
 
 
-def _day_values(conn: sqlite3.Connection, date: str) -> dict:
-    """Today's raw numbers and 'usual' numbers, main sleep only."""
-    today = get_recovery_by_date(conn, date) or {}
-    yesterday_date = (datetime.strptime(date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
-    yesterday = get_recovery_by_date(conn, yesterday_date) or {}
-    sleep = analyze_sleep(conn, date)
-    night = sleep["last_night"] if sleep else {}
-    stages = sleep["baselines"] if sleep else None
-    eff_bl = compute_sleep_efficiency_baseline(conn, date)
-    debt_bl = compute_sleep_debt_baseline(conn, date)
-    hrv_bl = compute_hrv_baseline(conn, date)
-    rhr_bl = compute_rhr_baseline(conn, date)
-    trend = compute_hrv_trend(conn, date)
+def _day_values(readings: dict) -> dict:
+    """Today's raw numbers and 'usual' numbers from the day's readings (see signals.read_day)."""
+    today = readings["recovery"] or {}
+    yesterday = readings["yesterday"] or {}
+    night = readings["last_night"] or {}
+    stages = readings["stage_baselines"]
+    eff_bl, debt_bl = readings["efficiency_baseline"], readings["debt_baseline"]
+    hrv_bl, rhr_bl, trend = readings["hrv_baseline"], readings["rhr_baseline"], readings["hrv_trend"]
 
-    total = asleep_ms(night) if night else None
+    total = asleep_ms(night)
     return {
         "recovery": today.get("recovery_score"),
         "hrv_ms": today.get("hrv_rmssd_milli"),
@@ -315,7 +331,7 @@ def _day_values(conn: sqlite3.Connection, date: str) -> dict:
         "rem_h": _hours(night.get("rem_sleep_ms")) if total is not None else None,
         "deep_share": night["deep_sleep_ms"] / total if total else None,
         "eff": night.get("sleep_efficiency"),
-        "debt_h": compute_sleep_debt(conn, date),
+        "debt_h": readings["debt"],
         "usual_total_h": _hours(stages["total_sleep_ms"]["mean"]) if stages else None,
         "usual_deep_h": _hours(stages["deep_ms"]["mean"]) if stages else None,
         "usual_rem_h": _hours(stages["rem_ms"]["mean"]) if stages else None,
@@ -360,13 +376,15 @@ def _value_and_usual(signal: str, v: dict) -> tuple[str | None, str | None]:
 # The day's score
 # ---------------------------------------------------------------------------
 
-def _missing_reason(conn: sqlite3.Connection, date: str) -> str:
+def _missing_reason(readings: dict) -> str:
     """Plain reason a day with WHOOP data still can't be scored."""
-    sleep = analyze_sleep(conn, date)
-    if sleep is None:
+    night = readings["last_night"]
+    if night is None:
         return "No night's sleep recorded for this date (naps don't count)."
-    if sleep["baselines"] is None or compute_hrv_baseline(conn, date) is None:
-        return "Not enough history yet: your personal normal needs at least 14 days of data."
+    if asleep_ms(night) is None:
+        return "Last night's sleep stages are missing, so the night can't be scored."
+    if readings["stage_baselines"] is None or readings["hrv_baseline"] is None:
+        return f"Not enough history yet: your personal normal needs at least {MIN_BASELINE_DAYS} days of data."
     return "Too many signals are missing today to give a fair score."
 
 
@@ -380,24 +398,24 @@ def locate_day(
     `history` (from compute_composite_history) can be passed to avoid
     recomputing earlier days; only its days before `date` are used.
 
-    Returns {"z", "composite", "contributions", "position", "score",
-    "ref_composites", "whoop_recovery", "reason"}. position (0–1, see
-    percentile_position) and score (0–100) are None, with a plain reason, when
-    the day can't be scored.
+    Returns {"readings", "z", "composite", "contributions", "position", "score",
+    "ref_composites", "whoop_recovery", "reason"}. readings is the day's raw
+    data (signals.read_day). position (0–1, see percentile_position) and score
+    (0–100) are None, with a plain reason, when the day can't be scored.
     """
-    day = {"z": {}, "composite": None, "contributions": {}, "position": None, "score": None,
-           "ref_composites": [], "whoop_recovery": None, "reason": None}
-    recovery_row = get_recovery_by_date(conn, date)
-    if recovery_row is None:
+    readings = read_day(conn, date)
+    day = {"readings": readings, "z": {}, "composite": None, "contributions": {}, "position": None,
+           "score": None, "ref_composites": [], "whoop_recovery": None, "reason": None}
+    if readings["recovery"] is None:
         day["reason"] = f"No WHOOP data for {date} yet."
         return day
-    day["whoop_recovery"] = recovery_row["recovery_score"]
+    day["whoop_recovery"] = readings["recovery"]["recovery_score"]
 
-    day["z"] = compute_feeling_signals(conn, date)
+    day["z"] = z_scores(readings)
     composite, contributions = compute_composite(day["z"])
     day.update(composite=composite, contributions=contributions)
     if composite is None:
-        day["reason"] = _missing_reason(conn, date)
+        day["reason"] = _missing_reason(readings)
         return day
 
     if history is None:
@@ -418,6 +436,51 @@ def locate_day(
     return day
 
 
+def _describe_drivers(
+    picked: list[tuple[str, float]],
+    z: dict[str, float | None],
+    values: dict,
+) -> list[dict]:
+    """The picked drivers with their real numbers. A driver whose numbers are
+    missing is left out (logged): a sentence must never say "None"."""
+    drivers = []
+    for signal, contribution in picked:
+        value, usual = _value_and_usual(signal, values)
+        if value is None or usual is None:
+            logger.warning("No display numbers for driver %s — left out of the explanation", signal)
+            continue
+        drivers.append({
+            "signal": signal, "label": SIGNAL_TEXT[signal].label, "value": value, "usual": usual,
+            "z": round(z[signal], 2), "effect": "up" if contribution > 0 else "down",
+            "contribution": round(contribution, 3),
+        })
+    return drivers
+
+
+def _score_located_day(date: str, day: dict, values: dict) -> dict:
+    """The compute_feeling_score result for a day from locate_day and its _day_values."""
+    result = {
+        "date": date, "score": None, "band": None, "composite": day["composite"], "position": None,
+        "state": None, "state_label": None, "headline": None, "explanation": [],
+        "drivers": [], "reason": day["reason"], "whoop_recovery": day["whoop_recovery"],
+    }
+    if day["score"] is None:
+        return result
+
+    score = day["score"]
+    attuned_band, whoop_band = band(score), band(day["whoop_recovery"])
+    direction = _explain_direction(day["composite"], day["ref_composites"], attuned_band, whoop_band)
+    drivers = _describe_drivers(pick_drivers(day["contributions"], day["z"], direction), day["z"], values)
+    state, state_label = pick_state(profile_at(day["position"]))
+    result.update(
+        score=score, band=attuned_band, position=day["position"], state=state, state_label=state_label,
+        headline=_headline(attuned_band, whoop_band, drivers,
+                           short_night=is_short_night(day["readings"]["last_night"])),
+        explanation=_explanation(drivers, direction, state), drivers=drivers,
+    )
+    return result
+
+
 def compute_feeling_score(
     conn: sqlite3.Connection,
     date: str,
@@ -428,40 +491,10 @@ def compute_feeling_score(
 
     Returns dict with score/band (None + reason when it can't be scored),
     composite, position, state, state_label, headline, explanation, drivers,
-    whoop_recovery. The state is the playlist's (see continuous_profile.py).
+    whoop_recovery. The state is the playlist's (see playlist_target.py).
     """
-    result = {
-        "date": date, "score": None, "band": None, "composite": None, "position": None,
-        "state": None, "state_label": None, "headline": None, "explanation": [],
-        "drivers": [], "reason": None, "whoop_recovery": None,
-    }
     day = locate_day(conn, date, history)
-    result.update(composite=day["composite"], whoop_recovery=day["whoop_recovery"],
-                  reason=day["reason"])
-    if day["score"] is None:
-        return result
-
-    score, z = day["score"], day["z"]
-    attuned_band, whoop_band = band(score), band(day["whoop_recovery"])
-    direction = _explain_direction(day["composite"], day["ref_composites"], attuned_band, whoop_band)
-
-    values = _day_values(conn, date)
-    drivers = []
-    for signal, contribution in pick_drivers(day["contributions"], z, direction):
-        value, usual = _value_and_usual(signal, values)
-        drivers.append({
-            "signal": signal, "label": LABELS[signal], "value": value, "usual": usual,
-            "z": round(z[signal], 2), "effect": "up" if contribution > 0 else "down",
-            "contribution": round(contribution, 3),
-        })
-    state, state_label = pick_state(profile_at(day["position"]))
-    result.update(
-        score=score, band=attuned_band, position=day["position"], state=state, state_label=state_label,
-        headline=_headline(attuned_band, whoop_band, drivers,
-                           short_night=is_short_night((analyze_sleep(conn, date) or {}).get("last_night"))),
-        explanation=_explanation(drivers, direction, state), drivers=drivers,
-    )
-    return result
+    return _score_located_day(date, day, _day_values(day["readings"]))
 
 
 def _explain_direction(composite: float, ref_composites: list[float],
@@ -486,8 +519,9 @@ def build_page_day(
     history: dict[str, dict] | None = None,
 ) -> dict:
     """One day in the page data contract (see the feeling-score page). playlist is always None."""
-    scored = compute_feeling_score(conn, date, history)
-    v = _day_values(conn, date)
+    day = locate_day(conn, date, history)
+    v = _day_values(day["readings"])
+    scored = _score_located_day(date, day, v)
     rounded = lambda x, n=1: None if x is None else round(x, n)
     recovery = scored["whoop_recovery"]
     return {

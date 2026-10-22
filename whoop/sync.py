@@ -4,10 +4,9 @@ import logging
 import sqlite3
 from datetime import date
 
-from db.queries import replace_whoop_recovery_history, upsert_whoop_recovery, upsert_whoop_sleep
+from db.queries import replace_whoop_recovery_history, upsert_whoop_sleep
 from whoop.auth import get_valid_token
-from whoop.client import get_records_for_date, _paginated_get, _parse_recovery_response, _parse_sleep_response
-from config import WHOOP_BASE_URL
+from whoop.client import get_all_records, get_records_near_date
 
 logger = logging.getLogger(__name__)
 
@@ -20,41 +19,32 @@ def sync_today(conn: sqlite3.Connection) -> dict[str, bool]:
 def sync_date(conn: sqlite3.Connection, target_date: str) -> dict[str, bool]:
     """Pull recovery and sleep data for a specific date from WHOOP.
 
-    Returns dict indicating which records were found/stored.
-    """
-    token = get_valid_token(conn)
-    result = {"recovery": False, "sleep": False}
+    Every record WHOOP returns around the date is stored the way
+    sync_full_history stores the whole history (see _store_records): WHOOP
+    decides each record's date, so a row still under an old date moves to its
+    local date instead of blocking the right recovery.
 
-    records = get_records_for_date(token, target_date)
-    for recovery in records["recoveries"]:
-        upsert_whoop_recovery(
-            conn,
-            cycle_id=recovery["cycle_id"],
-            date=recovery["date"],
-            recovery_score=recovery["recovery_score"],
-            hrv_rmssd_milli=recovery["hrv_rmssd_milli"],
-            resting_heart_rate=recovery["resting_heart_rate"],
-            spo2=recovery.get("spo2"),
-            skin_temp=recovery.get("skin_temp"),
-        )
+    Returns dict indicating whether `target_date` itself got a recovery / sleep.
+    """
+    records = get_records_near_date(get_valid_token(conn), target_date)
+    _store_records(conn, records)
+
+    recoveries = [r for r in records["recoveries"] if r["date"] == target_date]
+    for recovery in recoveries:
         logger.info("Stored recovery for %s: score=%.0f%%, HRV=%.1fms",
-                     target_date, recovery["recovery_score"] or 0,
-                     recovery["hrv_rmssd_milli"] or 0)
-    result["recovery"] = bool(records["recoveries"])
-    if not records["recoveries"]:
+                    target_date, recovery["recovery_score"] or 0, recovery["hrv_rmssd_milli"] or 0)
+    if not recoveries:
         logger.warning("No recovery data found for %s", target_date)
 
-    sleeps = records["sleeps"]
+    sleeps = [s for s in records["sleeps"] if s["date"] == target_date]
     for sleep in sleeps:
-        _store_sleep(conn, sleep)
         logger.info("Stored %s for %s: deep=%dms, REM=%dms",
-                     "nap" if sleep.get("nap") else "sleep", target_date,
-                     sleep.get("deep_sleep_ms") or 0, sleep.get("rem_sleep_ms") or 0)
-    result["sleep"] = bool(sleeps)
+                    "nap" if sleep.get("nap") else "sleep", target_date,
+                    sleep.get("deep_sleep_ms") or 0, sleep.get("rem_sleep_ms") or 0)
     if not sleeps:
         logger.warning("No sleep data found for %s", target_date)
 
-    return result
+    return {"recovery": bool(recoveries), "sleep": bool(sleeps)}
 
 
 def sync_full_history(conn: sqlite3.Connection) -> dict[str, int]:
@@ -62,29 +52,23 @@ def sync_full_history(conn: sqlite3.Connection) -> dict[str, int]:
 
     Returns counts of records stored.
     """
-    token = get_valid_token(conn)
-    counts = {"recovery": 0, "sleep": 0}
-
-    # Sleeps first: each recovery takes the local date of the sleep it scores
-    logger.info("Pulling full WHOOP sleep history...")
-    sleeps = [_parse_sleep_response(raw)
-              for raw in _paginated_get(token, f"{WHOOP_BASE_URL}/v2/activity/sleep", params={})]
-    sleeps = [s for s in sleeps if s and s.get("date")]
-    sleep_dates = {s["sleep_id"]: s["date"] for s in sleeps}
-
-    logger.info("Pulling full WHOOP recovery history...")
-    recoveries = [_parse_recovery_response(raw, sleep_dates)
-                  for raw in _paginated_get(token, f"{WHOOP_BASE_URL}/v2/recovery", params={})]
-    # Recoveries are written before sleeps, which link to them
-    counts["recovery"] = replace_whoop_recovery_history(conn, [r for r in recoveries if r and r.get("date")])
-    logger.info("Stored %d recovery records", counts["recovery"])
-
-    for sleep in sleeps:
-        _store_sleep(conn, sleep)
-    counts["sleep"] = len(sleeps)
-    logger.info("Stored %d sleep records", counts["sleep"])
-
+    logger.info("Pulling full WHOOP sleep and recovery history...")
+    counts = _store_records(conn, get_all_records(get_valid_token(conn)))
+    logger.info("Stored %d recovery records, %d sleep records", counts["recovery"], counts["sleep"])
     return counts
+
+
+def _store_records(conn: sqlite3.Connection, records: dict[str, list[dict]]) -> dict[str, int]:
+    """Store parsed WHOOP records; WHOOP's records decide every date they cover.
+
+    Recoveries go through replace_whoop_recovery_history, which moves stored rows
+    to their dates (e.g. from old UTC dates to local ones). They are written
+    before sleeps, which link to them. Returns counts written.
+    """
+    recovery_count = replace_whoop_recovery_history(conn, records["recoveries"])
+    for sleep in records["sleeps"]:
+        _store_sleep(conn, sleep)
+    return {"recovery": recovery_count, "sleep": len(records["sleeps"])}
 
 
 def _store_sleep(conn: sqlite3.Connection, sleep: dict) -> None:

@@ -7,6 +7,7 @@ import pytest
 from classification.tempo import (
     TempoDecision,
     find_tracker_consensus,
+    parse_llm_bpm,
     resolve_tempo,
     set_manual_tempo,
     update_tempos,
@@ -531,3 +532,18 @@ class TestSetManualTempo:
         set_manual_tempo(db_conn, "uri:1", 122)
         update_tempos(db_conn)
         assert _tempo_row(db_conn, "uri:1")["tempo_source"] == "manual"
+
+
+class TestParseLlmBpm:
+    @pytest.mark.parametrize("bpm", ["abc", 0, 29, 29.9, 301, 300.1, None, float("nan"), float("inf"), [120]])
+    def test_missing_or_implausible_is_none(self, bpm):
+        assert parse_llm_bpm({"bpm": bpm}) is None
+
+    @pytest.mark.parametrize("bpm, expected", [(30, 30.0), (300, 300.0), (120, 120.0), ("96", 96.0), (76.5, 76.5)])
+    def test_plausible_bpm_is_a_float(self, bpm, expected):
+        result = parse_llm_bpm({"bpm": bpm})
+        assert result == expected and isinstance(result, float)
+
+    @pytest.mark.parametrize("llm_result", [None, {}, {"title": "no bpm"}])
+    def test_no_result_or_no_bpm_is_none(self, llm_result):
+        assert parse_llm_bpm(llm_result) is None

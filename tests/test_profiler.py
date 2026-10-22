@@ -616,9 +616,30 @@ class TestScoringTempo:
     def test_corrected_tempo_beats_llm_felt_tempo(self):
         assert scoring_tempo({"tempo": 116.0, "felt_tempo": 70, "bpm": 116}) == 116.0
 
-    def test_falls_back_to_felt_tempo_then_bpm(self):
-        assert scoring_tempo({"tempo": None, "felt_tempo": 70, "bpm": 116}) == 70
+    def test_never_uses_the_old_llm_felt_tempo(self):
+        """felt_tempo is an old LLM guess kept as history; without a tempo, bpm is used."""
+        assert scoring_tempo({"tempo": None, "felt_tempo": 70, "bpm": 116}) == 116
+        assert scoring_tempo({"tempo": None, "felt_tempo": 70, "bpm": None}) is None
+
+    def test_falls_back_to_bpm(self):
         assert scoring_tempo({"tempo": None, "felt_tempo": None, "bpm": 116}) == 116
 
-    def test_no_tempo_at_all(self):
-        assert scoring_tempo({}) is None
+    def test_falling_back_to_bpm_logs_a_warning(self, caplog):
+        with caplog.at_level("WARNING", logger="classification.profiler"):
+            scoring_tempo({"spotify_uri": "spotify:track:x", "tempo": None, "bpm": 116})
+        assert len(caplog.records) == 1
+        assert "spotify:track:x" in caplog.text and "bpm 116" in caplog.text
+
+    def test_corrected_tempo_logs_nothing(self, caplog):
+        with caplog.at_level("WARNING", logger="classification.profiler"):
+            scoring_tempo({"tempo": 76.0, "bpm": 154})
+        assert caplog.records == []
+
+    def test_zero_tempo_is_a_real_value_not_missing(self):
+        """Only None means missing (a stored 0 would be a bug elsewhere, not silently skipped)."""
+        assert scoring_tempo({"tempo": 0.0, "bpm": 116}) == 0.0
+
+    def test_no_tempo_at_all(self, caplog):
+        with caplog.at_level("WARNING", logger="classification.profiler"):
+            assert scoring_tempo({}) is None
+        assert caplog.records == []

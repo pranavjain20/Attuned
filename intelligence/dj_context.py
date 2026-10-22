@@ -7,7 +7,7 @@ recovery, so the DJ and the daily playlist read the body the same way.
 
 import sqlite3
 
-from intelligence.continuous_profile import STATE_PURPOSE
+from intelligence.playlist_target import STATE_PURPOSE
 from intelligence.feeling_score import compute_feeling_score
 
 CALIBRATION = {

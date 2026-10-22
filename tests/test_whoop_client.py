@@ -1,5 +1,6 @@
 """Tests for whoop/client.py — API calls, parsing, date derivation."""
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,7 +9,8 @@ from whoop.client import (
     _paginated_get,
     _parse_recovery_response,
     _parse_sleep_response,
-    get_records_for_date,
+    get_all_records,
+    get_records_near_date,
     local_date,
 )
 
@@ -58,6 +60,55 @@ class TestLocalDate:
     def test_malformed_timestamp_returns_truncated_fallback(self):
         # Defensive fallback: returns first 10 chars when parsing fails
         assert len(local_date("not-a-timestamp", "+05:30")) == 10
+
+    # The far ends of the world's offsets: a local date runs from UTC−12 to UTC+14.
+
+    @pytest.mark.parametrize("utc, expected", [
+        ("2026-03-16T09:59:59.999Z", "2026-03-16"),   # 23:59:59 local, Mar 16
+        ("2026-03-16T10:00:00.000Z", "2026-03-17"),   # midnight local, Mar 17
+    ])
+    def test_utc_plus_14(self, utc, expected):
+        assert local_date(utc, "+14:00") == expected
+
+    @pytest.mark.parametrize("utc, expected", [
+        ("2026-03-18T11:59:59.999Z", "2026-03-17"),   # 23:59:59 local, Mar 17
+        ("2026-03-18T12:00:00.000Z", "2026-03-18"),   # midnight local, Mar 18
+    ])
+    def test_utc_minus_12(self, utc, expected):
+        assert local_date(utc, "-12:00") == expected
+
+    def test_same_instant_is_two_days_apart_at_the_extremes(self):
+        instant = "2026-03-17T11:00:00.000Z"
+        assert (local_date(instant, "-12:00"), local_date(instant, "+14:00")) == ("2026-03-16", "2026-03-18")
+
+    @pytest.mark.parametrize("utc, offset, expected", [
+        ("2026-03-16T18:15:00.000Z", "+05:45", "2026-03-17"),   # Nepal midnight
+        ("2026-03-16T11:15:00.000Z", "+12:45", "2026-03-17"),   # Chatham Islands midnight
+        ("2026-03-17T03:29:59.000Z", "-03:30", "2026-03-16"),   # Newfoundland, a second to midnight
+    ])
+    def test_odd_offsets(self, utc, offset, expected):
+        assert local_date(utc, offset) == expected
+
+    # Daylight saving: each record carries the offset in force at that moment, so the
+    # date follows that offset — never this machine's zone or a fixed one.
+
+    @pytest.mark.parametrize("utc, offset, expected", [
+        # US spring forward, 2026-03-08 02:00 EST → 03:00 EDT
+        ("2026-03-08T04:30:00.000Z", "-05:00", "2026-03-07"),   # 23:30 EST, the night before
+        ("2026-03-08T04:30:00.000Z", "-04:00", "2026-03-08"),   # same instant read as EDT
+        ("2026-03-08T06:59:59.000Z", "-05:00", "2026-03-08"),   # 01:59:59 EST, last second before
+        ("2026-03-08T07:00:00.000Z", "-04:00", "2026-03-08"),   # 03:00 EDT, first second after
+        # US fall back, 2026-11-01 02:00 EDT → 01:00 EST (01:xx happens twice)
+        ("2026-11-01T05:30:00.000Z", "-04:00", "2026-11-01"),   # first 01:30
+        ("2026-11-01T06:30:00.000Z", "-05:00", "2026-11-01"),   # second 01:30
+        ("2026-11-01T04:30:00.000Z", "-04:00", "2026-11-01"),   # 00:30 EDT
+        ("2026-11-01T04:30:00.000Z", "-05:00", "2026-10-31"),   # same instant, a wrong offset → day before
+        # UK spring forward, 2026-03-29 01:00 GMT → 02:00 BST
+        ("2026-03-28T23:30:00.000Z", "+01:00", "2026-03-29"),
+        ("2026-03-28T23:30:00.000Z", "+00:00", "2026-03-28"),
+    ])
+    def test_dst_transitions_follow_the_records_offset(self, utc, offset, expected):
+        assert local_date(utc, offset) == expected
 
 
 class TestParseRecoveryResponse:
@@ -195,7 +246,7 @@ class TestPaginatedGet:
         assert results == []
 
 
-class TestGetRecordsForDate:
+class TestGetRecordsNearDate:
     @staticmethod
     def _api(recoveries, sleeps):
         """Fake _paginated_get: answers the recovery and sleep endpoints."""
@@ -206,51 +257,82 @@ class TestGetRecordsForDate:
     @patch("whoop.client._paginated_get")
     def test_returns_the_dates_recovery_and_sleep(self, mock_paginate, sample_whoop_recovery, sample_whoop_sleep):
         mock_paginate.side_effect = self._api([sample_whoop_recovery], [sample_whoop_sleep])
-        result = get_records_for_date("token", "2026-03-17")
-        assert [r["cycle_id"] for r in result["recoveries"]] == [12345]
-        assert [s["sleep_id"] for s in result["sleeps"]] == [67890]
+        result = get_records_near_date("token", "2026-03-17")
+        assert [(r["cycle_id"], r["date"]) for r in result["recoveries"]] == [(12345, "2026-03-17")]
+        assert [(s["sleep_id"], s["date"]) for s in result["sleeps"]] == [(67890, "2026-03-17")]
 
     @patch("whoop.client._paginated_get")
     def test_nothing_found(self, mock_paginate):
         mock_paginate.side_effect = self._api([], [])
-        assert get_records_for_date("token", "2026-03-17") == {"recoveries": [], "sleeps": []}
+        assert get_records_near_date("token", "2026-03-17") == {"recoveries": [], "sleeps": []}
 
     @patch("whoop.client._paginated_get")
     def test_window_reaches_every_time_zone(self, mock_paginate):
-        """A local date spans UTC from the day before to the day after, so ask for all three."""
+        """The whole of local Mar 17 anywhere on Earth: from 00:00 at UTC+14 to 23:59:59 at UTC−12."""
         mock_paginate.side_effect = self._api([], [])
-        get_records_for_date("token", "2026-03-17")
+        get_records_near_date("token", "2026-03-17")
+        earliest = datetime(2026, 3, 17, tzinfo=timezone(timedelta(hours=14)))
+        latest = datetime(2026, 3, 17, 23, 59, 59, tzinfo=timezone(timedelta(hours=-12)))
+        assert len(mock_paginate.call_args_list) == 2
         for call in mock_paginate.call_args_list:
             params = call.kwargs.get("params") or call.args[2]
-            assert params["start"] <= "2026-03-15T23:59:59Z"
-            assert params["end"] >= "2026-03-18T23:59:59"
+            start = datetime.fromisoformat(params["start"])
+            end = datetime.fromisoformat(params["end"])
+            assert start.tzinfo is not None and end.tzinfo is not None
+            assert start <= earliest
+            assert end >= latest
 
     @patch("whoop.client._paginated_get")
-    def test_india_night_ending_before_0530_is_returned_for_its_local_date(
+    def test_india_night_ending_before_0530_gets_its_local_date(
         self, mock_paginate, sample_whoop_recovery, sample_whoop_sleep,
     ):
         sleep = {**sample_whoop_sleep, "end": "2026-03-16T22:30:00.000Z", "timezone_offset": "+05:30"}
         recovery = {**sample_whoop_recovery, "created_at": "2026-03-16T23:00:00.000Z"}
         mock_paginate.side_effect = self._api([recovery], [sleep])
-        result = get_records_for_date("token", "2026-03-17")
-        assert len(result["recoveries"]) == 1 and len(result["sleeps"]) == 1
-        assert get_records_for_date("token", "2026-03-16") == {"recoveries": [], "sleeps": []}
+        result = get_records_near_date("token", "2026-03-17")
+        assert [r["date"] for r in result["recoveries"]] == ["2026-03-17"]
+        assert [s["date"] for s in result["sleeps"]] == ["2026-03-17"]
 
     @patch("whoop.client._paginated_get")
-    def test_returns_every_sleep_record_for_the_date(self, mock_paginate, sample_whoop_sleep):
+    def test_returns_every_sleep_record(self, mock_paginate, sample_whoop_sleep):
         """A nap and the night on the same date are both returned, not just the first."""
         nap = {**sample_whoop_sleep, "id": "nap-1", "nap": True}
         night = {**sample_whoop_sleep, "id": "night-1", "nap": False}
         mock_paginate.side_effect = self._api([], [nap, night])
-        result = get_records_for_date("token", "2026-03-17")
+        result = get_records_near_date("token", "2026-03-17")
         assert [(r["sleep_id"], r["nap"]) for r in result["sleeps"]] == [("nap-1", True), ("night-1", False)]
 
     @patch("whoop.client._paginated_get")
-    def test_skips_records_from_other_dates(self, mock_paginate, sample_whoop_recovery, sample_whoop_sleep):
+    def test_keeps_neighbouring_dates_each_with_its_own_date(
+        self, mock_paginate, sample_whoop_recovery, sample_whoop_sleep,
+    ):
+        """The sync stores the whole window so neighbouring rows can move to their local dates."""
         other_sleep = {**sample_whoop_sleep, "id": "other", "end": "2026-03-18T11:00:00.000Z"}
         other_recovery = {**sample_whoop_recovery, "cycle_id": 2, "sleep_id": "other"}
         mock_paginate.side_effect = self._api([sample_whoop_recovery, other_recovery],
                                               [sample_whoop_sleep, other_sleep])
-        result = get_records_for_date("token", "2026-03-17")
-        assert [r["sleep_id"] for r in result["sleeps"]] == [67890]
-        assert [r["cycle_id"] for r in result["recoveries"]] == [12345]
+        result = get_records_near_date("token", "2026-03-17")
+        assert {r["sleep_id"]: r["date"] for r in result["sleeps"]} == {67890: "2026-03-17", "other": "2026-03-18"}
+        assert {r["cycle_id"]: r["date"] for r in result["recoveries"]} == {12345: "2026-03-17", 2: "2026-03-18"}
+
+    @patch("whoop.client._paginated_get")
+    def test_drops_unscored_and_undated_records(self, mock_paginate, sample_whoop_recovery, sample_whoop_sleep):
+        unscored = {**sample_whoop_sleep, "id": "pending", "score": {}}
+        undated = {**sample_whoop_sleep, "id": "no-end", "end": ""}
+        mock_paginate.side_effect = self._api([{**sample_whoop_recovery, "score": {}}],
+                                              [sample_whoop_sleep, unscored, undated])
+        result = get_records_near_date("token", "2026-03-17")
+        assert [s["sleep_id"] for s in result["sleeps"]] == [67890]
+        assert result["recoveries"] == []
+
+
+class TestGetAllRecords:
+    @patch("whoop.client._paginated_get")
+    def test_asks_for_everything_and_dates_like_the_window(
+        self, mock_paginate, sample_whoop_recovery, sample_whoop_sleep,
+    ):
+        mock_paginate.side_effect = TestGetRecordsNearDate._api([sample_whoop_recovery], [sample_whoop_sleep])
+        result = get_all_records("token")
+        assert [c.kwargs["params"] for c in mock_paginate.call_args_list] == [{}, {}]
+        assert [(r["cycle_id"], r["date"]) for r in result["recoveries"]] == [(12345, "2026-03-17")]
+        assert [(s["sleep_id"], s["date"]) for s in result["sleeps"]] == [(67890, "2026-03-17")]

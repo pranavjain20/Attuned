@@ -752,6 +752,19 @@ class TestUpsertSongClassification:
         rows = queries.get_song_classifications(db_conn, ["uri:1"])
         assert rows[0]["felt_tempo"] == 80
 
+    def test_reclassify_without_felt_tempo_keeps_the_stored_one(self, db_conn):
+        """felt_tempo is history: a newer classification that has none doesn't erase it."""
+        queries.upsert_song(db_conn, "uri:1", "Song", "Artist")
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1", "bpm": 120, "felt_tempo": 60, "classification_source": "llm",
+        })
+        queries.upsert_song_classification(db_conn, {
+            "spotify_uri": "uri:1", "bpm": 124, "classification_source": "llm",
+        })
+        rows = queries.get_song_classifications(db_conn, ["uri:1"])
+        assert rows[0]["felt_tempo"] == 60
+        assert rows[0]["bpm"] == 124
+
 
 class TestGetSongClassifications:
     def test_fetch_by_uris(self, db_conn):

@@ -5,12 +5,12 @@ for HRV, RHR, and sleep architecture over configurable windows.
 """
 
 import sqlite3
-from datetime import datetime, timedelta
 
 import numpy as np
 
 from config import BASELINE_WINDOW_DAYS, MIN_BASELINE_DAYS, ROLLING_WINDOW_DAYS
 from db.queries import get_recoveries_in_range, get_recovery_by_date, get_sleeps_in_range
+from intelligence.dates import shift_date
 from intelligence.main_sleep import asleep_ms, is_nap, main_sleep_by_date
 
 
@@ -19,10 +19,7 @@ def _date_range(date: str, window: int) -> tuple[str, str]:
 
     Window covers [date - window, date - 1].
     """
-    d = datetime.strptime(date, "%Y-%m-%d")
-    end = d - timedelta(days=1)
-    start = d - timedelta(days=window)
-    return start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
+    return shift_date(date, -window), shift_date(date, -1)
 
 
 def compute_hrv_baseline(
@@ -141,9 +138,7 @@ def compute_sleep_debt(
 
     Returns total debt in hours, or None if no valid days.
     """
-    d = datetime.strptime(date, "%Y-%m-%d")
-    start = (d - timedelta(days=window - 1)).strftime("%Y-%m-%d")
-    sleeps = get_sleeps_in_range(conn, start, date)
+    sleeps = get_sleeps_in_range(conn, shift_date(date, 1 - window), date)
 
     by_date: dict[str, list[dict]] = {}
     for s in sleeps:
@@ -219,12 +214,9 @@ def compute_sleep_debt_baseline(
 
     Returns dict(mean, sd, count) or None if fewer than MIN_BASELINE_DAYS valid days.
     """
-    d = datetime.strptime(date, "%Y-%m-%d")
-
     debt_values = []
     for offset in range(1, window + 1):
-        day = (d - timedelta(days=offset)).strftime("%Y-%m-%d")
-        debt = compute_sleep_debt(conn, day)
+        debt = compute_sleep_debt(conn, shift_date(date, -offset))
         if debt is not None:
             debt_values.append(debt)
 
@@ -245,11 +237,8 @@ def compute_recovery_delta(
 
     Returns float delta, or None if either day's recovery is missing.
     """
-    d = datetime.strptime(date, "%Y-%m-%d")
-    yesterday = (d - timedelta(days=1)).strftime("%Y-%m-%d")
-
     today_rec = get_recovery_by_date(conn, date)
-    yesterday_rec = get_recovery_by_date(conn, yesterday)
+    yesterday_rec = get_recovery_by_date(conn, shift_date(date, -1))
 
     if today_rec is None or yesterday_rec is None:
         return None
@@ -258,42 +247,3 @@ def compute_recovery_delta(
     if today_score is None or yesterday_score is None:
         return None
     return float(today_score - yesterday_score)
-
-
-def compute_recovery_delta_baseline(
-    conn: sqlite3.Connection,
-    date: str,
-    window: int = BASELINE_WINDOW_DAYS,
-) -> dict | None:
-    """Compute personal recovery delta statistics over a window ending the day before `date`.
-
-    Looks at consecutive-day recovery pairs in [date - window, date - 1].
-    Only computes a delta when two adjacent dates both have recovery scores.
-
-    Returns dict(mean, sd, count) or None if fewer than MIN_BASELINE_DAYS valid delta pairs.
-    """
-    start, end = _date_range(date, window)
-    recoveries = get_recoveries_in_range(conn, start, end)
-
-    # Build date→score map, skipping nulls
-    scores_by_date: dict[str, float] = {}
-    for r in recoveries:
-        if r["recovery_score"] is not None:
-            scores_by_date[r["date"]] = float(r["recovery_score"])
-
-    # Compute deltas only for consecutive calendar days
-    deltas: list[float] = []
-    sorted_dates = sorted(scores_by_date.keys())
-    for i in range(1, len(sorted_dates)):
-        prev_d = datetime.strptime(sorted_dates[i - 1], "%Y-%m-%d")
-        curr_d = datetime.strptime(sorted_dates[i], "%Y-%m-%d")
-        if (curr_d - prev_d).days == 1:
-            deltas.append(scores_by_date[sorted_dates[i]] - scores_by_date[sorted_dates[i - 1]])
-
-    if len(deltas) < MIN_BASELINE_DAYS:
-        return None
-
-    arr = np.array(deltas, dtype=np.float64)
-    mean = float(np.mean(arr))
-    sd = float(np.std(arr, ddof=1))
-    return {"mean": mean, "sd": sd, "count": len(deltas)}

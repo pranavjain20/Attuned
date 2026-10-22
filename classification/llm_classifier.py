@@ -38,7 +38,6 @@ Return a JSON object with a "songs" array. Each element must have:
 - "title": exact song title (for matching)
 - "artist": exact artist name (for matching)
 - "bpm": integer tempo in beats per minute (30-300). The measured/instrument BPM.
-- "felt_tempo": integer or null. The tempo the LISTENER perceives, which may differ from measured BPM. Set this when the song has double-time percussion but the vocal/melodic phrase cycles at half speed (common in Indian devotional music with tabla), or half-time feel in hip-hop/trap. If felt tempo equals measured BPM, set to null.
 - "energy": float 0.0-1.0 (perceived intensity/loudness. 0.0 = very quiet acoustic, 1.0 = loud aggressive. A soft ballad is 0.1-0.2, a club banger is 0.8-1.0)
 - "acousticness": float 0.0-1.0 (how acoustic/organic vs electronic/produced. 1.0 = solo acoustic guitar or piano, 0.0 = fully electronic/synthesized)
 - "danceability": float 0.0-1.0 (how suitable for dancing)
@@ -182,18 +181,6 @@ def _validate_song_result(result: dict[str, Any]) -> dict[str, Any] | None:
             validated["bpm"] = None
     else:
         validated["bpm"] = None
-
-    # Felt tempo — integer, 30-300, or None if same as BPM
-    felt_tempo = result.get("felt_tempo")
-    if felt_tempo is not None:
-        try:
-            felt_tempo = int(round(float(felt_tempo)))
-            felt_tempo = max(30, min(300, felt_tempo))
-            validated["felt_tempo"] = felt_tempo
-        except (ValueError, TypeError):
-            validated["felt_tempo"] = None
-    else:
-        validated["felt_tempo"] = None
 
     # Float properties — clamp to 0.0-1.0
     for prop in ("energy", "acousticness", "danceability", "instrumentalness",
@@ -440,7 +427,6 @@ def _merge_with_essentia(
     merged["danceability"] = llm_result.get("danceability")
     merged["instrumentalness"] = llm_result.get("instrumentalness")
     merged["valence"] = llm_result.get("valence")
-    merged["felt_tempo"] = llm_result.get("felt_tempo")
     merged["original_release_year"] = llm_result.get("original_release_year")
     merged["opening_energy"] = llm_result.get("opening_energy")
     merged["mood_tags"] = llm_result.get("mood_tags")
@@ -658,8 +644,9 @@ def classify_songs(
 
             # Compute neurological profile from merged values, scored at the
             # corrected felt tempo (see classification.tempo).
+            tempo = scoring_tempo(merged)
             neuro = compute_neurological_profile(
-                bpm=scoring_tempo(merged),
+                bpm=tempo,
                 energy=merged.get("energy"),
                 acousticness=merged.get("acousticness"),
                 instrumentalness=merged.get("instrumentalness"),
@@ -676,7 +663,7 @@ def classify_songs(
                 merged.get("llm_para_score"),
                 merged.get("llm_symp_score"),
                 merged.get("llm_grounding_score"),
-                bpm=scoring_tempo(merged),
+                bpm=tempo,
                 energy=merged.get("energy"),
             )
 

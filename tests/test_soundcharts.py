@@ -42,7 +42,7 @@ class TestFetchSoundchartsSong:
     def test_not_found_returns_no_song(self):
         http_get = MagicMock(return_value=_http_response(404, quota="844"))
         result = fetch_soundcharts_song("spotify:track:x", "a", "k", http_get=http_get)
-        assert result == SoundchartsResponse(None, 844)
+        assert result == SoundchartsResponse(None, 844, answered=True)
 
     @pytest.mark.parametrize("status", [401, 403, 429])
     def test_auth_or_quota_refusal_stops_the_run(self, status):
@@ -53,11 +53,23 @@ class TestFetchSoundchartsSong:
     def test_network_error_returns_no_song(self):
         http_get = MagicMock(side_effect=httpx.ConnectTimeout("slow"))
         result = fetch_soundcharts_song("spotify:track:x", "a", "k", http_get=http_get)
-        assert result == SoundchartsResponse(None, None)
+        assert result == SoundchartsResponse(None, None, answered=False)
 
     def test_malformed_json_returns_no_song(self):
         http_get = MagicMock(return_value=_http_response(200, ValueError("bad json")))
-        assert fetch_soundcharts_song("spotify:track:x", "a", "k", http_get=http_get).song is None
+        result = fetch_soundcharts_song("spotify:track:x", "a", "k", http_get=http_get)
+        assert result.song is None and result.answered is False
+
+    @pytest.mark.parametrize("status", [500, 502, 503])
+    def test_server_error_is_not_an_answer(self, status):
+        """A 5xx says nothing about the song: worth asking again next run."""
+        http_get = MagicMock(return_value=_http_response(status, quota="800"))
+        assert fetch_soundcharts_song("spotify:track:x", "a", "k", http_get=http_get) == \
+            SoundchartsResponse(None, 800, answered=False)
+
+    def test_found_is_an_answer(self):
+        http_get = MagicMock(return_value=_http_response(200, {"object": {"audio": {}}}))
+        assert fetch_soundcharts_song("spotify:track:x", "a", "k", http_get=http_get).answered is True
 
     def test_missing_quota_header(self):
         http_get = MagicMock(return_value=_http_response(200, {"object": {}}, quota=None))
@@ -88,6 +100,14 @@ def _seed(db_conn, uri, *, engagement=1.0, **columns):
 
 
 class TestGetSongsNeedingSoundchartsTempo:
+    def test_skips_songs_already_checked_unless_forced(self, db_conn):
+        _seed(db_conn, "uri:checked", soundcharts_checked_at="2026-10-01T00:00:00+00:00")
+        _seed(db_conn, "uri:new")
+        _seed(db_conn, "uri:done", soundcharts_tempo=99.0, soundcharts_checked_at="2026-10-01T00:00:00+00:00")
+        assert [s["spotify_uri"] for s in get_songs_needing_soundcharts_tempo(db_conn, 10)] == ["uri:new"]
+        forced = {s["spotify_uri"] for s in get_songs_needing_soundcharts_tempo(db_conn, 10, force=True)}
+        assert forced == {"uri:checked", "uri:new"}   # a stored tempo is never re-fetched
+
     def test_only_engaged_songs_without_audio_or_soundcharts(self, db_conn):
         _seed(db_conn, "uri:need")
         _seed(db_conn, "uri:clip", essentia_bpm=120.0)
@@ -157,3 +177,77 @@ class TestBackfillSoundchartsTempos:
         stats = backfill_soundcharts_tempos(db_conn, fetch, limit=10, delay_seconds=0)
         assert stats["calls"] == 0
         fetch.assert_not_called()
+
+
+class TestBackfillRemembersChecks:
+    """A song Soundcharts has answered for is not asked about again (each call costs quota)."""
+
+    def _checked_at(self, db_conn, uri):
+        return db_conn.execute(
+            "SELECT soundcharts_checked_at FROM song_classifications WHERE spotify_uri = ?", (uri,)
+        ).fetchone()[0]
+
+    @pytest.mark.parametrize("response", [
+        SoundchartsResponse(None, 840, answered=True),                    # 404: not on Soundcharts
+        SoundchartsResponse({"audio": {}}, 840),                          # found, no tempo
+        SoundchartsResponse({"audio": {"tempo": 9.0}}, 840),              # implausible tempo
+    ])
+    def test_two_runs_with_no_tempo_make_one_call(self, db_conn, response):
+        _seed(db_conn, "uri:1")
+        fetch = MagicMock(return_value=response)
+        first = backfill_soundcharts_tempos(db_conn, fetch, limit=10, delay_seconds=0)
+        second = backfill_soundcharts_tempos(db_conn, fetch, limit=10, delay_seconds=0)
+        assert fetch.call_count == 1
+        assert (first["calls"], second["calls"]) == (1, 0)
+        assert self._checked_at(db_conn, "uri:1") is not None
+
+    def test_force_asks_again(self, db_conn):
+        _seed(db_conn, "uri:1")
+        fetch = MagicMock(side_effect=[SoundchartsResponse(None, 840, answered=True),
+                                       SoundchartsResponse({"audio": {"tempo": 120.0}}, 839)])
+        backfill_soundcharts_tempos(db_conn, fetch, limit=10, delay_seconds=0)
+        stats = backfill_soundcharts_tempos(db_conn, fetch, limit=10, delay_seconds=0, force=True)
+        assert fetch.call_count == 2 and stats["stored"] == 1
+
+    def test_errors_are_retried_next_run(self, db_conn):
+        """Network errors and 5xx aren't answers about the song, so nothing is remembered."""
+        _seed(db_conn, "uri:1")
+        fetch = MagicMock(return_value=SoundchartsResponse(None, None, answered=False))
+        backfill_soundcharts_tempos(db_conn, fetch, limit=10, delay_seconds=0)
+        backfill_soundcharts_tempos(db_conn, fetch, limit=10, delay_seconds=0)
+        assert fetch.call_count == 2
+        assert self._checked_at(db_conn, "uri:1") is None
+
+    def test_stored_tempo_is_marked_checked(self, db_conn):
+        _seed(db_conn, "uri:1")
+        fetch = MagicMock(return_value=SoundchartsResponse({"audio": {"tempo": 120.0}}, 840))
+        backfill_soundcharts_tempos(db_conn, fetch, limit=10, delay_seconds=0)
+        assert self._checked_at(db_conn, "uri:1") is not None
+
+
+class TestBackfillStopsAtZeroQuota:
+    def test_quota_zero_stops_the_run(self, db_conn):
+        _seed(db_conn, "uri:a", engagement=0.9)
+        _seed(db_conn, "uri:b", engagement=0.5)
+        _seed(db_conn, "uri:c", engagement=0.1)
+        fetch = MagicMock(return_value=SoundchartsResponse({"audio": {"tempo": 90.0}}, 0))
+        stats = backfill_soundcharts_tempos(db_conn, fetch, limit=10, delay_seconds=0)
+        assert fetch.call_count == 1
+        assert stats["calls"] == 1 and stats["stored"] == 1      # the last answer is still kept
+        assert stats["quota_remaining"] == 0
+        assert "quota" in stats["stopped"].lower()
+
+    def test_unknown_quota_does_not_stop(self, db_conn):
+        _seed(db_conn, "uri:a")
+        _seed(db_conn, "uri:b")
+        fetch = MagicMock(return_value=SoundchartsResponse({"audio": {"tempo": 90.0}}, None))
+        stats = backfill_soundcharts_tempos(db_conn, fetch, limit=10, delay_seconds=0)
+        assert fetch.call_count == 2 and stats["stopped"] is None
+
+    def test_quota_one_keeps_going(self, db_conn):
+        _seed(db_conn, "uri:a", engagement=0.9)
+        _seed(db_conn, "uri:b", engagement=0.5)
+        fetch = MagicMock(side_effect=[SoundchartsResponse({"audio": {"tempo": 90.0}}, 1),
+                                       SoundchartsResponse({"audio": {"tempo": 95.0}}, 0)])
+        stats = backfill_soundcharts_tempos(db_conn, fetch, limit=10, delay_seconds=0)
+        assert fetch.call_count == 2 and stats["stored"] == 2 and stats["stopped"]

@@ -3,8 +3,6 @@
 import logging
 import sqlite3
 
-logger = logging.getLogger(__name__)
-
 from config import (
     DEEP_SLEEP_MIN_MS,
     DEEP_SLEEP_MIN_RATIO,
@@ -15,6 +13,8 @@ from config import (
 from db.queries import get_sleeps_in_range
 from intelligence.baselines import compute_sleep_debt, compute_sleep_stage_baselines
 from intelligence.main_sleep import select_main_sleep
+
+logger = logging.getLogger(__name__)
 
 
 def analyze_sleep(conn: sqlite3.Connection, date: str) -> dict | None:
