@@ -14,53 +14,23 @@ from config import (
 )
 from db.queries import get_sleeps_in_range
 from intelligence.baselines import compute_sleep_debt, compute_sleep_stage_baselines
-
-
-def _aggregate_sleep_records(sleeps: list[dict]) -> dict | None:
-    """Aggregate multiple sleep records for a date into one summary.
-
-    Sums deep/rem/light across all records. Returns None if no records.
-    """
-    if not sleeps:
-        return None
-
-    deep = 0
-    rem = 0
-    light = 0
-    has_stage_data = False
-
-    for s in sleeps:
-        d, r, l = s["deep_sleep_ms"], s["rem_sleep_ms"], s["light_sleep_ms"]
-        if d is not None and r is not None and l is not None:
-            deep += d
-            rem += r
-            light += l
-            has_stage_data = True
-
-    if not has_stage_data:
-        # All records have null stages — return first record as-is
-        return dict(sleeps[0])
-
-    # Build aggregated record based on first record, with summed stages
-    aggregated = dict(sleeps[0])
-    aggregated["deep_sleep_ms"] = deep
-    aggregated["rem_sleep_ms"] = rem
-    aggregated["light_sleep_ms"] = light
-    return aggregated
+from intelligence.main_sleep import select_main_sleep
 
 
 def analyze_sleep(conn: sqlite3.Connection, date: str) -> dict | None:
     """Analyze last night's sleep architecture against personal baselines.
 
-    Aggregates all sleep records for the date (primary + naps) before analysis.
+    "Last night" is the date's main sleep: naps excluded; if several non-nap
+    records share the date, the longest (see intelligence/main_sleep.py).
     Returns dict with deficit/adequacy flags, debt, last night's data, and baselines.
-    Returns None if no sleep data exists for `date`.
+    Returns None if no main sleep exists for `date` (no records, or naps only).
     """
     sleeps = get_sleeps_in_range(conn, date, date)
-    if not sleeps:
+    last_night = select_main_sleep(sleeps)
+    if last_night is None:
+        if sleeps:
+            logger.info("Only naps recorded for %s — no main sleep to analyze", date)
         return None
-
-    last_night = _aggregate_sleep_records(sleeps)
 
     deep = last_night["deep_sleep_ms"]
     rem = last_night["rem_sleep_ms"]

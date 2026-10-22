@@ -6,7 +6,7 @@ from datetime import date
 
 from db.queries import upsert_whoop_recovery, upsert_whoop_sleep
 from whoop.auth import get_valid_token
-from whoop.client import get_recovery_for_date, get_sleep_for_date, _paginated_get, _parse_recovery_response, _parse_sleep_response
+from whoop.client import get_recovery_for_date, get_sleeps_for_date, _paginated_get, _parse_recovery_response, _parse_sleep_response
 from config import WHOOP_BASE_URL
 
 logger = logging.getLogger(__name__)
@@ -44,33 +44,14 @@ def sync_date(conn: sqlite3.Connection, target_date: str) -> dict[str, bool]:
     else:
         logger.warning("No recovery data found for %s", target_date)
 
-    sleep = get_sleep_for_date(token, target_date)
-    if sleep:
-        upsert_whoop_sleep(
-            conn,
-            sleep_id=sleep["sleep_id"],
-            date=sleep["date"],
-            recovery_cycle_id=sleep.get("recovery_cycle_id"),
-            deep_sleep_ms=sleep.get("deep_sleep_ms"),
-            rem_sleep_ms=sleep.get("rem_sleep_ms"),
-            light_sleep_ms=sleep.get("light_sleep_ms"),
-            awake_ms=sleep.get("awake_ms"),
-            sleep_efficiency=sleep.get("sleep_efficiency"),
-            sleep_performance=sleep.get("sleep_performance"),
-            sleep_consistency=sleep.get("sleep_consistency"),
-            respiratory_rate=sleep.get("respiratory_rate"),
-            disturbance_count=sleep.get("disturbance_count"),
-            sleep_cycle_count=sleep.get("sleep_cycle_count"),
-            sleep_needed_baseline_ms=sleep.get("sleep_needed_baseline_ms"),
-            sleep_needed_debt_ms=sleep.get("sleep_needed_debt_ms"),
-            sleep_needed_strain_ms=sleep.get("sleep_needed_strain_ms"),
-            sleep_needed_nap_ms=sleep.get("sleep_needed_nap_ms"),
-        )
-        result["sleep"] = True
-        logger.info("Stored sleep for %s: deep=%dms, REM=%dms",
-                     target_date, sleep.get("deep_sleep_ms") or 0,
-                     sleep.get("rem_sleep_ms") or 0)
-    else:
+    sleeps = get_sleeps_for_date(token, target_date)
+    for sleep in sleeps:
+        _store_sleep(conn, sleep)
+        logger.info("Stored %s for %s: deep=%dms, REM=%dms",
+                     "nap" if sleep.get("nap") else "sleep", target_date,
+                     sleep.get("deep_sleep_ms") or 0, sleep.get("rem_sleep_ms") or 0)
+    result["sleep"] = bool(sleeps)
+    if not sleeps:
         logger.warning("No sleep data found for %s", target_date)
 
     return result
@@ -109,27 +90,33 @@ def sync_full_history(conn: sqlite3.Connection) -> dict[str, int]:
     for raw in raw_sleeps:
         parsed = _parse_sleep_response(raw)
         if parsed and parsed.get("date"):
-            upsert_whoop_sleep(
-                conn,
-                sleep_id=parsed["sleep_id"],
-                date=parsed["date"],
-                recovery_cycle_id=parsed.get("recovery_cycle_id"),
-                deep_sleep_ms=parsed.get("deep_sleep_ms"),
-                rem_sleep_ms=parsed.get("rem_sleep_ms"),
-                light_sleep_ms=parsed.get("light_sleep_ms"),
-                awake_ms=parsed.get("awake_ms"),
-                sleep_efficiency=parsed.get("sleep_efficiency"),
-                sleep_performance=parsed.get("sleep_performance"),
-                sleep_consistency=parsed.get("sleep_consistency"),
-                respiratory_rate=parsed.get("respiratory_rate"),
-                disturbance_count=parsed.get("disturbance_count"),
-                sleep_cycle_count=parsed.get("sleep_cycle_count"),
-                sleep_needed_baseline_ms=parsed.get("sleep_needed_baseline_ms"),
-                sleep_needed_debt_ms=parsed.get("sleep_needed_debt_ms"),
-                sleep_needed_strain_ms=parsed.get("sleep_needed_strain_ms"),
-                sleep_needed_nap_ms=parsed.get("sleep_needed_nap_ms"),
-            )
+            _store_sleep(conn, parsed)
             counts["sleep"] += 1
     logger.info("Stored %d sleep records", counts["sleep"])
 
     return counts
+
+
+def _store_sleep(conn: sqlite3.Connection, sleep: dict) -> None:
+    """Upsert one parsed WHOOP sleep record (main sleep or nap)."""
+    upsert_whoop_sleep(
+        conn,
+        sleep_id=sleep["sleep_id"],
+        date=sleep["date"],
+        recovery_cycle_id=sleep.get("recovery_cycle_id"),
+        deep_sleep_ms=sleep.get("deep_sleep_ms"),
+        rem_sleep_ms=sleep.get("rem_sleep_ms"),
+        light_sleep_ms=sleep.get("light_sleep_ms"),
+        awake_ms=sleep.get("awake_ms"),
+        sleep_efficiency=sleep.get("sleep_efficiency"),
+        sleep_performance=sleep.get("sleep_performance"),
+        sleep_consistency=sleep.get("sleep_consistency"),
+        respiratory_rate=sleep.get("respiratory_rate"),
+        disturbance_count=sleep.get("disturbance_count"),
+        sleep_cycle_count=sleep.get("sleep_cycle_count"),
+        sleep_needed_baseline_ms=sleep.get("sleep_needed_baseline_ms"),
+        sleep_needed_debt_ms=sleep.get("sleep_needed_debt_ms"),
+        sleep_needed_strain_ms=sleep.get("sleep_needed_strain_ms"),
+        sleep_needed_nap_ms=sleep.get("sleep_needed_nap_ms"),
+        nap=sleep.get("nap"),
+    )

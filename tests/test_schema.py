@@ -95,3 +95,20 @@ class TestGetConnection:
         ).fetchone()
         assert row["is_available"] is None
         assert row["availability_checked_at"] is None
+
+    def test_whoop_sleep_has_nap_column(self, db_conn):
+        """whoop_sleep stores WHOOP's nap flag so naps can be told apart from the night."""
+        cols = {r[1] for r in db_conn.execute("PRAGMA table_info(whoop_sleep)").fetchall()}
+        assert "nap" in cols
+
+    def test_nap_migration_adds_column_to_existing_table(self):
+        """A database created before the nap column existed gains it on connect."""
+        import sqlite3
+        from db.schema import create_tables
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE whoop_sleep (sleep_id TEXT PRIMARY KEY, date TEXT NOT NULL)")
+        conn.execute("INSERT INTO whoop_sleep (sleep_id, date) VALUES ('old', '2026-03-17')")
+        create_tables(conn)
+        row = conn.execute("SELECT nap FROM whoop_sleep WHERE sleep_id = 'old'").fetchone()
+        assert row[0] is None
+        conn.close()

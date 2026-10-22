@@ -773,3 +773,22 @@ class TestCountRows:
     def test_rejects_invalid_table_name(self, db_conn):
         with pytest.raises(ValueError, match="Invalid table name"):
             queries.count_rows(db_conn, "songs; DROP TABLE songs;--")
+
+
+class TestWhoopSleepNap:
+    def test_upsert_stores_nap_flag(self, db_conn):
+        queries.upsert_whoop_sleep(db_conn, sleep_id="nap", date="2026-03-17", nap=True)
+        queries.upsert_whoop_sleep(db_conn, sleep_id="night", date="2026-03-17", nap=False)
+        rows = {r["sleep_id"]: r["nap"] for r in queries.get_sleeps_in_range(db_conn, "2026-03-17", "2026-03-17")}
+        assert rows == {"nap": 1, "night": 0}
+
+    def test_upsert_defaults_nap_to_null(self, db_conn):
+        """Callers that don't know the flag store NULL (unknown), not False."""
+        queries.upsert_whoop_sleep(db_conn, sleep_id="x", date="2026-03-17")
+        assert queries.get_sleep_by_date(db_conn, "2026-03-17")["nap"] is None
+
+    def test_upsert_backfills_nap_on_existing_row(self, db_conn):
+        """Re-syncing a row that predates the nap column fills the flag in."""
+        queries.upsert_whoop_sleep(db_conn, sleep_id="x", date="2026-03-17", deep_sleep_ms=1)
+        queries.upsert_whoop_sleep(db_conn, sleep_id="x", date="2026-03-17", deep_sleep_ms=1, nap=True)
+        assert queries.get_sleep_by_date(db_conn, "2026-03-17")["nap"] == 1

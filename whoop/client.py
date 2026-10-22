@@ -29,22 +29,20 @@ def get_recovery_for_date(token: str, date: str) -> dict[str, Any] | None:
     return None
 
 
-def get_sleep_for_date(token: str, date: str) -> dict[str, Any] | None:
-    """Fetch sleep data for a specific date (YYYY-MM-DD).
+def get_sleeps_for_date(token: str, date: str) -> list[dict[str, Any]]:
+    """Fetch every sleep record (main sleep and naps) for a date (YYYY-MM-DD).
 
-    Uses the v2 /activity/sleep endpoint with date filtering.
-    Returns parsed sleep dict or None if not found.
+    Uses the v2 /activity/sleep endpoint with date filtering. Returns all parsed
+    records whose date matches — a date can hold a night plus naps, and keeping
+    only the first would store whichever the API listed first (often a nap).
     """
     records = _paginated_get(
         token,
         f"{WHOOP_BASE_URL}/v2/activity/sleep",
         params={"start": f"{date}T00:00:00.000Z", "end": f"{date}T23:59:59.999Z"},
     )
-    for record in records:
-        parsed = _parse_sleep_response(record)
-        if parsed and parsed["date"] == date:
-            return parsed
-    return None
+    parsed = [_parse_sleep_response(record) for record in records]
+    return [p for p in parsed if p and p["date"] == date]
 
 
 def _paginated_get(
@@ -138,6 +136,10 @@ def _parse_sleep_response(raw: dict[str, Any]) -> dict[str, Any] | None:
 
     stage_summary = score.get("stage_summary", {})
     sleep_needed = score.get("sleep_needed", {})
+    nap = raw.get("nap")
+    if nap is not None and not isinstance(nap, bool):
+        logger.warning("WHOOP sleep %s has non-boolean nap flag %r — storing as unknown", sleep_id, nap)
+        nap = None
 
     return {
         "sleep_id": sleep_id,
@@ -157,6 +159,7 @@ def _parse_sleep_response(raw: dict[str, Any]) -> dict[str, Any] | None:
         "sleep_needed_debt_ms": sleep_needed.get("need_from_sleep_debt_milli"),
         "sleep_needed_strain_ms": sleep_needed.get("need_from_recent_strain_milli"),
         "sleep_needed_nap_ms": sleep_needed.get("need_from_recent_nap_milli"),
+        "nap": nap,
     }
 
 

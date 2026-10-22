@@ -12,6 +12,7 @@ from intelligence.baselines import (
     compute_rhr_baseline,
     compute_sleep_debt,
     compute_sleep_debt_baseline,
+    compute_sleep_efficiency_baseline,
     compute_sleep_stage_baselines,
 )
 
@@ -252,8 +253,8 @@ class TestComputeSleepStageBaselines:
         result = compute_sleep_stage_baselines(db_conn, "2026-03-17")
         assert result is None
 
-    def test_multiple_sleep_records_per_date_aggregated(self, db_conn):
-        """Nap + primary sleep on same date should sum stages."""
+    def test_multiple_sleep_records_per_date_use_longest(self, db_conn):
+        """Two records on one date (nap flag unknown) → longest counts; stages never summed."""
         dates = _generate_dates("2026-03-17", 15)
         for i, date in enumerate(dates):
             # Primary sleep
@@ -262,7 +263,7 @@ class TestComputeSleepStageBaselines:
                 deep_sleep_ms=4_000_000, rem_sleep_ms=5_000_000,
                 light_sleep_ms=12_000_000,
             )
-        # Add a nap on the most recent date (dates[-1])
+        # Add a short second record on the most recent date (dates[-1])
         upsert_whoop_sleep(
             db_conn, sleep_id=999, date=dates[-1],
             deep_sleep_ms=1_000_000, rem_sleep_ms=500_000,
@@ -272,9 +273,7 @@ class TestComputeSleepStageBaselines:
         result = compute_sleep_stage_baselines(db_conn, "2026-03-17", window=30)
         assert result is not None
         assert result["count"] == 15  # 15 unique dates, not 16 records
-        # The nap date should have summed stages (5M deep, 5.5M rem, 13M light)
-        # All other dates have 4M deep → mean should be slightly above 4M
-        assert result["deep_ms"]["mean"] > 4_000_000
+        assert result["deep_ms"]["mean"] == pytest.approx(4_000_000)
 
 
 # ─── Sleep Debt ───────────────────────────────────────────────────────────────
@@ -603,3 +602,115 @@ class TestComputeRecoveryDeltaBaseline:
     def test_empty_db(self, db_conn):
         result = compute_recovery_delta_baseline(db_conn, "2026-03-17")
         assert result is None
+
+
+# ─── Naps vs main sleep ──────────────────────────────────────────────────────
+
+
+def _seed_nights(conn, target_date, days=20, deep_ms=4_000_000, rem_ms=5_000_000,
+                 light_ms=12_000_000, eff=88.0, needed_ms=28_800_000):
+    for i, date in enumerate(_generate_dates(target_date, days)):
+        upsert_whoop_sleep(
+            conn, sleep_id=f"night-{i}", date=date, nap=False,
+            deep_sleep_ms=deep_ms, rem_sleep_ms=rem_ms, light_sleep_ms=light_ms,
+            sleep_efficiency=eff + (i % 3), sleep_needed_baseline_ms=needed_ms,
+        )
+    return _generate_dates(target_date, days)
+
+
+class TestBaselinesIgnoreNaps:
+    def test_stage_baselines_exclude_naps(self, db_conn):
+        """Baseline 'usual night' must be built the same way as 'last night': no naps."""
+        dates = _seed_nights(db_conn, "2026-03-17")
+        for i, date in enumerate(dates):
+            upsert_whoop_sleep(db_conn, sleep_id=f"nap-{i}", date=date, nap=True,
+                               deep_sleep_ms=2_000_000, rem_sleep_ms=0, light_sleep_ms=0)
+        result = compute_sleep_stage_baselines(db_conn, "2026-03-17")
+        assert result["deep_ms"]["mean"] == pytest.approx(4_000_000)
+
+    def test_stage_baselines_skip_nap_only_dates(self, db_conn):
+        _seed_nights(db_conn, "2026-03-17", days=14)
+        upsert_whoop_sleep(db_conn, sleep_id="lone-nap", date="2026-03-02", nap=True,
+                           deep_sleep_ms=1, rem_sleep_ms=1, light_sleep_ms=1)
+        assert compute_sleep_stage_baselines(db_conn, "2026-03-17")["count"] == 14
+
+    def test_stage_baselines_use_longest_of_two_main_records(self, db_conn):
+        dates = _seed_nights(db_conn, "2026-03-17", days=14)
+        upsert_whoop_sleep(db_conn, sleep_id="second", date=dates[-1], nap=False,
+                           deep_sleep_ms=1_400_000, rem_sleep_ms=0, light_sleep_ms=0)
+        result = compute_sleep_stage_baselines(db_conn, "2026-03-17")
+        assert result["count"] == 14
+        assert result["deep_ms"]["mean"] == pytest.approx(4_000_000)
+
+    def test_sleep_debt_counts_nap_sleep_toward_need(self, db_conn):
+        """Naps are real sleep: they pay down debt even though they aren't 'last night'."""
+        dates = _generate_dates("2026-03-17", 7)
+        for i, date in enumerate(dates):
+            upsert_whoop_sleep(db_conn, sleep_id=f"night-{i}", date=date, nap=False,
+                               deep_sleep_ms=7_200_000, rem_sleep_ms=7_200_000,
+                               light_sleep_ms=10_800_000, sleep_needed_baseline_ms=28_800_000)
+            upsert_whoop_sleep(db_conn, sleep_id=f"nap-{i}", date=date, nap=True,
+                               deep_sleep_ms=1_800_000, rem_sleep_ms=0, light_sleep_ms=1_800_000,
+                               sleep_needed_baseline_ms=28_800_000)
+        # need 8h, night 7h + nap 1h = 8h → no debt
+        assert compute_sleep_debt(db_conn, "2026-03-17") == pytest.approx(0.0)
+
+    def test_sleep_debt_need_comes_from_main_sleep_not_nap(self, db_conn):
+        """The nap record can carry a different sleep need; the night's need is the one that counts."""
+        upsert_whoop_sleep(db_conn, sleep_id="night", date="2026-03-16", nap=False,
+                           deep_sleep_ms=7_200_000, rem_sleep_ms=7_200_000,
+                           light_sleep_ms=10_800_000,
+                           sleep_needed_baseline_ms=28_800_000, sleep_needed_debt_ms=0)
+        upsert_whoop_sleep(db_conn, sleep_id="nap", date="2026-03-16", nap=True,
+                           deep_sleep_ms=0, rem_sleep_ms=0, light_sleep_ms=0,
+                           sleep_needed_baseline_ms=28_800_000, sleep_needed_debt_ms=7_200_000)
+        # need 8h (night's), got 7h → 1h, not 3h from the nap's inflated need
+        assert compute_sleep_debt(db_conn, "2026-03-17") == pytest.approx(1.0)
+
+    def test_sleep_debt_nap_only_day_uses_nap_need(self, db_conn):
+        """No night recorded: the day still needed sleep; the nap is all that was got."""
+        upsert_whoop_sleep(db_conn, sleep_id="nap", date="2026-03-16", nap=True,
+                           deep_sleep_ms=1_800_000, rem_sleep_ms=0, light_sleep_ms=1_800_000,
+                           sleep_needed_baseline_ms=28_800_000)
+        assert compute_sleep_debt(db_conn, "2026-03-17") == pytest.approx(7.0)
+
+
+    def test_sleep_debt_falls_back_to_nap_need_when_night_has_none(self, db_conn):
+        upsert_whoop_sleep(db_conn, sleep_id="night", date="2026-03-16", nap=False,
+                           deep_sleep_ms=7_200_000, rem_sleep_ms=7_200_000,
+                           light_sleep_ms=10_800_000)
+        upsert_whoop_sleep(db_conn, sleep_id="nap", date="2026-03-16", nap=True,
+                           deep_sleep_ms=0, rem_sleep_ms=0, light_sleep_ms=0,
+                           sleep_needed_baseline_ms=28_800_000)
+        assert compute_sleep_debt(db_conn, "2026-03-17") == pytest.approx(1.0)
+
+
+class TestComputeSleepEfficiencyBaseline:
+    def test_happy_path(self, db_conn):
+        _seed_nights(db_conn, "2026-03-17", days=15, eff=88.0)
+        result = compute_sleep_efficiency_baseline(db_conn, "2026-03-17")
+        assert result["count"] == 15
+        assert result["mean"] == pytest.approx(89.0)
+        assert result["sd"] > 0
+
+    def test_excludes_naps(self, db_conn):
+        """Naps run near 99% efficiency; counting them would inflate 'usual'."""
+        dates = _seed_nights(db_conn, "2026-03-17", days=15, eff=88.0)
+        for i, date in enumerate(dates):
+            upsert_whoop_sleep(db_conn, sleep_id=f"nap-{i}", date=date, nap=True,
+                               deep_sleep_ms=1, rem_sleep_ms=1, light_sleep_ms=1,
+                               sleep_efficiency=99.0)
+        assert compute_sleep_efficiency_baseline(db_conn, "2026-03-17")["mean"] == pytest.approx(89.0)
+
+    def test_excludes_target_date(self, db_conn):
+        _seed_nights(db_conn, "2026-03-17", days=15, eff=88.0)
+        upsert_whoop_sleep(db_conn, sleep_id="today", date="2026-03-17", nap=False,
+                           deep_sleep_ms=1, rem_sleep_ms=1, light_sleep_ms=1, sleep_efficiency=10.0)
+        assert compute_sleep_efficiency_baseline(db_conn, "2026-03-17")["mean"] == pytest.approx(89.0)
+
+    def test_returns_none_below_min_days(self, db_conn):
+        _seed_nights(db_conn, "2026-03-17", days=13)
+        assert compute_sleep_efficiency_baseline(db_conn, "2026-03-17") is None
+
+    def test_empty_db(self, db_conn):
+        assert compute_sleep_efficiency_baseline(db_conn, "2026-03-17") is None

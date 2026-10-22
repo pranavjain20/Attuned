@@ -28,6 +28,7 @@ def create_tables(conn: sqlite3.Connection) -> None:
     _migrate_add_original_release_year(conn)
     _migrate_add_opening_energy(conn)
     _migrate_add_availability(conn)
+    _migrate_add_sleep_nap(conn)
 
 
 def _migrate_add_recent_play_ratio(conn: sqlite3.Connection) -> None:
@@ -123,6 +124,20 @@ def _migrate_add_availability(conn: sqlite3.Connection) -> None:
                 raise
 
 
+def _migrate_add_sleep_nap(conn: sqlite3.Connection) -> None:
+    """Add nap column to whoop_sleep: WHOOP's own flag for whether a sleep was a nap.
+
+    1 = nap, 0 = main sleep, NULL = synced before this column existed (unknown).
+    Re-running `sync-whoop-history` backfills it for existing rows.
+    """
+    try:
+        conn.execute("ALTER TABLE whoop_sleep ADD COLUMN nap INTEGER")
+        conn.commit()
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
+
+
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS songs (
     spotify_uri     TEXT PRIMARY KEY,
@@ -170,6 +185,7 @@ CREATE TABLE IF NOT EXISTS whoop_sleep (
     sleep_needed_debt_ms      INTEGER,
     sleep_needed_strain_ms    INTEGER,
     sleep_needed_nap_ms       INTEGER,
+    nap                 INTEGER,                   -- 1 = nap, 0 = main sleep, NULL = unknown
     FOREIGN KEY (recovery_cycle_id) REFERENCES whoop_recovery(cycle_id)
 );
 

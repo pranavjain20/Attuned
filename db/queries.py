@@ -338,8 +338,12 @@ def upsert_whoop_sleep(
     sleep_needed_debt_ms: int | None = None,
     sleep_needed_strain_ms: int | None = None,
     sleep_needed_nap_ms: int | None = None,
+    nap: bool | None = None,
 ) -> None:
-    """Insert or update a WHOOP sleep record."""
+    """Insert or update a WHOOP sleep record.
+
+    `nap` is WHOOP's own nap flag; None means unknown (stored as NULL).
+    """
     # Null out FK if referenced cycle doesn't exist (deduplicated during full sync)
     if recovery_cycle_id is not None:
         exists = conn.execute(
@@ -354,8 +358,8 @@ def upsert_whoop_sleep(
                 light_sleep_ms, awake_ms, sleep_efficiency, sleep_performance,
                 sleep_consistency, respiratory_rate, disturbance_count,
                 sleep_cycle_count, sleep_needed_baseline_ms, sleep_needed_debt_ms,
-                sleep_needed_strain_ms, sleep_needed_nap_ms)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                sleep_needed_strain_ms, sleep_needed_nap_ms, nap)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(sleep_id) DO UPDATE SET
                date = excluded.date,
                recovery_cycle_id = excluded.recovery_cycle_id,
@@ -372,12 +376,13 @@ def upsert_whoop_sleep(
                sleep_needed_baseline_ms = excluded.sleep_needed_baseline_ms,
                sleep_needed_debt_ms = excluded.sleep_needed_debt_ms,
                sleep_needed_strain_ms = excluded.sleep_needed_strain_ms,
-               sleep_needed_nap_ms = excluded.sleep_needed_nap_ms""",
+               sleep_needed_nap_ms = excluded.sleep_needed_nap_ms,
+               nap = excluded.nap""",
         (sleep_id, date, recovery_cycle_id, deep_sleep_ms, rem_sleep_ms,
          light_sleep_ms, awake_ms, sleep_efficiency, sleep_performance,
          sleep_consistency, respiratory_rate, disturbance_count,
          sleep_cycle_count, sleep_needed_baseline_ms, sleep_needed_debt_ms,
-         sleep_needed_strain_ms, sleep_needed_nap_ms),
+         sleep_needed_strain_ms, sleep_needed_nap_ms, nap),
     )
     conn.commit()
 

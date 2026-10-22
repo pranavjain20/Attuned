@@ -11,6 +11,7 @@ import numpy as np
 
 from config import BASELINE_WINDOW_DAYS, MIN_BASELINE_DAYS, ROLLING_WINDOW_DAYS
 from db.queries import get_recoveries_in_range, get_recovery_by_date, get_sleeps_in_range
+from intelligence.main_sleep import asleep_ms, is_nap, main_sleep_by_date
 
 
 def _date_range(date: str, window: int) -> tuple[str, str]:
@@ -74,37 +75,24 @@ def compute_sleep_stage_baselines(
     """Compute sleep stage baselines over a window ending the day before `date`.
 
     Ratios are computed per-day then averaged (not from averaged totals).
-    Skips days where total_sleep = 0.
+    Each day is its main sleep only (naps excluded — see intelligence/main_sleep.py),
+    so "usual" is measured the same way as "last night".
+    Skips days with missing stages or total_sleep = 0.
 
     Returns dict with keys: deep_ms, rem_ms, light_ms, total_sleep_ms, deep_ratio,
     rem_ratio — each a dict(mean, sd). Plus 'count'. Or None if <MIN_BASELINE_DAYS.
     """
     start, end = _date_range(date, window)
-    sleeps = get_sleeps_in_range(conn, start, end)
-
-    # Group by date: sum stages across all sleep records (naps + primary) per day.
-    by_date: dict[str, dict] = {}
-    for s in sleeps:
-        d = s["date"]
-        deep = s["deep_sleep_ms"]
-        rem = s["rem_sleep_ms"]
-        light = s["light_sleep_ms"]
-        if deep is None or rem is None or light is None:
-            continue
-        if d not in by_date:
-            by_date[d] = {"deep": 0, "rem": 0, "light": 0}
-        by_date[d]["deep"] += deep
-        by_date[d]["rem"] += rem
-        by_date[d]["light"] += light
+    nights = main_sleep_by_date(get_sleeps_in_range(conn, start, end)).values()
 
     deep_vals, rem_vals, light_vals, total_vals = [], [], [], []
     deep_ratios, rem_ratios = [], []
 
-    for day_data in by_date.values():
-        deep, rem, light = day_data["deep"], day_data["rem"], day_data["light"]
-        total = deep + rem + light
-        if total == 0:
+    for night in nights:
+        total = asleep_ms(night)
+        if not total:  # missing stages (None) or zero sleep
             continue
+        deep, rem, light = night["deep_sleep_ms"], night["rem_sleep_ms"], night["light_sleep_ms"]
         deep_vals.append(deep)
         rem_vals.append(rem)
         light_vals.append(light)
@@ -139,47 +127,78 @@ def compute_sleep_debt(
 
     daily_debt = max(0, sleep_needed - actual_sleep)
     sleep_needed = baseline + debt + strain (nap offset NOT subtracted — conservative)
-    actual_sleep = deep + rem + light
+    actual_sleep = deep + rem + light, summed over every record that day, naps
+                   included (a nap is real sleep and pays debt down)
+
+    sleep_needed comes from the day's main-sleep record(s): a nap record can carry
+    a different need. If no main record has a need (e.g. a nap-only day) the
+    nap's need is used — the day still needed sleep; the nap is all that was got.
 
     Returns total debt in hours, or None if no valid days.
     """
     start, end = _date_range(date, window)
     sleeps = get_sleeps_in_range(conn, start, end)
 
-    # Group by date: a day can have multiple sleep records (naps + primary).
-    # Per date: sum actual sleep across records, take max needed (primary session).
-    by_date: dict[str, dict] = {}
+    by_date: dict[str, list[dict]] = {}
     for s in sleeps:
-        d = s["date"]
-        if d not in by_date:
-            by_date[d] = {"needed": 0, "actual": 0, "has_needed": False}
-
-        baseline_ms = s["sleep_needed_baseline_ms"]
-        if baseline_ms is not None:
-            debt_ms = s["sleep_needed_debt_ms"] or 0
-            strain_ms = s["sleep_needed_strain_ms"] or 0
-            record_needed = baseline_ms + debt_ms + strain_ms
-            by_date[d]["needed"] = max(by_date[d]["needed"], record_needed)
-            by_date[d]["has_needed"] = True
-
-        deep = s["deep_sleep_ms"] or 0
-        rem = s["rem_sleep_ms"] or 0
-        light = s["light_sleep_ms"] or 0
-        by_date[d]["actual"] += deep + rem + light
+        by_date.setdefault(s["date"], []).append(s)
 
     total_debt_ms = 0
     valid_days = 0
-
-    for day_data in by_date.values():
-        if not day_data["has_needed"]:
+    for records in by_date.values():
+        needed = _sleep_need_ms(records)
+        if needed is None:
             continue
-        daily_debt = max(0, day_data["needed"] - day_data["actual"])
-        total_debt_ms += daily_debt
+        actual = sum(
+            (r["deep_sleep_ms"] or 0) + (r["rem_sleep_ms"] or 0) + (r["light_sleep_ms"] or 0)
+            for r in records
+        )
+        total_debt_ms += max(0, needed - actual)
         valid_days += 1
 
     if valid_days == 0:
         return None
     return total_debt_ms / 3_600_000
+
+
+def _sleep_need_ms(records: list[dict]) -> int | None:
+    """WHOOP's sleep need for one day: from its main sleep, else from any record.
+
+    Need = baseline + debt + strain. Falls back to nap records only when no main
+    record carries a need (e.g. a nap-only day). None if no record has one.
+    """
+    main = [r for r in records if not is_nap(r)]
+    for candidates in (main, records):
+        needs = [
+            r["sleep_needed_baseline_ms"] + (r["sleep_needed_debt_ms"] or 0)
+            + (r["sleep_needed_strain_ms"] or 0)
+            for r in candidates
+            if r["sleep_needed_baseline_ms"] is not None
+        ]
+        if needs:
+            return max(needs)
+    return None
+
+
+def compute_sleep_efficiency_baseline(
+    conn: sqlite3.Connection,
+    date: str,
+    window: int = BASELINE_WINDOW_DAYS,
+) -> dict | None:
+    """Compute sleep efficiency baseline over a window ending the day before `date`.
+
+    One value per day from its main sleep (naps excluded — see
+    intelligence/main_sleep.py), matching how last night's efficiency is measured.
+
+    Returns dict(mean, sd, count) or None if fewer than MIN_BASELINE_DAYS valid days.
+    """
+    start, end = _date_range(date, window)
+    nights = main_sleep_by_date(get_sleeps_in_range(conn, start, end)).values()
+    values = [n["sleep_efficiency"] for n in nights if n.get("sleep_efficiency") is not None]
+    if len(values) < MIN_BASELINE_DAYS:
+        return None
+    arr = np.array(values, dtype=np.float64)
+    return {"mean": float(np.mean(arr)), "sd": float(np.std(arr, ddof=1)), "count": len(values)}
 
 
 def compute_sleep_debt_baseline(

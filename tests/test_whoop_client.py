@@ -10,7 +10,7 @@ from whoop.client import (
     _parse_recovery_response,
     _parse_sleep_response,
     get_recovery_for_date,
-    get_sleep_for_date,
+    get_sleeps_for_date,
 )
 
 
@@ -90,6 +90,19 @@ class TestParseSleepResponse:
     def test_returns_none_for_no_id(self):
         assert _parse_sleep_response({"score": {}}) is None
 
+    def test_parses_nap_true(self, sample_whoop_sleep):
+        assert _parse_sleep_response({**sample_whoop_sleep, "nap": True})["nap"] is True
+
+    def test_parses_nap_false(self, sample_whoop_sleep):
+        assert _parse_sleep_response({**sample_whoop_sleep, "nap": False})["nap"] is False
+
+    def test_missing_nap_is_unknown(self, sample_whoop_sleep):
+        """No nap field → None (unknown), never silently False."""
+        assert _parse_sleep_response(sample_whoop_sleep)["nap"] is None
+
+    def test_non_boolean_nap_is_unknown(self, sample_whoop_sleep):
+        assert _parse_sleep_response({**sample_whoop_sleep, "nap": "yes"})["nap"] is None
+
     def test_handles_missing_stage_summary(self):
         raw = {
             "id": 1,
@@ -163,16 +176,30 @@ class TestGetRecoveryForDate:
         assert result is None
 
 
-class TestGetSleepForDate:
+class TestGetSleepsForDate:
     @patch("whoop.client._paginated_get")
     def test_returns_matching_date(self, mock_paginate, sample_whoop_sleep):
         mock_paginate.return_value = [sample_whoop_sleep]
-        result = get_sleep_for_date("token", "2026-03-17")
-        assert result is not None
-        assert result["date"] == "2026-03-17"
+        result = get_sleeps_for_date("token", "2026-03-17")
+        assert [r["date"] for r in result] == ["2026-03-17"]
 
     @patch("whoop.client._paginated_get")
-    def test_returns_none_when_no_match(self, mock_paginate):
+    def test_returns_empty_when_no_match(self, mock_paginate):
         mock_paginate.return_value = []
-        result = get_sleep_for_date("token", "2026-03-17")
-        assert result is None
+        assert get_sleeps_for_date("token", "2026-03-17") == []
+
+    @patch("whoop.client._paginated_get")
+    def test_returns_every_record_for_the_date(self, mock_paginate, sample_whoop_sleep):
+        """A nap and the night on the same date are both returned, not just the first."""
+        nap = {**sample_whoop_sleep, "id": "nap-1", "nap": True}
+        night = {**sample_whoop_sleep, "id": "night-1", "nap": False}
+        mock_paginate.return_value = [nap, night]
+        result = get_sleeps_for_date("token", "2026-03-17")
+        assert [(r["sleep_id"], r["nap"]) for r in result] == [("nap-1", True), ("night-1", False)]
+
+    @patch("whoop.client._paginated_get")
+    def test_skips_records_from_other_dates(self, mock_paginate, sample_whoop_sleep):
+        other = {**sample_whoop_sleep, "id": "other", "end": "2026-03-18T07:00:00.000-05:00"}
+        mock_paginate.return_value = [sample_whoop_sleep, other]
+        result = get_sleeps_for_date("token", "2026-03-17")
+        assert [r["sleep_id"] for r in result] == [67890]
