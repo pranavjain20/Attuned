@@ -37,6 +37,8 @@ python main.py generate --dry-run                # same, without touching Spotif
 python main.py feeling-score --date 2026-04-07   # the day's score and explanation (--json for page data)
 python main.py playlist-json --date 2026-04-07   # any day's playlist and per-song reasons, read-only
 python main.py build-site --days 30              # write the day-by-day page to web/dist/index.html
+python main.py publish-playlists --dry-run       # plan public Spotify playlists for the page's latest 3 days
+python main.py publish-playlists                 # make them (max 3 per run; re-running only updates what changed)
 python main.py request "late night drive, dark and moody"   # the DJ from the command line
 python -m whatsapp.server                        # the DJ on WhatsApp (needs Twilio)
 ```

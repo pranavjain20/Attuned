@@ -6,7 +6,7 @@ A technical walk-through of the code as it is now, from a WHOOP sync to the page
 
 ```
 WHOOP sync ──> last night + this morning, dated in local time
-            ──> z-scores against my own usual            (intelligence/continuous_profile.py)
+            ──> z-scores against my own usual            (intelligence/signals.py)
             ──> Attuned score 0–100 + explanation        (intelligence/feeling_score.py)
             ──> position among earlier days ──> playlist target (calm / steady / energy)
                                                   │
@@ -28,7 +28,7 @@ Spotify library ──> classified songs ─────────────
 
 ## 2. Comparing each signal with my usual
 
-`compute_z_scores` (`intelligence/continuous_profile.py`) turns today into z-scores. A z-score is how far today sits from my usual (the previous 30 days, not including today), measured in my typical day-to-day wobble (one standard deviation). Every z-score is signed so positive means better, and clamped to ±2.5 so one extreme night can't dominate. A personal usual needs at least 14 days of data.
+`compute_z_scores` (`intelligence/signals.py`) turns today into z-scores. A z-score is how far today sits from my usual (the previous 30 days, not including today), measured in my typical day-to-day wobble (one standard deviation). Every z-score is signed so positive means better, and clamped to ±2.5 so one extreme night can't dominate. A personal usual needs at least 14 days of data.
 
 The signals the score uses (`FEELING_WEIGHTS` in `intelligence/feeling_score.py`):
 
@@ -81,7 +81,7 @@ Each driver becomes one fixed sentence with real numbers ("You got 1.2 h of REM 
 
 ## 4. From score to playlist target
 
-`compute_continuous_profile` in `intelligence/continuous_profile.py`.
+`compute_continuous_profile` in `intelligence/continuous_profile.py`; the target itself, the state and `STATE_PURPOSE` are in `intelligence/playlist_target.py`.
 
 **Three numbers.** A playlist target is three numbers that add up to 1: how calming (para, short for parasympathetic, the body's "rest and digest" side), how energising (symp, sympathetic, "fight or flight") and how grounding (grnd, emotionally steady) the music should be.
 
@@ -122,7 +122,7 @@ So the rule is:
 1. The number comes from where the three trackers (two Essentia beat trackers and TempoCNN, a neural tempo model) agree, allowing for doubling. With no clip, it comes from Soundcharts (a music data service).
 2. Half, same or double is chosen as whichever is nearest the model's guess, within 55–165 beats per minute.
 3. Hip-hop, rap and trap keep their listed fast tempo.
-4. Energetic songs are never halved, because that's where the rule is least reliable. They keep their earlier tempo, marked low confidence.
+4. Energetic songs are never halved, because that's where the rule is least reliable. They keep their earlier tempo, marked low confidence. One exception: when that kept tempo is itself half the level the trackers or Soundcharts report (Blinding Lights kept at 88, reported at 172), the reported level is used instead, up to 185 beats per minute, at medium confidence (low when only one reading backs it).
 5. A tempo set by hand (`set-tempo`) is never overwritten.
 
 Raw readings live in their own columns, and each decision stores its source and confidence. To refresh a library: `analyze-audio --tempo-only`, `fetch-soundcharts-tempos`, `update-tempos`, then `recompute-scores`.
@@ -138,13 +138,14 @@ Raw readings live in their own columns, and each decision stores its source and 
 `select_songs` in `matching/query_engine.py`.
 
 1. **Exclude songs:**
-   - songs Spotify reports unavailable;
+   - songs already known to be unavailable on Spotify (an earlier availability check marked them in the database);
    - songs played in a recent playlist, with a minimum gap that grows with library size;
    - scene-tied motivational Bollywood songs (film training anthems), except on an energy day in my top 15%. Those songs evoke the film scene rather than a mood.
 2. **Score every remaining song.** The core is how closely the song's three scores point in the same direction as the target (cosine similarity), blended with how well its valence fits. That is multiplied down for songs with less reliable classifications, with a small nudge against songs from the last few days.
 3. **Shortlist.** Take the top 60, keeping up to 5 recently played songs as familiar anchors.
 4. **Make it sound coherent** (`matching/cohesion.py`). Start from the song that's both a strong match and similar to the rest. Then add, one at a time, the candidate most similar to what's already chosen. Similarity covers genre, mood, tempo, production era, energy, acousticness and danceability. Hard caps stop clashes such as a 1999 song in a 2010s cluster, or a party track next to a quiet acoustic one. Era matters more for some genres (hip-hop dates fast; ghazal barely dates). If fewer than 15 songs pass, the similarity bar is lowered in small steps.
-5. **Finish.** Put a few favourites at the front, drop near-duplicate versions of the same song, and trim to 20.
+5. **Finish.** Put a few favourites at the front and drop near-duplicate versions of the same song. The result is 25 songs: the 20-song playlist plus 5 spares.
+6. **Check availability before anything reaches Spotify.** Both `generate` and `publish-playlists` ask Spotify about each song, one call every 3 seconds, skipping songs confirmed playable in the last 7 days. A song Spotify no longer plays is dropped and marked in the database, the next spare moves up, and the list is cut to 20. An exhausted daily quota stops the run instead of waving every song through. The page's replay makes no Spotify calls, so it only leaves out songs already marked unavailable.
 
 **Why-lines** (`matching/why_lines.py`). One rules-based line per song, under 80 characters:
 
@@ -157,7 +158,9 @@ Raw readings live in their own columns, and each decision stores its source and 
 
 **Daily push** (`main.py generate`, run by `scripts/daily.sh` each morning). It syncs WHOOP, scores the day, selects the songs, checks they're playable on Spotify, and creates a dated playlist with a description. Each run is logged to the database.
 
-**Replay without side effects** (`matching/day_playlist.py`, `main.py playlist-json`). It runs the same selection for any past day, with the library rewound to that morning: only earlier plays count, and play counts are recomputed. Nothing is written. Over a date range, each day's songs count toward the next day's rotation, as if they had been pushed.
+**Replay without side effects** (`matching/day_playlist.py`, `main.py playlist-json`). It runs the same selection for any past day, with the library rewound to that morning: only plays before midnight UTC count (plays are stored in UTC, so a few plays near local midnight can land on the wrong day), and play counts are recomputed. Nothing is written. Each day keeps its 20 songs plus the 5 spares. Over a date range, each day's 20 songs count toward the next day's rotation, as if they had been pushed.
+
+**Publishing the latest days** (`web/publish.py`, `main.py publish-playlists`). It turns the page's 3 most recent days into real public Spotify playlists (more only with `--allow-more`), and replays the same window as the page so the songs match. Before any write it runs the availability check above, so a spare stands in for each song Spotify no longer plays. `web/published.json` records each day's playlist URL, tracks, name and description. Running it again never makes a second playlist for a recorded day. It replaces the tracks, or renames the playlist, only when they changed, and makes a new playlist if the recorded one is gone from Spotify (404). Every Spotify write is followed by a 2-second pause, and the file is saved after each one. `--dry-run` prints the plan without logging in.
 
 **The page** (`web/site.py`, `main.py build-site`). It writes `web/dist/index.html`, one static page that steps through recent days.
 
@@ -168,7 +171,8 @@ Raw readings live in their own columns, and each decision stores its source and 
   - the drivers with values against usual;
   - the health metrics;
   - the playlist, with album art, a summary of what's in it, why that kind of music should help (with linked sources from RESEARCH.md), and the why-line under each song.
-- **Supporting data.** Album art comes from Spotify's public embed endpoint and is cached locally. `web/published.json` maps dates to saved Spotify playlists. The score history is built once per run and shared by scoring, playlists and the page.
+- **Published days.** A published day lists the songs on its Spotify playlist, in that order, and its green button opens the playlist. If the replay no longer has every published song (the playlist is out of date), the page lists the replay's songs and the button plays the first song instead, so the button never opens different songs from the page.
+- **Supporting data.** Album art comes from Spotify's public embed endpoint and is cached locally. Only real answers are cached: a picture, or "not found". A server error is asked again next build, and a rate limit stops art fetching for the rest of the build. The score history is built once per run and shared by scoring, playlists and the page.
 
 **The WhatsApp DJ** (`whatsapp/`, `intelligence/nl_song_selector.py`, `main.py request`).
 
@@ -179,7 +183,8 @@ Raw readings live in their own columns, and each decision stores its source and 
   - the same reasons the page shows;
   - one calibration line, for example "today leans calm: prefer settling choices within what they asked for, unless they explicitly ask for energy".
 - **Request first.** The prompt tells the model the request comes first and not to lecture.
-- **No WHOOP, no silent fallback.** WHOOP's recovery never reaches the prompt. Errors building the context are raised, not swallowed.
+- **No WHOOP.** WHOOP's recovery never reaches the prompt.
+- **The request still gets an answer.** If building the context fails, the error is logged with its full traceback and the DJ is told there's no body data today, so it goes by the request alone. Over WhatsApp, a day's context is built once and reused for 10 minutes (it replays the score history, about 3 seconds), so a clarifying question and its answer don't build it twice, while WHOOP data synced later in the morning still gets through.
 
 **Several people.** `--profile <name>` points any command at that person's own SQLite database, with their own tokens, usual and library.
 
@@ -196,13 +201,15 @@ Raw readings live in their own columns, and each decision stores its source and 
 ## 9. Where things live
 
 - `intelligence/feeling_score.py`: the score, its mapping, drivers, headline and page data.
-- `intelligence/continuous_profile.py`: z-scores, the playlist target, state, names.
+- `intelligence/signals.py`: each day's signals as z-scores against my usual.
+- `intelligence/playlist_target.py`: the playlist target for a score position, the state and its wording.
+- `intelligence/continuous_profile.py`: the day's target from its score, and the name and top-energy-day cut-offs.
+- `intelligence/dates.py`: shifting "YYYY-MM-DD" dates.
 - `intelligence/main_sleep.py`, `baselines.py`, `trends.py`, `sleep_analysis.py`: what counts as last night, personal usuals, HRV trend.
 - `intelligence/dj_context.py`, `nl_song_selector.py`: the DJ's body context and song picking.
-- `intelligence/state_classifier.py`: an older WHOOP-based classifier. It now only checks there's enough data and records raw metrics, and plays no part in song selection.
 - `classification/`: song classification, audio analysis, tempo, song scores.
 - `matching/`: selection, cohesion, why-lines, day replay, Spotify generation.
-- `web/`: the page builder and template.
+- `web/`: the page builder, its template, and publishing the latest days to Spotify.
 - `whoop/`, `spotify/`, `db/`, `whatsapp/`: API clients, storage, the DJ server.
 - `tests/`: unit and integration tests for all of the above.
 
