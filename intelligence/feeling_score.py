@@ -7,14 +7,15 @@ How a day is scored:
 1. Signals. Each is a z-score — how far today sits from your own last-30-day
    average, in units of your typical day-to-day wobble, clamped to ±2.5, signed
    so positive always means better. They come from the continuous profile, with
-   three changes:
+   two changes:
    - WHOOP's recovery and its change since yesterday are left out. Recovery is
      itself built from HRV, resting heart rate and sleep, so including it would
      count those twice and make this score a partial copy of the WHOOP ring
      shown next to it.
    - Last night's total sleep (main sleep, naps excluded) is added. Without it a
      very short night only counts through its deep/REM hours today.
-   - Sleep efficiency's "usual" excludes naps (compute_sleep_efficiency_baseline).
+   Sleep efficiency comes from the profile as is: its "usual" excludes naps, and
+   after a night under 6 h it can't count as good news (see compute_z_scores).
 2. Composite = weighted average of the signals present that day. Positive =
    better than your normal. No score if the signals present carry less than
    MIN_WEIGHT_SHARE of the total weight (e.g. no night's sleep recorded).
@@ -47,7 +48,7 @@ from intelligence.baselines import (
     compute_sleep_efficiency_baseline,
 )
 from intelligence.continuous_profile import _safe_z, compute_continuous_profile
-from intelligence.main_sleep import asleep_ms
+from intelligence.main_sleep import asleep_ms, is_short_night
 from intelligence.sleep_analysis import analyze_sleep
 from intelligence.trends import compute_hrv_trend
 
@@ -134,12 +135,6 @@ def compute_feeling_signals(conn: sqlite3.Connection, date: str) -> dict:
     z["total_sleep_z"] = (
         _safe_z(total_ms, stage_baselines["total_sleep_ms"]["mean"], stage_baselines["total_sleep_ms"]["sd"])
         if total_ms is not None and stage_baselines else None
-    )
-
-    efficiency = last_night.get("sleep_efficiency") if last_night else None
-    eff_baseline = compute_sleep_efficiency_baseline(conn, date)
-    z["sleep_efficiency_z"] = (
-        _safe_z(efficiency, eff_baseline["mean"], eff_baseline["sd"]) if eff_baseline else None
     )
     return {"z": z, "profile": result["profile"]}
 
@@ -255,15 +250,19 @@ def _sentence(signal: str, up: bool, value: str, usual: str) -> str:
     }[signal]
 
 
-def _headline(attuned_band: str, whoop_band: str | None, drivers: list[dict]) -> str:
-    """Compare with WHOOP's band when they differ; otherwise describe the band."""
+def _headline(attuned_band: str, whoop_band: str | None, drivers: list[dict],
+              short_night: bool = False) -> str:
+    """Compare with WHOOP's band when they differ; otherwise describe the band.
+
+    After a short night (under 6 h) sleep is never credited for a better-than-WHOOP day.
+    """
     if whoop_band is None or attuned_band == whoop_band:
         return SAME_BAND_HEADLINE[attuned_band]
     led_by_sleep = bool(drivers) and drivers[0]["signal"] in SLEEP_SIGNALS
-    source = "your sleep" if led_by_sleep else "your body"
     if BAND_ORDER.index(attuned_band) < BAND_ORDER.index(whoop_band):
-        return f"WHOOP says ready, but {source} says go easy"
-    return f"Better than WHOOP's number: {source} held up"
+        return f"WHOOP says ready, but {'your sleep' if led_by_sleep else 'your body'} says go easy"
+    credit_sleep = led_by_sleep and not short_night
+    return f"Better than WHOOP's number: {'your sleep' if credit_sleep else 'your body'} held up"
 
 
 def _explanation(drivers: list[dict], direction: int, state: str) -> list[str]:
@@ -426,7 +425,8 @@ def compute_feeling_score(
     state, state_label = pick_state(signals["profile"])
     result.update(
         score=score, band=attuned_band, state=state, state_label=state_label,
-        headline=_headline(attuned_band, whoop_band, drivers),
+        headline=_headline(attuned_band, whoop_band, drivers,
+                           short_night=is_short_night((analyze_sleep(conn, date) or {}).get("last_night"))),
         explanation=_explanation(drivers, direction, state), drivers=drivers,
     )
     return result

@@ -2,7 +2,10 @@
 
 import pytest
 
-from intelligence.main_sleep import asleep_ms, is_nap, main_sleep_by_date, select_main_sleep
+from config import RESTORATIVE_SLEEP_TOTAL_MIN_MS
+from intelligence.main_sleep import (
+    asleep_ms, is_nap, is_short_night, main_sleep_by_date, select_main_sleep,
+)
 
 HOUR = 3_600_000
 
@@ -37,6 +40,35 @@ class TestAsleepMs:
 
     def test_none_when_any_stage_missing(self):
         assert asleep_ms({"deep_sleep_ms": 1, "rem_sleep_ms": None, "light_sleep_ms": 3}) is None
+
+
+class TestIsShortNight:
+    """Short = less than RESTORATIVE_SLEEP_TOTAL_MIN_MS (6 h) asleep."""
+
+    def test_threshold_is_six_hours(self):
+        assert RESTORATIVE_SLEEP_TOTAL_MIN_MS == 6 * HOUR
+
+    def test_two_and_a_half_hours_is_short(self):
+        assert is_short_night(_sleep("a", 2.5)) is True
+
+    def test_just_under_six_hours_is_short(self):
+        night = _sleep("a", 6)
+        night["light_sleep_ms"] -= 1
+        assert is_short_night(night) is True
+
+    def test_exactly_six_hours_is_not_short(self):
+        assert asleep_ms(_sleep("a", 6)) == 6 * HOUR
+        assert is_short_night(_sleep("a", 6)) is False
+
+    def test_long_night_is_not_short(self):
+        assert is_short_night(_sleep("a", 8)) is False
+
+    def test_missing_stages_is_not_called_short(self):
+        """Length unknown → no claim either way."""
+        assert is_short_night(_unstaged("a")) is False
+
+    def test_no_night(self):
+        assert is_short_night(None) is False
 
 
 class TestSelectMainSleep:

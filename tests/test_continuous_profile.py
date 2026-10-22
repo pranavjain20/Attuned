@@ -271,6 +271,86 @@ class TestSleepDebtCap:
 
 
 # ---------------------------------------------------------------------------
+# Sleep efficiency: main-sleep baseline + short-night cap (DB-backed)
+# ---------------------------------------------------------------------------
+
+HOUR = 3_600_000
+TARGET = "2026-06-01"
+
+
+def _history(conn, days=40):
+    from tests.test_feeling_score import _seed_history
+    _seed_history(conn, TARGET, days)
+
+
+def _today(conn, hours, eff, **kwargs):
+    from tests.test_feeling_score import _insert_day
+    _insert_day(conn, TARGET, 1, total_ms=hours * HOUR, eff=eff, hrv=48, rhr=56, recovery=55, **kwargs)
+
+
+class TestSleepEfficiencyBaseline:
+    def test_usual_is_the_main_sleep_baseline(self, db_conn):
+        from intelligence.baselines import compute_sleep_efficiency_baseline
+        _history(db_conn)
+        _today(db_conn, 7, 92)
+        bl = compute_sleep_efficiency_baseline(db_conn, TARGET)
+        assert compute_z_scores(db_conn, TARGET)["sleep_efficiency_z"] == pytest.approx(
+            _safe_z(92, bl["mean"], bl["sd"]))
+
+    def test_naps_in_the_window_do_not_move_usual(self, db_conn):
+        """Naps run ~99% efficient; counting them would make every night look broken."""
+        from datetime import date, timedelta
+        from db.queries import upsert_whoop_sleep
+        _history(db_conn)
+        _today(db_conn, 7, 88)
+        before = compute_z_scores(db_conn, TARGET)["sleep_efficiency_z"]
+        for i in range(1, 31):
+            d = (date.fromisoformat(TARGET) - timedelta(days=i)).isoformat()
+            upsert_whoop_sleep(db_conn, sleep_id=f"nap-{i}", date=d, nap=True, deep_sleep_ms=1,
+                               rem_sleep_ms=1, light_sleep_ms=1, sleep_efficiency=99.0)
+        assert compute_z_scores(db_conn, TARGET)["sleep_efficiency_z"] == pytest.approx(before)
+
+
+class TestShortNightEfficiencyCap:
+    """Under 6 h asleep, high efficiency is not good news: a short sleep is naturally unbroken."""
+
+    def test_short_efficient_night_caps_at_zero(self, db_conn):
+        _history(db_conn)
+        _today(db_conn, 2.5, 99)
+        assert compute_z_scores(db_conn, TARGET)["sleep_efficiency_z"] == 0.0
+
+    def test_exactly_six_hours_is_not_capped(self, db_conn):
+        _history(db_conn)
+        _today(db_conn, 6, 99)
+        assert compute_z_scores(db_conn, TARGET)["sleep_efficiency_z"] > 1.0
+
+    def test_short_broken_night_keeps_its_negative_z(self, db_conn):
+        from intelligence.baselines import compute_sleep_efficiency_baseline
+        _history(db_conn)
+        _today(db_conn, 4, 75)
+        bl = compute_sleep_efficiency_baseline(db_conn, TARGET)
+        z = compute_z_scores(db_conn, TARGET)["sleep_efficiency_z"]
+        assert z < 0 and z == pytest.approx(_safe_z(75, bl["mean"], bl["sd"]))
+
+    def test_missing_stages_leave_efficiency_uncapped(self, db_conn):
+        """Without stage data the night's length is unknown, so no cap is applied."""
+        from db.queries import upsert_whoop_sleep
+        _history(db_conn)
+        _today(db_conn, 2.5, 99)
+        upsert_whoop_sleep(db_conn, sleep_id=f"s-{TARGET}", date=TARGET, recovery_cycle_id=1, nap=False,
+                           deep_sleep_ms=None, rem_sleep_ms=None, light_sleep_ms=None, sleep_efficiency=99.0)
+        assert compute_z_scores(db_conn, TARGET)["sleep_efficiency_z"] > 1.0
+
+    def test_profile_is_calmer_once_capped(self, db_conn):
+        """The playlist profile reads the same capped z: a 2.5 h night no longer pushes energy."""
+        _history(db_conn)
+        _today(db_conn, 2.5, 99)
+        z = compute_z_scores(db_conn, TARGET)
+        assert z["sleep_efficiency_z"] == 0.0
+        assert compute_continuous_profile(db_conn, TARGET)["z_scores"] == z
+
+
+# ---------------------------------------------------------------------------
 # Helper function tests
 # ---------------------------------------------------------------------------
 

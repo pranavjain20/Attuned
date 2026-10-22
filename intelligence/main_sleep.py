@@ -10,12 +10,14 @@ Rules:
 - Naps (`nap` = 1) are dropped.
 - `nap` = NULL (rows synced before the flag was stored) counts as main sleep.
 - If several non-nap records share a date, the longest one (most time asleep)
-  is last night. Records are never added together: in this history every
-  such date turned out to be two separate nights landing on one date (sleep
-  dates come from the UTC end time, so abroad two nights can share a date),
-  and summing them invents an 11-hour night. Picking one can at worst
-  undercount a genuinely split night; it can never invent sleep.
+  is last night. Records are never added together: when sleep dates still
+  came from the UTC end time, every such date in this history was two separate
+  nights landing on one date, and summing them invented an 11-hour night.
+  Dates are now the wearer's local date, but the rule stays: picking one can
+  at worst undercount a genuinely split night; it can never invent sleep.
 """
+
+from config import RESTORATIVE_SLEEP_TOTAL_MIN_MS
 
 STAGE_KEYS = ("deep_sleep_ms", "rem_sleep_ms", "light_sleep_ms")
 
@@ -31,6 +33,15 @@ def asleep_ms(record: dict) -> int | None:
     if None in stages:
         return None
     return sum(stages)
+
+
+def is_short_night(record: dict | None) -> bool:
+    """True when the night had less than RESTORATIVE_SLEEP_TOTAL_MIN_MS (6 h) asleep.
+
+    False when there is no night or its stages are missing: length unknown.
+    """
+    total = asleep_ms(record) if record else None
+    return total is not None and total < RESTORATIVE_SLEEP_TOTAL_MIN_MS
 
 
 def select_main_sleep(records: list[dict]) -> dict | None:

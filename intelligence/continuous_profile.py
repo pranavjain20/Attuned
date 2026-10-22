@@ -19,8 +19,10 @@ from intelligence.baselines import (
     compute_rhr_baseline,
     compute_sleep_debt,
     compute_sleep_debt_baseline,
+    compute_sleep_efficiency_baseline,
     compute_sleep_stage_baselines,
 )
+from intelligence.main_sleep import is_short_night
 from intelligence.sleep_analysis import analyze_sleep
 from intelligence.trends import compute_hrv_trend
 
@@ -146,13 +148,8 @@ def compute_z_scores(
 
     deep_ratio = deep_ms / total_ms if total_ms and total_ms > 0 and deep_ms is not None else None
 
-    # --- Sleep efficiency baseline (compute from last 30 days) ---
-    from db.queries import get_sleeps_in_range
-    sleep_start, sleep_end = _date_range(date, BASELINE_WINDOW_DAYS)
-    all_sleeps = get_sleeps_in_range(conn, sleep_start, sleep_end)
-    eff_values = [s["sleep_efficiency"] for s in all_sleeps if s.get("sleep_efficiency") is not None]
-    eff_mean = float(np.mean(eff_values)) if len(eff_values) >= MIN_BASELINE_DAYS else None
-    eff_sd = float(np.std(eff_values, ddof=1)) if len(eff_values) >= MIN_BASELINE_DAYS else None
+    # --- Sleep efficiency baseline (last 30 days, main sleep only — naps excluded) ---
+    eff_bl = compute_sleep_efficiency_baseline(conn, date)
 
     # --- Debt ---
     debt = compute_sleep_debt(conn, date)
@@ -230,7 +227,14 @@ def compute_z_scores(
         scores["rem_sleep_z"] = None
 
     # Sleep efficiency z
-    scores["sleep_efficiency_z"] = _safe_z(efficiency, eff_mean, eff_sd) if eff_mean else None
+    # Cap: after a short night (under RESTORATIVE_SLEEP_TOTAL_MIN_MS asleep) efficiency
+    # cannot produce a positive z. A short sleep is naturally unbroken, so high
+    # efficiency there is not good news. The 6h line is the existing design choice
+    # in config.py. Missing stage data → length unknown → no cap.
+    z = _safe_z(efficiency, eff_bl["mean"], eff_bl["sd"]) if eff_bl else None
+    if z is not None and is_short_night(last_night):
+        z = min(z, 0.0)
+    scores["sleep_efficiency_z"] = z
 
     # Sleep debt z (INVERTED: high debt = bad = negative z)
     # Cap: debt above SLEEP_DEBT_POSITIVE_THRESHOLD cannot produce positive z.

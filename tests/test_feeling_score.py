@@ -12,6 +12,7 @@ from intelligence.feeling_score import (
     HEART_SIGNALS,
     MIN_CALIBRATION_DAYS,
     SLEEP_SIGNALS,
+    _headline,
     band,
     build_page_day,
     compute_composite,
@@ -229,6 +230,23 @@ class TestPickDrivers:
         assert [s for s, _ in pick_drivers(contributions, z, direction=-1)] == ["rem_sleep_z", "hrv_z"]
 
 
+class TestHeadline:
+    def test_above_whoop_led_by_sleep(self):
+        assert _headline("green", "yellow", [{"signal": "deep_sleep_z"}]) == \
+            "Better than WHOOP's number: your sleep held up"
+
+    def test_above_whoop_after_short_night_credits_body_not_sleep(self):
+        assert _headline("green", "yellow", [{"signal": "deep_ratio_z"}], short_night=True) == \
+            "Better than WHOOP's number: your body held up"
+
+    def test_below_whoop_after_short_night_still_blames_sleep(self):
+        assert _headline("yellow", "green", [{"signal": "total_sleep_z"}], short_night=True) == \
+            "WHOOP says ready, but your sleep says go easy"
+
+    def test_same_band(self):
+        assert _headline("yellow", "yellow", [], short_night=True) == "A middle-of-the-road day"
+
+
 class TestHrvWeekEndpoints:
     def test_follows_the_slope_not_the_raw_endpoints(self):
         """Zig-zag week whose first and last days are equal but which rises overall."""
@@ -323,6 +341,17 @@ class TestComputeFeelingSignals:
     def test_no_recovery_row_returns_empty(self, db_conn):
         assert compute_feeling_signals(db_conn, TARGET) == {"z": {}, "profile": None}
 
+    def test_shares_the_playlist_profiles_sleep_signals(self, db_conn):
+        """One place computes efficiency (baseline + short-night cap): the profile."""
+        from intelligence.continuous_profile import compute_z_scores
+        _seed_history(db_conn, TARGET, 40)
+        _insert_day(db_conn, TARGET, 1, total_ms=2.5 * HOUR, eff=99, hrv=48, rhr=56, recovery=55)
+        z = compute_feeling_signals(db_conn, TARGET)["z"]
+        profile_z = compute_z_scores(db_conn, TARGET)
+        assert z["sleep_efficiency_z"] == profile_z["sleep_efficiency_z"] == 0.0
+        for s in ("deep_sleep_z", "rem_sleep_z", "deep_ratio_z", "sleep_debt_z", "hrv_z"):
+            assert z[s] == profile_z[s]
+
 
 class TestComputeFeelingScore:
     def _ready(self, conn, days=120, **today):
@@ -414,6 +443,16 @@ class TestComputeFeelingScore:
         assert result["score"] is None
         assert result["composite"] is not None
         assert str(MIN_CALIBRATION_DAYS) in result["reason"]
+
+    def test_short_efficient_night_never_credits_sleep(self, db_conn):
+        """2026-09-04 shape: 2.5 h at 99% efficiency, HRV well above usual, WHOOP red."""
+        self._ready(db_conn, total_ms=2.5 * HOUR, eff=99, hrv=70, rhr=50, recovery=10, deep_share=0.40)
+        result = compute_feeling_score(db_conn, TARGET)
+        assert result["headline"].startswith("Better than WHOOP's number")  # the branch under test
+        text = " ".join([result["headline"]] + result["explanation"]).lower()
+        assert "sleep held up" not in text
+        assert "unbroken" not in text
+        assert all(d["signal"] != "sleep_efficiency_z" for d in result["drivers"])
 
     def test_extreme_day_stays_in_range(self, db_conn):
         self._ready(db_conn, total_ms=12 * HOUR, eff=100, hrv=120, rhr=40)
