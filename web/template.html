@@ -53,6 +53,9 @@
   .brand span { font-family: var(--num); font-weight: 800; font-size: 24px; letter-spacing: -.01em; }
   .top-link { font-size: 13px; color: var(--text-2); text-decoration: none; font-weight: 500; }
   .top-link:hover { color: var(--text); }
+  .intro { margin: 2px 0 0; max-width: 640px; font-size: 13.5px; line-height: 1.5; color: var(--text-2); }
+  .intro a { color: var(--text); text-decoration-color: var(--text-3); text-underline-offset: 2px; white-space: nowrap; }
+  .intro .dot { color: var(--text-3); margin: 0 6px; }
 
   .daybar { display: flex; align-items: center; justify-content: space-between; margin: 14px auto 0; gap: 8px; max-width: 440px; }
   .navbtn {
@@ -216,6 +219,8 @@
       <span>Attuned</span>
     </a>
   </header>
+  <p class="intro">Attuned is my own recovery score. It uses my WHOOP data to estimate how I'll feel today, not how ready I am to train, and builds a playlist for it.
+    <a href="https://pranavjain20.vercel.app/writing/why-whoops-recovery-score-is-wrong" rel="noopener">Why I built it</a><span class="dot">·</span><a href="https://github.com/pranavjain20/Attuned" rel="noopener">GitHub</a></p>
 
   <nav class="daybar" aria-label="Choose day">
     <button class="navbtn" id="prev" aria-label="Previous day">
