@@ -22,7 +22,7 @@ _If I had to rebuild this from scratch, this is everything I'd need to know._
 
 ## 1. What This Is
 
-Attuned extracts 12 physiological signals from your morning WHOOP data, computes a continuous neurological profile of how your nervous system actually feels — a 3D representation WHOOP doesn't compute — and builds a Spotify playlist of 15-20 songs from YOUR library that have the right neurological properties. Not generic "chill vibes" — your songs, chosen by science.
+Attuned extracts 12 physiological signals from your morning WHOOP data, computes a continuous neurological profile that estimates where your nervous system is today — a 3D view WHOOP doesn't show — and builds a Spotify playlist of 15-20 songs from YOUR library that fit it. Not generic "chill vibes" — your songs, matched to your morning data.
 
 It runs locally on your laptop. Supports multiple users via `--profile` flag (separate databases per user). One command: `python main.py generate`.
 
@@ -31,17 +31,17 @@ It runs locally on your laptop. Supports multiple users via `--profile` flag (se
 ## 2. The Core Idea
 
 Your autonomic nervous system (ANS) has two branches:
-- **Parasympathetic** — rest, recovery, calm. Measured by high HRV.
-- **Sympathetic** — energy, alertness, activation. Measured by low HRV.
+- **Parasympathetic** — rest, recovery, calm. Higher HRV usually reflects more of this.
+- **Sympathetic** — energy, alertness, activation.
 
-Music directly affects the ANS. This is established neuroscience with EEG and HRV studies:
-- Slow tempo (60-80 BPM) increases parasympathetic activity — calms you down, raises HRV
-- Fast tempo (120+ BPM) activates sympathetic response — increases arousal, heart rate
-- Acoustic instruments calm more than electronic sounds
-- Familiar music amplifies the effect (74.8% of people respond better to their own music)
-- Instrumental music reduces cognitive load more than vocals
+Music measurably shifts the ANS (see RESEARCH.md for the sources):
+- Faster tempo raises heart rate, blood pressure and breathing; slow-tempo music raises the parasympathetic part of HRV
+- Music people choose themselves engages the brain's reward system, and personally nostalgic songs do so more strongly
+- The body's response tracks tempo, not preference — so we don't claim your own songs are physically more calming, only that they mean more to you
 
-WHOOP measures your ANS state. Song properties determine what a song does to your ANS. Attuned connects the two.
+Everything else — that acoustic sounds calm more than electronic ones, that instrumentals suit rest, the BPM ranges, the weights — is our own design choice.
+
+WHOOP measures HRV, a marker of your ANS. Song properties suggest which way a song pushes it. Attuned connects the two.
 
 ---
 
@@ -51,7 +51,7 @@ The system has two independent intelligence layers:
 
 **Brain 1 (WHOOP Intelligence):** Takes your recovery data, sleep architecture, and multi-day trends → computes 12 physiological z-scores → feeds them through a weighted function to produce a continuous neuro profile (parasympathetic/sympathetic/grounding weights). The state classifier still runs for display labels (e.g., "Rest & Repair," "Fuel Up") but does NOT drive song selection.
 
-**Brain 2 (Song Intelligence):** Takes your songs (5,313 classified across 3 users) → classifies each with 3 neurological scores: parasympathetic (calming), sympathetic (energizing), grounding (emotional centering). Uses a combination of LLM classification and Essentia audio analysis.
+**Brain 2 (Song Intelligence):** Takes your songs (thousands classified across 3 user libraries) → classifies each with 3 neurological scores: parasympathetic (calming), sympathetic (energizing), grounding (emotional centering). Uses a combination of LLM classification and Essentia audio analysis.
 
 **The Bridge (Matching Engine):** Given a continuous neuro profile from Brain 1 and scored songs from Brain 2, selects the 20 best songs via cosine similarity scoring + cohesion filtering. For natural language requests via WhatsApp, the LLM picks songs directly by meaning (Claude Sonnet sees the full library) — no neuro-profile middleman.
 
@@ -69,7 +69,7 @@ Every metric is interpreted relative to YOUR normal, not population averages. A 
 - Compute mean, standard deviation, and coefficient of variation (CV = sd/mean)
 - Done for: HRV (using natural log of RMSSD), resting heart rate, deep sleep duration, REM sleep duration, deep/REM ratios
 
-**Why natural log of RMSSD?** Raw HRV in milliseconds is right-skewed — a few high readings dominate the average. The natural log (LnRMSSD) normalizes the distribution so standard deviations are meaningful. This follows the Plews/Buchheit methodology used in sports science.
+**Why natural log of RMSSD?** Raw HRV in milliseconds is right-skewed — a few high readings dominate the average. The natural log (LnRMSSD) normalizes the distribution so standard deviations are meaningful. This is a common convention in HRV monitoring.
 
 ### 4.2 Trend Detection
 
@@ -146,7 +146,7 @@ Every song gets classified with two sources:
 | Mood tags | Yes | No | LLM only |
 | Genre tags | Yes | No | LLM only |
 
-**Current coverage:** 5,313 songs classified across 2 users. Essentia coverage is 99%+ per user. A handful of songs per library are LLM-only (YouTube unavailable).
+**Current coverage:** thousands of songs classified across 3 user libraries. Essentia covers most of each library (about 86–89% in the two libraries checked); the rest are LLM-only, usually because YouTube had no match.
 
 ### 5.2 The Confidence-Aware Ensemble
 
@@ -245,7 +245,7 @@ Getting audio clips for Essentia analysis:
 5. Download and trim to 30 seconds (skip first 30 seconds to avoid intros)
 6. If no duration match, fall back to title-matching (trust the search result if title matches)
 
-**Coverage:** 99%+ per user library. A handful of songs per library are genuinely unavailable on YouTube.
+**Coverage:** most of each library; some songs have no usable YouTube match (see the Essentia coverage figure in 5.1).
 
 ---
 
@@ -397,8 +397,8 @@ See [PRODUCT_DECISIONS.md](PRODUCT_DECISIONS.md) for the full log of what we tri
 ## 10. Current Performance
 
 **Data quality:**
-- 5,313 classified songs across 2 users
-- Essentia coverage 99%+ per user
+- Thousands of classified songs across 3 user libraries
+- Essentia covers most of each library (about 86–89% in the two libraries checked)
 - All songs have LLM valence, mood tags, genre tags
 - Para↔Grnd correlation: 0.638 (started at 0.921 — 31% reduction)
 
@@ -421,8 +421,8 @@ See [PRODUCT_DECISIONS.md](PRODUCT_DECISIONS.md) for the full log of what we tri
 ## 11. Remaining Limitations
 
 **Things only fixable with user feedback:**
-- Signal weights and weight sensitivity (0.20) — research-informed starting points, not calibrated to individual nervous systems
-- Profiler formula parameters — research-informed but personal preference matters
+- Signal weights and weight sensitivity (0.20) — design-choice starting points, not calibrated to individual nervous systems
+- Profiler formula parameters — design choices; personal preference matters
 - Mood tag weight (15%) — could be 10% or 20%, needs real playlist evaluation
 
 **Things fixable with more data:**
@@ -435,4 +435,4 @@ See [PRODUCT_DECISIONS.md](PRODUCT_DECISIONS.md) for the full log of what we tri
 
 ---
 
-_1,048 tests passing. Built over 12 days with iterative validation at every step._
+_Run `.venv/bin/python -m pytest -q` for the current test count. Built with iterative validation at every step._

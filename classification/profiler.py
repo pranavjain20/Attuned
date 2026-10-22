@@ -2,7 +2,7 @@
 
 Computes parasympathetic, sympathetic, and grounding scores from song
 properties (BPM, energy, acousticness, etc.) and mood tags using sigmoid
-and Gaussian functions derived from ANS research.
+and Gaussian functions. Weights and curve shapes are our design choices.
 
 Audio properties provide the base signal. Mood tags add a semantic dimension
 orthogonal to audio — "reflective" vs "melancholy" can't be heard in BPM
@@ -83,7 +83,7 @@ def gaussian(x: float, center: float, sigma: float) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Score computation — formulas from RESEARCH.md Section 7.2
+# Score computation — design-choice formulas (weights and centers hand-tuned)
 # ---------------------------------------------------------------------------
 
 def compute_parasympathetic(

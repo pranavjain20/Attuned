@@ -93,9 +93,9 @@ RECOVERY_TIER_4_MAX = 80       # Functional / okay (above = great)
 FATIGUE_RECENT_DAYS = 5        # Look back window for multi-day pattern
 FATIGUE_BAD_DAYS_MIN = 3       # Min bad days in window → fatigue
 
-# Restorative sleep gate — if last night was genuinely restorative, skip accumulated_fatigue
-# Research: sleep quality is associated with next-day mood more than mood with next-night sleep
-# (Triantafillou 2019, PMC6456824 — association, not proven cause)
+# Restorative sleep gate — if last night was genuinely restorative, skip accumulated_fatigue.
+# The 85% / 6h cut-offs are a design choice. Inspiration: sleep quality is associated with
+# next-day mood (Triantafillou 2019, doi 10.2196/12613 — association, not cause).
 RESTORATIVE_SLEEP_EFFICIENCY_MIN = 85.0    # Sleep efficiency % floor
 RESTORATIVE_SLEEP_TOTAL_MIN_MS = 6 * 3_600_000  # 6h minimum total sleep
 
@@ -110,9 +110,8 @@ BASELINE_CALM_ANCHOR = {"para": 0.45, "symp": 0.15, "grnd": 0.40}
 BASELINE_ENERGY_ANCHOR = {"para": 0.05, "symp": 0.75, "grnd": 0.20}
 BASELINE_Z_CLAMP = 2.0
 BASELINE_SLEEP_WEIGHT = 0.65  # Sleep architecture vs recovery delta weight for baseline scaling
-# ~2:1 sleep over recovery delta is a design choice, not a published ratio. Directional
-# support that sleep matters for how you feel: Triantafillou 2019 (PMC6456824),
-# Pierson-Bartel & Ujma 2024 (Sci Rep). See docs/RESEARCH.md › Citation corrections.
+# ~2:1 sleep over recovery delta is a design choice, not a published ratio.
+# See docs/RESEARCH.md › Our design.
 TOKEN_EXPIRY_BUFFER_SECONDS = 300  # 5-minute buffer before refresh
 
 # ---------------------------------------------------------------------------
@@ -179,7 +178,8 @@ ERA_SIGMA_DEFAULT = 5
 
 # When era similarity drops below this floor, cap total pairwise similarity.
 # A 1999 song matching perfectly on mood/BPM/genre shouldn't survive in a 2010s cluster.
-# Research: production era changes are "more jarring than cultural differences."
+# Design choice: production-era mismatch sounds more jarring than cultural mismatch
+# (our own judgment; see reference/era_cohesion_research.md).
 ERA_SIM_FLOOR = 0.05          # Below this = effectively different eras
 ERA_HARD_CAP_SIMILARITY = 0.15  # Max total similarity when era_sim < floor
 
@@ -211,7 +211,7 @@ STATE_NEURO_PROFILES: dict[str, dict[str, float]] = {
 # Target valence per dimension — what emotional tone each neuro state needs.
 # Para (calming) → warm/serene (0.60), not sad. Symp (energizing) → uplifting (0.75).
 # Grnd (emotional processing) → reflective/melancholy OK (0.40).
-# Russell's Circumplex: calming = low arousal + positive valence.
+# Design choice (loosely modelled on Russell's valence × arousal emotion model).
 VALENCE_TARGET_PARA = 0.60
 VALENCE_TARGET_SYMP = 0.75
 VALENCE_TARGET_GRND = 0.40
@@ -225,10 +225,9 @@ VALENCE_MATCH_WEIGHT = 0.15
 # Weight given to mood tags in the profiler (existing audio weights scale to 1 - this)
 MOOD_TAG_WEIGHT = 0.15
 
-# Mood tag affinity table — research-backed weights for each dimension.
-# Each tag has (para, symp, grnd) weights from 0.0-1.0.
-# Based on Russell's circumplex, Bernardi 2006, Chanda & Levitin 2013,
-# Saarikallio 2007, Taruffi et al. 2017, Bretherton 2019.
+# Mood tag affinity table — design-choice weights for each dimension.
+# Each tag has (para, symp, grnd) weights from 0.0-1.0. Hand-set by us; no study
+# prescribes these values. See docs/RESEARCH.md › Our design.
 MOOD_AFFINITY: dict[str, tuple[float, float, float]] = {
     # (para, symp, grnd)
     # --- High sympathetic ---

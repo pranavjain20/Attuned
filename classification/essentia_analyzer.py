@@ -119,8 +119,8 @@ def analyze_audio(audio_path: Path) -> dict[str, Any] | None:
         energy = max(0.0, min(1.0, (onset_rate - 2.0) / 4.0))
 
         # Opening energy — RMS of intro relative to overall RMS.
-        # Intro = first 7% of song duration (industry standard: intros average ~7%
-        # of total song length, per Billboard Hot 100 analysis). This adapts to
+        # Intro = first 7% of song duration (design choice: roughly the length of
+        # a typical pop intro; not taken from a study). This adapts to
         # song length: ~17s for a 4-min Bollywood song, ~13s for a 3-min pop track.
         # RMS measures actual loudness. Ratio is immune to mastering differences.
         # Low ratio = song builds slowly (quiet intro). High ratio = instant energy.

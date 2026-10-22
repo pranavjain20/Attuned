@@ -20,7 +20,7 @@ from intelligence.continuous_profile import (
 
 
 class TestWeightTableProperties:
-    """Verify the weight table reflects the research-backed sleep:autonomic ratio."""
+    """Verify the weight table keeps the sleep:autonomic design ratio (about 2:1)."""
 
     AUTONOMIC_SIGNALS = [
         "recovery_z", "recovery_delta_z", "hrv_z", "hrv_delta_z",

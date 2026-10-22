@@ -252,8 +252,9 @@ def _last_night_restorative(sleep: dict | None) -> bool:
     3. Sleep efficiency >= 85%
     4. Total sleep >= 6 hours
 
-    Research basis: sleep quality is associated with next-day mood
-    (Triantafillou 2019, PMC6456824; Pierson-Bartel & Ujma, Sci Rep 2024).
+    The conditions and cut-offs are a design choice, inspired by research
+    showing sleep quality is associated with next-day mood (see
+    docs/RESEARCH.md).
     """
     if sleep is None:
         return False

@@ -27,12 +27,11 @@ from intelligence.trends import compute_hrv_trend
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Weight table: research-backed, sleep-dominant
+# Weight table: design choice, sleep-dominant
 #
 # Aggregate sleep:autonomic weight ratio targets ~2:1. This is a design choice,
-# not a published ratio. Directional support that sleep matters for how you feel:
-# Triantafillou 2019 (PMC6456824), Pierson-Bartel & Ujma 2024 (Sci Rep), Le 2025
-# (PMC12208346). See docs/RESEARCH.md › Citation corrections.
+# not a published ratio — inspired by research showing sleep is tied to how you
+# feel (see docs/RESEARCH.md › The problem), which supports the direction only.
 #
 # Previous table had this inverted (2.5:1 autonomic over sleep) because the
 # Day 10 sleep dampener was architecturally bypassed by the Day 12 continuous
@@ -79,8 +78,7 @@ WEIGHT_SENSITIVITY = 0.20
 
 # Sleep debt z-score cap: debt above this threshold (7-day rolling hours) cannot
 # produce a positive z-score. "Less debt than your chronic pattern" ≠ "good."
-# Van Dongen 2003: 1h/night deficit (7h/week) is onset of measurable impairment.
-# Belenky 2003 corroborates: 7h/night stable, 5h/night significant decline.
+# The 7h threshold is a design choice (~1h/night short); no study gives it.
 SLEEP_DEBT_POSITIVE_THRESHOLD = 7.0
 
 
@@ -237,7 +235,7 @@ def compute_z_scores(
     # Sleep debt z (INVERTED: high debt = bad = negative z)
     # Cap: debt above SLEEP_DEBT_POSITIVE_THRESHOLD cannot produce positive z.
     # "Less debt than your chronic pattern" is not a good signal when you still
-    # carry meaningful debt. Van Dongen 2003: 7h/week is onset of impairment.
+    # carry meaningful debt. The 7h threshold is a design choice.
     if debt is not None and debt_bl:
         raw_debt_z = _safe_z(debt, debt_bl["mean"], debt_bl["sd"])
         z = -raw_debt_z if raw_debt_z is not None else None

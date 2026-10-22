@@ -1,8 +1,8 @@
 # System Logic — How Attuned Thinks
 
-This is the bridge between raw research (RESEARCH.md) and the product spec (PRD.md). It explains the entire system in plain language — how every piece connects to every other piece, why each decision was made, and what happens when things go right or wrong.
+This is the bridge between the research (RESEARCH.md) and the product spec (PRD.md). It explains the entire system in plain language — how every piece connects to every other piece, why each decision was made, and what happens when things go right or wrong.
 
-Read this document and you'll understand the full chain from "you wake up" to "a playlist is playing." If you want to go deeper into the raw science, read RESEARCH.md. If you want to go deeper into the product spec, read PRD.md. This document gives you enough to understand both without needing either.
+Read this document and you'll understand the full chain from "you wake up" to "a playlist is playing." If you want to see which published research Attuned rests on, and which parts are our own design, read RESEARCH.md. If you want to go deeper into the product spec, read PRD.md. This document gives you enough to understand both without needing either.
 
 ---
 
@@ -59,7 +59,7 @@ This is the difference between Attuned and a generic "calming music" app. A calm
 
 ## 2. What Attuned Does (30 Seconds)
 
-Every morning, WHOOP measures your body while you sleep — heart rate variability, resting heart rate, sleep stages, recovery. Attuned extracts 12 independent signals from that data — not just the recovery score, but HRV, resting heart rate, sleep architecture, multi-day trends, and accumulated debt — computes a continuous neurological profile of how your autonomic nervous system actually feels, and generates a Spotify playlist of 15-20 songs from your own library whose acoustic properties are scientifically matched to that profile.
+Every morning, WHOOP measures your body while you sleep — heart rate variability, resting heart rate, sleep stages, recovery. Attuned extracts 12 independent signals from that data — not just the recovery score, but HRV, resting heart rate, sleep architecture, multi-day trends, and accumulated debt — computes a continuous neurological profile that estimates where your autonomic nervous system is today, and generates a Spotify playlist of 15-20 songs from your own library whose acoustic properties are matched to that profile.
 
 Not generic spa music. YOUR songs — ones you've listened to dozens of times — selected because their tempo, energy, acousticness, and other measurable properties support your nervous system in the direction it needs to go.
 
@@ -69,16 +69,16 @@ Not generic spa music. YOUR songs — ones you've listened to dozens of times �
 
 Three facts make Attuned possible:
 
-**Fact 1: Music directly affects the autonomic nervous system through measurable properties.**
-Slow tempo increases parasympathetic activity (rest and recovery). Fast tempo increases sympathetic activity (alertness and energy). This isn't subjective — it's been measured with EEG, HRV monitors, cortisol tests, and blood pressure in dozens of peer-reviewed studies. And tempo is just the strongest lever. Energy, acousticness, instrumentalness, valence, and key/mode all have documented physiological effects.
+**Fact 1: Music measurably shifts the autonomic nervous system.**
+Faster tempo raises heart rate, blood pressure and breathing in proportion to the speed; slow music and silence afterwards lower them (Bernardi et al. 2006). Slow-tempo music raises the parasympathetic part of HRV (Ooishi et al. 2017). A 2020 systematic review found music raised HRV in 26 of 29 studies, though most had a high risk of bias (Mojtabavi et al. 2020). Tempo is the lever with the clearest evidence. How much the other properties (energy, acousticness, instrumentalness, valence, mode) matter is our design judgment. See RESEARCH.md.
 
-**Fact 2: WHOOP measures the exact same system.**
-HRV is a direct readout of autonomic nervous system balance. When WHOOP says your HRV is 20% below your baseline, it's saying your parasympathetic nervous system is suppressed. When it says your deep sleep was low, it's saying your body didn't physically recover. WHOOP is reading the state of the system that music can modulate.
+**Fact 2: WHOOP reads a signal from the same system.**
+HRV is a marker of autonomic nervous system activity, and WHOOP measures it during sleep. Music measurably shifts that same HRV signal. WHOOP is not a direct readout of how you feel, but it is reading part of the system that music can move.
 
-**Fact 3: Personal music amplifies the effect.**
-Research shows that familiar, personally meaningful music triggers stronger dopamine release and stronger autonomic benefits than unfamiliar music. In one large study, 74.8% of participants ranked their own music as most preferred, and the physiological benefits were significantly stronger with preferred music. A generic "calming playlist" works — YOUR calming songs work better.
+**Fact 3: Personal music has stronger reward and emotional effects.**
+Music people chose themselves releases dopamine, the brain's reward chemical (Salimpoor et al. 2011). Personally nostalgic songs activate the brain's reward and self-reflection networks more than familiar or unfamiliar songs matched for sound (Hennessy et al. 2025). This is a brain-level effect. The body's response tracks tempo, not preference (Bernardi et al. 2006), so we do not claim your own songs are physically more calming — only that they mean more to you.
 
-**The connection:** WHOOP tells us what the ANS needs. Song properties tell us what each song does to the ANS. The matching engine connects the two. And because we use your own library, the effect is amplified by personal familiarity.
+**The connection:** WHOOP data tells us roughly where the ANS is today. Song properties tell us which direction each song is likely to push. The matching engine connects the two. And because we use your own library, the songs are ones that already mean something to you.
 
 ---
 
@@ -87,7 +87,7 @@ Research shows that familiar, personally meaningful music triggers stronger dopa
 Here's exactly what happens, step by step:
 
 ### Step 1: WHOOP Data Arrives
-You sleep. WHOOP measures HRV, resting heart rate, sleep stages (deep, REM, light, awake), SpO2, and skin temperature throughout the night. When you wake up, a recovery score is calculated.
+You sleep. WHOOP measures HRV, resting heart rate, sleep stages (deep, REM, light, awake), respiratory rate, and (on WHOOP 4.0+) SpO2 and skin temperature. When you wake up, a recovery score is calculated.
 
 ### Step 2: Personal Baselines Provide Context
 Today's raw numbers mean nothing without context. An HRV of 45ms is great if your 30-day average is 42ms. It's terrible if your average is 65ms. The system computes personal baselines from your full WHOOP history:
@@ -100,26 +100,26 @@ Today's raw numbers mean nothing without context. An HRV of 45ms is great if you
 
 Why rolling averages instead of all-time averages? Because your body changes. Fitness improves, stress levels shift, seasons change. A 30-day window captures your *current* normal, not what normal was six months ago.
 
-Why we use LnRMSSD instead of raw RMSSD: Raw HRV values have a skewed distribution — they bunch up at lower values and have a long tail at higher values. The log transform (natural log) normalizes this into a bell curve, which makes standard deviations, rolling averages, and trend calculations mathematically valid. This is the field standard (Plews 2012, Buchheit 2014). WHOOP gives us raw `hrv_rmssd_milli` — we log-transform it immediately when storing it.
+Why we use LnRMSSD instead of raw RMSSD: Raw HRV values have a skewed distribution — they bunch up at lower values and have a long tail at higher values. The log transform (natural log) normalizes this into a bell curve, which makes standard deviations, rolling averages, and trend calculations mathematically valid. This is a common convention in HRV monitoring, and our choice here. WHOOP gives us raw `hrv_rmssd_milli` — we log-transform it immediately when storing it.
 
 ### Step 3: Trend Detection
 Single-day numbers are noisy. You could have a bad HRV reading because you ate late, drank alcohol, or just had natural variation. Multi-day trends reveal the real picture:
 
 - **HRV trend:** Is your 7-day rolling average declining, stable, or rising relative to your 30-day baseline? A single bad day is noise. Three consecutive days of decline is a signal.
-- **RHR trend:** Is your resting heart rate creeping up over the past 3-7 days? Rising RHR combined with falling HRV is the strongest indicator of accumulated fatigue.
+- **RHR trend:** Is your resting heart rate creeping up over the past 3-7 days? We treat rising RHR combined with falling HRV as a fatigue signal (a design choice).
 - **Sleep debt trajectory:** Over the past 7 days, how much total sleep have you missed? Each day: `debt = max(0, sleep_needed - actual_sleep)`. Sum over 7 days. This catches chronic under-sleeping that hasn't yet shown up in HRV.
 
 ### Step 4: Sleep Architecture Analysis
 Not just "did you sleep enough" but "what kind of sleep did you get." This is where Attuned gets more specific than any other recovery tool:
 
-- **Deep sleep** is responsible for physical recovery — muscle repair, growth hormone release, immune function. Normal: 15-20% of total sleep. If tonight's deep sleep is significantly below YOUR personal norm (>1.5 standard deviations below your 30-day average), your body didn't physically recover.
-- **REM sleep** is responsible for cognitive and emotional recovery — memory consolidation, emotional regulation, learning. Normal: 20-25% of total sleep. If tonight's REM is significantly below your norm, your emotional processing was disrupted. You may feel foggy, reactive, or emotionally sensitive.
-- **The deep-to-REM balance** is the key insight. A night heavy on deep sleep but light on REM: body recovered but mind didn't. The inverse: mind was active but body didn't restore. These are different states that need different music. Most recovery apps can't make this distinction because they collapse everything into one score.
+- **Deep sleep** is commonly linked to physical recovery. If tonight's deep sleep is significantly below YOUR personal norm (>1.5 standard deviations below your 30-day average), your body didn't physically recover.
+- **REM sleep** is commonly linked to emotional and cognitive recovery. In one study, a night with less REM than a person's usual was followed by slightly more negative mood (Le et al. 2025). If tonight's REM is significantly below your norm, Attuned leans toward grounding music (a design choice).
+- **The deep-to-REM balance** is the key insight. A night heavy on deep sleep but light on REM: body recovered but mind didn't. The inverse: mind was active but body didn't restore. These are different states that need different music. A single score can't show this distinction.
 
 ### Step 5: State Classification
 The classifier takes today's data + baselines + trends and assigns one of six composite states. It evaluates top-to-bottom and returns the first match (so more serious states are checked first):
 
-1. **Accumulated Fatigue** — multi-day decline across HRV, RHR, and sleep debt. **Restorative sleep gate:** if last night's sleep was genuinely restorative (no deep deficit, no REM deficit, efficiency >=85%, total >=6h), fatigue is skipped. Playlists target how you feel, not the week's trend — and a person who slept great feels ready even if the week was rough (Triantafillou 2019, PMC6456824: sleep quality is associated with next-day mood with 2.6x the coefficient of the reverse direction).
+1. **Accumulated Fatigue** — multi-day decline across HRV, RHR, and sleep debt. **Restorative sleep gate:** if last night's sleep was genuinely restorative (no deep deficit, no REM deficit, efficiency >=85%, total >=6h), fatigue is skipped. Playlists target how you feel, not the week's trend. The gate and its cut-offs are a design choice, inspired by research showing sleep quality is tied to next-day mood (Triantafillou et al. 2019 — an association).
 2. **Physical Recovery Deficit** — deep sleep significantly low, REM adequate
 3. **Emotional Processing Deficit** — REM significantly low, deep sleep adequate
 4. **Poor Recovery** — today is bad but the 7-day trend is fine
@@ -156,13 +156,13 @@ This is a foundational concept. A recovery score of 50% with an HRV of 45ms mean
 
 The same number. Completely different meanings. This is why Attuned computes everything relative to YOUR personal rolling baselines, not against population norms. What matters isn't "is this number good?" but "is this number normal for ME?"
 
-We need at least 14 days of WHOOP data before baselines are reliable (ideally 21+ days). Before that threshold, the system should acknowledge uncertainty in its state classifications.
+We require at least 14 days of WHOOP data before trusting baselines (ideally 21+ days). These numbers are a design choice. Before that threshold, the system should acknowledge uncertainty in its state classifications.
 
 ### 4.2 Why We Use Raw Metrics Instead of the Recovery Score
 
 WHOOP's Recovery Score (0-100%, green/yellow/red) is the number most people look at. Why don't we just use it?
 
-The recovery score is composed of ~65% HRV, ~20% RHR, ~15% respiratory rate, plus smaller contributions from sleep, SpO2, and skin temperature. It's normalized against your 30-day baseline and run through a proprietary non-linear transformation.
+WHOOP says Recovery factors in HRV, resting heart rate, sleep and respiratory rate, and relies mostly on HRV. WHOOP does not publish the formula or the weights (see RESEARCH.md § 2).
 
 **The problem:** It collapses multiple dimensions into one number. You can't distinguish between:
 - "Your HRV is low because you didn't get enough deep sleep" (Physical Recovery Deficit)
@@ -171,7 +171,7 @@ The recovery score is composed of ~65% HRV, ~20% RHR, ~15% respiratory rate, plu
 
 These all look like "yellow recovery" or "red recovery," but they need different music.
 
-**The evidence:** In a study of 23 elite NCAA swimmers (Lundstrom 2024), raw HRV correlated significantly with validated stress measures (r = -0.462 for sport-specific stress). WHOOP Strain and Recovery showed no relationship with the stress or recovery questionnaire variables. The composite algorithm actually *lost* the signal that existed in the raw data.
+**The evidence:** In a study of 23 college swimmers wearing WHOOP (Lundstrom et al. 2024), raw HRV tracked their stress-questionnaire scores (r ≈ -0.46), but WHOOP's Recovery score showed no significant relationship with them. A small study, but it shows a composite score and a raw signal can tell different stories.
 
 **What we do instead:** Use raw metrics (HRV, RHR, sleep stages, sleep debt) as primary inputs — they give us the multi-dimensional signal we need. Use the Recovery Score as a sanity check — if our classifier says "Peak Readiness" but WHOOP says red, investigate.
 
@@ -181,14 +181,14 @@ Not all metrics are equally important. Here's how they stack up, from most to le
 
 | Rank | Metric | Role | What It Does |
 |---|---|---|---|
-| **#1** | **HRV (LnRMSSD)** | Foundation | Direct ANS readout. The single most important metric — it reads the state of the exact system music modulates. |
+| **#1** | **HRV (LnRMSSD)** | Foundation | A marker of ANS activity, and the same signal music measurably shifts. Ranked first by design. |
 | **#2** | **Deep sleep + REM** | State splitters | The ONLY metrics that distinguish Physical Recovery Deficit from Emotional Processing Deficit. Without them, "bad sleep" is one bucket. |
 | **#3** | **RHR + Sleep debt** | Amplifiers | Don't drive states alone but strengthen the Accumulated Fatigue signal. HRV down + RHR up + sleep debt = high-confidence fatigue detection. |
 | **#4** | **HRV CV** | Modifier | Doesn't pick states. Tells us how much to trust the other metrics and whether to add extra stabilization. |
 | **#5** | **Recovery score** | Sanity check | Confirms Peak Readiness/Baseline. Flags disagreements. Could be removed without breaking anything. |
 | **#6** | **SpO2 + Skin temp** | Edge cases | Illness flags. Not connected to music. Zero impact on playlists. |
 
-**The design is intentional:** the most important metrics (#1 HRV) are also the most accurately measured (99% agreement with clinical ECG). The least important (#6 SpO2, skin temp) are the noisiest. We depend most on what's most reliable.
+**This ranking is a design choice.** It reflects which signals we think matter most for how you feel, not a published ranking.
 
 ### 4.4 What Each Metric Does and What Breaks If It's Wrong
 
@@ -196,7 +196,7 @@ Not all metrics are equally important. Here's how they stack up, from most to le
 
 **What it is:** The variation in time between heartbeats, measured during sleep. Higher HRV = parasympathetic dominant (recovered, resilient). Lower = sympathetic dominant (stressed, depleted).
 
-**Why it's #1:** It's the gold standard for ANS balance. It directly reflects the system that music modulates. WHOOP measures it with 99% clinical-grade accuracy. It accounts for ~65% of WHOOP's own recovery score.
+**Why it's #1:** It is the standard wearable marker of ANS activity, music measurably shifts it, and WHOOP says it is the main input to Recovery. Ranking it first is our choice.
 
 **How we use it:**
 - 30-day rolling average = your "normal"
@@ -211,7 +211,7 @@ Not all metrics are equally important. Here's how they stack up, from most to le
 - 7+ consecutive days below baseline: red flag regardless of magnitude
 - At or above 30-day average: supports Peak Readiness
 
-These thresholds use the Smallest Worthwhile Change (SWC) framework from Plews/Buchheit — the individual's own standard deviation as the ruler, rather than fixed percentages that mean different things for different people.
+These thresholds are design choices. They use the individual's own standard deviation as the ruler, rather than fixed percentages that mean different things for different people.
 
 **If it reads too high (healthier than reality):** The worst failure mode. You get energizing music when your nervous system needs rest. High-energy music pushes a depleted ANS further into sympathetic overdrive.
 
@@ -221,7 +221,7 @@ These thresholds use the Smallest Worthwhile Change (SWC) framework from Plews/B
 
 #### Deep Sleep — #2, State Splitter
 
-**What it is:** The sleep stage for physical recovery — muscle repair, growth hormone release, immune function. Normal: 15-20% of total sleep.
+**What it is:** The deepest sleep stage, commonly linked to physical recovery.
 
 **Why it matters:** It's the ONLY way to identify Physical Recovery Deficit specifically. Without it, we can't tell "your body didn't recover" from "your mind didn't recover" — and those need different music.
 
@@ -232,13 +232,13 @@ These thresholds use the Smallest Worthwhile Change (SWC) framework from Plews/B
 
 **If wrong:** Reading too low = unnecessary but harmless calming music. Reading too high = missed physical recovery deficit, potentially energizing music when body needs rest.
 
-**Accuracy note:** WHOOP sleep staging has fair-to-moderate agreement with clinical polysomnography (Cohen's kappa 0.21-0.53). Absolute percentages may be off. But that's OK — we compare tonight's reading against YOUR baseline on the SAME device. Within-device trends remain useful even when absolute accuracy isn't perfect.
+**Accuracy note:** Wearable sleep staging is an estimate, not a lab sleep study. Absolute percentages may be off. But that's OK — we compare tonight's reading against YOUR baseline on the SAME device. Within-device trends remain useful even when absolute accuracy isn't perfect.
 
 #### REM Sleep — #2, State Splitter
 
-**What it is:** The sleep stage for cognitive and emotional recovery — memory consolidation, emotional regulation, learning. Normal: 20-25% of total sleep.
+**What it is:** The sleep stage commonly linked to emotional and cognitive recovery.
 
-**Why it matters:** Same logic as deep sleep but for the other half. Low REM = emotional regulation may be impaired tomorrow. You might feel foggy, reactive, or emotionally sensitive. This calls for grounding music (warm, familiar, vocals OK) — different from the body-soothing music Physical Recovery Deficit needs.
+**Why it matters:** Same logic as deep sleep but for the other half. In one study, less REM than a person's usual was followed by slightly more negative mood (Le et al. 2025). Attuned responds with grounding music (a design choice) (warm, familiar, vocals OK) — different from the body-soothing music Physical Recovery Deficit needs.
 
 **Thresholds:**
 - >1.0 SD below personal mean: caution
@@ -249,14 +249,14 @@ These thresholds use the Smallest Worthwhile Change (SWC) framework from Plews/B
 
 #### Resting Heart Rate (RHR) — #3, Amplifier
 
-**What it is:** Heart rate during deepest sleep. Lower = better recovered. Measured during sleep because waking HR has too many confounders (caffeine, stress, activity).
+**What it is:** Heart rate during sleep. Lower = better recovered. Measured during sleep because waking HR has too many confounders (caffeine, stress, activity).
 
 **Why it matters:** It doesn't drive any state alone. It amplifies HRV. The combination is what matters:
 - HRV declining + RHR rising = strong fatigue signal (Accumulated Fatigue)
 - HRV declining + RHR stable = possible early fatigue, could be an acute stressor
 - HRV stable + RHR rising = likely acute stressor (illness, alcohol), not training fatigue
 
-**Thresholds:** +5 bpm above 30-day average (sustained 3+ days) = caution. +7 bpm = concern.
+**Thresholds (design choice):** +5 bpm above 30-day average (sustained 3+ days) = caution. +7 bpm = concern.
 
 **If wrong:** One wrong metric alone can't trigger Accumulated Fatigue — the composite requires all three (HRV + RHR + sleep debt). This protects against false positives.
 
@@ -264,9 +264,7 @@ These thresholds use the Smallest Worthwhile Change (SWC) framework from Plews/B
 
 **What it is:** The cumulative gap between sleep needed and sleep obtained over 7 days. `Daily debt = max(0, sleep_needed - actual_sleep)`. Summed over 7 days.
 
-**Why it matters:** It catches chronic under-sleeping that hasn't yet crashed HRV. You can run a moderate deficit for days before HRV drops, but cognitive impairment is already happening. Research (Van Dongen & Dinges 2003) showed that >5 hours of cumulative debt over a week causes detectable cognitive impairment, and subjects were *unaware* of their impairment. >10 hours is equivalent to a full night of total sleep deprivation.
-
-**Recovery timeline:** 1 hour of debt takes up to 4 days to fully recover. Full elimination of chronic debt may require 9+ days. Weekend catch-up is partial at best.
+**Why it matters:** It catches chronic under-sleeping that HRV may not show. In a lab study, two weeks of 6 hours or less in bed built up thinking and reaction-time deficits comparable to up to two nights without sleep, and people's own sleepiness ratings levelled off, so they largely didn't notice (Van Dongen et al. 2003). The specific debt thresholds Attuned uses (5h for fatigue, 7h for the debt cap) are design choices.
 
 #### HRV Coefficient of Variation (CV) — #4, Modifier
 
@@ -274,8 +272,8 @@ These thresholds use the Smallest Worthwhile Change (SWC) framework from Plews/B
 
 `CV = (SD of 7 daily LnRMSSD values) / (Mean of 7 daily LnRMSSD values) * 100`
 
-**Ranges:**
-- <10%: Elite stability
+**Ranges (design choice):**
+- <10%: Very stable
 - 10-20%: Normal for active people
 - >15%: Elevated variability
 - >20%: Significant instability
@@ -297,13 +295,13 @@ These thresholds use the Smallest Worthwhile Change (SWC) framework from Plews/B
 
 **CV is most impactful for middle states** (Baseline, Poor Recovery) where ranges are wide and there's room to shift. For extreme states (Accumulated Fatigue, Peak Readiness), ranges are already narrow and CV has little room to modify them.
 
-**Research note:** Buchheit 2014 found that rising CV over weeks was one of the earliest warning signs of overtraining — it showed up *before* performance dropped. It's a leading indicator.
+**Note:** these CV bands and their meaning are our design choice. We have not found research showing that high CV on its own is a warning sign.
 
 #### Recovery Score — #5, Sanity Check
 
-**What it is:** WHOOP's composite number (0-100%), green/yellow/red. ~65% HRV, ~20% RHR, ~15% respiratory rate, plus sleep/SpO2/skin temp.
+**What it is:** WHOOP's composite number (0-100%), green/yellow/red. WHOOP says it factors in HRV, resting heart rate, sleep and respiratory rate; the formula is not public.
 
-**Why we don't rely on it:** In the Lundstrom 2024 swimmer study, raw HRV correlated with stress measures but the Recovery Score showed zero correlation. The composite lost the signal. It also collapses dimensions we need to keep separate.
+**Why we don't rely on it:** In the Lundstrom et al. 2024 swimmer study, raw HRV tracked stress-questionnaire scores but the Recovery score showed no significant relationship. It also collapses dimensions we need to keep separate.
 
 **How we use it:** Confirms Peak Readiness (green) and Baseline (yellow). Flags disagreements with our classifier. Could be removed entirely without breaking anything.
 
@@ -311,7 +309,7 @@ These thresholds use the Smallest Worthwhile Change (SWC) framework from Plews/B
 
 **What they are:** Blood oxygen and skin temperature. Illness/anomaly flags.
 
-**Impact on playlists:** None. These aren't connected to the music-ANS pathway. If abnormal, we flag them for awareness. Music isn't the intervention.
+**Impact on playlists:** None. If abnormal, we flag them for awareness. Music isn't the intervention.
 
 ---
 
@@ -319,19 +317,19 @@ These thresholds use the Smallest Worthwhile Change (SWC) framework from Plews/B
 
 ### 5.1 What Properties Matter and Why
 
-Every song has measurable properties that determine how it interacts with the autonomic nervous system. Seven properties matter, weighted by the strength of their documented physiological effects:
+Every song has measurable properties that we use to estimate which direction it pushes the autonomic nervous system. Seven properties are used. The weights below are our design choices (shown for the calming score; exact current values live in `classification/profiler.py`):
 
-| Song Property | Weight | What It Does to Your Body | Key Research |
-|---|---|---|---|
-| **Tempo (BPM)** | 0.35 (35%) | The single strongest lever. Slow tempo (50-70 BPM) boosts parasympathetic activity — heart rate drops, breathing slows, vagal tone increases. Fast tempo (120-150 BPM) activates sympathetic response. Your heart rate literally entrains toward the beat — if you're at rest and hear 80 BPM drums, your heart rate rises toward 80. If you hear 60 BPM, it drops toward 60. | Bretherton 2019: BRS significantly greater at 60 vs 120 BPM. Bernardi 2006: HR and BP increase proportional to tempo. Kim 2024: 60-80 BPM inhibits sympathetic activity. Dey 2017: heart rate entrainment. |
-| **Energy** | 0.25 (25%) | Arousal has a stronger physiological effect than emotional content. A loud, fast minor-key song is more activating than a quiet, slow major-key song. High energy = sympathetic activation (HR, breathing, BP rise). After high-energy music stops, parasympathetic rebound occurs. | Ellis & Thayer 2010. Int J Psychophysiology 2024 systematic review. |
-| **Acousticness** | 0.10 (10%) | Acoustic instruments (piano, guitar, strings) activate parasympathetic response more than electronic/synthesized sounds. Classical/acoustic music reduces cortisol, HR, and BP. Probably related to the brain's evolved response to natural vs. artificial sounds. | Thoma 2013: cortisol/HR/BP reduction. Scarratt 2023: sleep/study playlists characterized by high acousticness. |
-| **Instrumentalness** | 0.10 (10%) | Instrumental music is more effective for parasympathetic activation because lyrics add cognitive load — the brain has to process language, which keeps it more active. Exception: for emotional grounding states, vocals are beneficial because emotional connection outweighs cognitive load. | Journal of Cultural Cognitive Science 2024. BMC Psychology 2023. |
-| **Valence** | 0.10 (10%) | Happy vs. sad. Weaker physiological effect than tempo or energy, but important for subjective experience. The combination with energy matters: high valence + low energy = serene (parasympathetic). High valence + high energy = excited (sympathetic). Low valence + high energy = angry/fearful (strong sympathetic). | Frontiers in Physiology: joyful music shifts toward sympathetic vs. silence. |
-| **Mode (Major/Minor)** | 0.05 (5%) | Major key = bright, positive. Minor = reflective, introspective. Small but real physiological effect. Major mode decreases cortisol more than minor (better for stress reduction). Minor elicits slightly higher arousal. | Khalfa 2002: skin conductance. Zhang 2024: cortisol reduction. |
-| **Danceability** | 0.05 (5%) | Rhythmic regularity gives sense of control and predictability. Not a strong ANS driver alone but contributes to the overall profile. | |
+| Song Property | Weight | Our Reasoning |
+|---|---|---|
+| **Tempo (BPM)** | 0.35 (35%) | The lever with the clearest evidence: heart rate, blood pressure and breathing rise with faster tempo (Bernardi et al. 2006), and slow tempo raises parasympathetic HRV (Ooishi et al. 2017). |
+| **Energy** | 0.25 (25%) | Loud, intense music feels more activating. Our judgment. |
+| **Acousticness** | 0.10 (10%) | We treat acoustic instruments as more calming than electronic sounds. Our judgment. |
+| **Instrumentalness** | 0.10 (10%) | We assume lyrics keep the mind busier, so instrumental music counts as more calming. Exception: for grounding, vocals help, because emotional connection matters more. Our judgment. |
+| **Valence** | 0.12 (12%) | Happy vs. sad. Important for how a song feels. The combination with energy matters: high valence + low energy = serene; high valence + high energy = excited. |
+| **Mode (Major/Minor)** | 0.05 (5%) | Major = bright, minor = reflective. A small weight. |
+| **Danceability** | 0.03 (3%) | Rhythmic regularity. A small contribution. |
 
-**Why these weights:** Tempo and energy together = 60% because they have the strongest, most replicated evidence. If you only get two properties right, get these two right. Acousticness and instrumentalness = 20% — they set the context but aren't as powerful. Valence, mode, danceability = 20% — fine-tuning and subjective experience.
+**Why these weights:** Tempo gets the most weight because its effect on the body is the best documented. Energy comes next by our judgment. The rest are fine-tuning. None of these numbers come from a study.
 
 ### 5.2 How We Get Song Properties (LLM Classification)
 
@@ -339,9 +337,9 @@ Spotify's audio features API is deprecated for new apps — we can't get BPM, en
 
 **How it works:** We send batches of 5 songs to the LLM with a structured prompt. For each song, it returns: BPM (exact integer), key, mode, energy (0.0-1.0), valence (0.0-1.0), acousticness (0.0-1.0), danceability (0.0-1.0), instrumentalness (0.0-1.0), mood tags, genre tags, and a confidence rating ("high"/"medium"/"low").
 
-**Why batches of 5:** Quality drops significantly above 10 songs per batch. At 5, the model gives each song adequate attention. Cost scales linearly at ~$0.01 per batch.
+**Why batches of 5:** In our experience, quality drops above about 10 songs per batch. At 5, the model gives each song adequate attention. Cost scales linearly at ~$0.01 per batch.
 
-**Accuracy varies by property and song popularity:**
+**Accuracy varies by property and song popularity** (rough early estimates, not measured by us):
 
 | Property | Popular Songs | Obscure Songs | Notes |
 |---|---|---|---|
@@ -374,7 +372,7 @@ This means a song classified with low confidence has its property match score ha
 
 ### 5.2b Essentia Audio Analysis + Merge Logic
 
-Essentia (open-source audio analysis) extracts properties from actual audio clips. 99.1% of the library has Essentia data. Each property has different reliability, so the merge with LLM values is property-specific:
+Essentia (open-source audio analysis) extracts properties from actual audio clips. Most of each library has Essentia data (the share varies by user). Each property has different reliability, so the merge with LLM values is property-specific:
 
 **BPM — LLM primary, Essentia for cross-validation.** Essentia's beat tracker has octave errors (2x/0.5x BPM) on ~20% of songs, especially Indian music with tabla patterns. LLM knows the correct BPM for well-known songs. When both agree (within 20%), average them. When Essentia is 2x or 0.5x of LLM, it's an octave error — trust LLM. Otherwise trust LLM (broader knowledge).
 
@@ -402,15 +400,13 @@ A validation layer sits between merge and DB storage. It reduces confidence for 
 
 **Computed confidence (not self-reported):** LLMs always self-report high confidence — GPT-4o-mini returned 1.0 on every song including niche kirtan tracks. Instead, confidence is computed from cross-validation: base 0.5 for having a classification, +0.2 for having Essentia data, +0.3 for BPM agreement between Essentia and LLM (within 20%, excluding octave errors).
 
-### 5.3 Why YOUR Music Matters (The Familiarity Effect)
+### 5.3 Why YOUR Music Matters
 
-This isn't just a preference — it's neurochemistry. Familiar, personally meaningful music triggers stronger dopamine release via the brain's reward circuit. Music activates the same endorphin pathways as food and social bonding (Chanda & Levitin 2013).
+Music people choose themselves engages the brain's reward system: it releases dopamine both while anticipating a favourite moment and at the moment itself (Salimpoor et al. 2011). Personally nostalgic songs activate reward and self-reflection networks more than familiar or unfamiliar songs matched for sound (Hennessy et al. 2025).
 
-In a large study (European Heart Journal 2024), 74.8% of participants ranked their own music as most preferred, and the autonomic benefits were significantly stronger with personally preferred music.
+What the research does *not* show is that your own music calms your body more. The body's response tracks tempo, not preference (Bernardi et al. 2006). So the claim is narrower: slow tempo is linked to calmer heart activity, and your own songs are the ones that carry meaning and reward for you.
 
-This means a generic "scientifically optimized" playlist of unfamiliar songs will always underperform a playlist of YOUR songs that happen to have the right properties. The science says 60 BPM acoustic music is calming — but YOUR favorite 60 BPM acoustic song is MORE calming than a random one.
-
-**What this means for the system:** All recommendations come from the user's own library. The engagement scoring system ensures the most-loved songs appear most often. For the Emotional Processing Deficit state specifically, familiarity is weighted as heavily as any acoustic property — emotional connection IS the intervention.
+**What this means for the system:** All recommendations come from the user's own library (a design choice). The engagement scoring system ensures the most-loved songs appear most often.
 
 ### 5.4 Engagement Scoring — Not All Songs Are Equal
 
@@ -449,7 +445,7 @@ Where:
 
 ## 7. The Three Neurological Scores
 
-Every classified song gets three scores that quantify what it does to the autonomic nervous system. Each score is 0.0 to 1.0.
+Every classified song gets three scores that estimate which direction it pushes the autonomic nervous system. Each score is 0.0 to 1.0. The formulas below are design choices and show the original starting values; the exact current values live in `classification/profiler.py`.
 
 ### 6.1 Parasympathetic Activation Score — "How Calming Is This Song?"
 
@@ -514,14 +510,14 @@ sigmoid_rise(x, decay_below, plateau_above) = 1.0 / (1.0 + exp(-(x - midpoint) /
   where midpoint = average of the two parameters, steepness = range / 6
 ```
 
-These model monotonic relationships. For parasympathetic tempo: slower is better, plateauing below 60 BPM (you don't get infinitely calmer at 20 BPM) and decaying above 90 BPM. For sympathetic tempo: faster is better, plateauing above 130 BPM and decaying below 100 BPM. The research supports monotonic effects — Bretherton 2019 showed parasympathetic activation increases as tempo decreases, with no evidence of a peak-and-decline pattern.
+These model one-directional relationships. For parasympathetic tempo: slower is better, plateauing below 60 BPM (you don't get infinitely calmer at 20 BPM) and decaying above 90 BPM. For sympathetic tempo: faster is better, plateauing above 130 BPM and decaying below 100 BPM. The shape is our design choice; it follows the general direction that faster tempo raises heart rate and breathing (Bernardi et al. 2006).
 
 **Gaussian function** (grounding score and non-tempo properties):
 ```
 gaussian(x, center, sigma) = exp(-0.5 * ((x - center) / sigma)^2)
 ```
 
-Grounding keeps Gaussian because ~75 BPM is genuinely a centered target — too slow loses engagement, too fast loses calm. This is a true bell-curve relationship, not monotonic.
+Grounding uses a Gaussian because we treat moderate tempo as a centered target — too slow loses engagement, too fast loses calm. This is a design choice.
 
 **Example:** For parasympathetic tempo scoring (sigmoid_decay, plateau_below=60, decay_above=90):
 - A song at 50 BPM scores ~1.0 (plateau zone)
@@ -532,16 +528,16 @@ Grounding keeps Gaussian because ~75 BPM is genuinely a centered target — too 
 
 This is better than hard cutoffs because it gives partial credit. A song at 72 BPM isn't as calming as one at 60 BPM, but it's much better than one at 120 BPM. The sigmoid captures that gradient naturally — and unlike a Gaussian, it doesn't penalize songs that are even slower than 60 BPM, which is correct because a 45 BPM song is at least as calming as a 60 BPM song.
 
-**These formulas are starting points.** They will be calibrated against subjective listening tests ("does this playlist actually feel calming?") and adjusted. The weights and centers are derived from the research but the exact numbers will evolve with real use.
+**These formulas are starting points.** They will be calibrated against subjective listening tests ("does this playlist actually feel calming?") and adjusted. The weights and centers are our design choices, and the exact numbers will evolve with real use.
 
 ### 6.5 Mood Tag Affinity — Weighted Semantic Scoring
 
-Beyond the seven acoustic properties, each song's mood tags contribute to its neuro scores through a **weighted affinity table**. The original system used binary sets (a tag was "parasympathetic" or "sympathetic" or "grounding" — 1.0 or 0.0). This was replaced with a `MOOD_AFFINITY` dictionary mapping 64 tags to (para, symp, grnd) weight triples informed by 12 research studies (see RESEARCH.md Section 10).
+Beyond the seven acoustic properties, each song's mood tags contribute to its neuro scores through a **weighted affinity table**. The original system used binary sets (a tag was "parasympathetic" or "sympathetic" or "grounding" — 1.0 or 0.0). This was replaced with a `MOOD_AFFINITY` dictionary in `config.py` mapping 69 tags to (para, symp, grnd) weight triples. The weights are hand-set design choices.
 
 **Why weights instead of binary sets:**
 - **Gradation:** "Motivational" (0.00, 0.65, 0.25) is primarily sympathetic but has a grounding component — different from pure "energetic" (0.00, 0.85, 0.05).
-- **Cross-dimensional contribution:** "Sad" (0.60, 0.00, 0.55) activates both parasympathetic (prolactin consolation, Huron 2011) and grounding (DMN self-referential processing, Taruffi 2017).
-- **Full coverage:** All 64 observed tags have explicit weights. No tags default to neutral 0.5.
+- **Cross-dimensional contribution:** a tag like "sad" can count toward both calming and grounding.
+- **Full coverage:** Every tag in the table has explicit weights (69 at the time of writing; count `MOOD_AFFINITY` in `config.py`). Unknown tags default to neutral.
 
 `compute_mood_score` returns a weighted average across all of a song's mood tags for each dimension, replacing the binary fraction. This feeds into the neuro scoring alongside the acoustic property scores.
 
@@ -549,7 +545,7 @@ Beyond the seven acoustic properties, each song's mood tags contribute to its ne
 
 ## 8. The Six States — The Complete Bridge from Body to Music
 
-This is where everything connects. Each state shows: what WHOOP data triggers it, what's happening in your body, what song properties are targeted and WHY (traced back to the specific research), and what the resulting playlist sounds like.
+This is where everything connects. Each state shows: what WHOOP data triggers it, what's happening in your body, what song properties are targeted and why (our design reasoning), and what the resulting playlist sounds like.
 
 The classifier evaluates states top-to-bottom and returns the first match. This means Accumulated Fatigue (the most serious) is always checked before Poor Recovery (less serious), preventing a multi-day decline from being dismissed as "just one bad night."
 
@@ -557,20 +553,20 @@ The classifier evaluates states top-to-bottom and returns the first match. This 
 
 **WHOOP Trigger:** LnRMSSD <1.0 SD below 30-day mean, sustained 3+ days AND RHR rising (+5 bpm above baseline) AND sleep debt >5 hours (7-day rolling).
 
-**Restorative sleep gate:** Even when all fatigue triggers fire, if last night's sleep was genuinely restorative — no deep sleep deficit, no REM deficit, sleep efficiency >=85%, total sleep >=6 hours — fatigue classification is skipped. The person falls through to baseline. Research (Triantafillou 2019, PMC6456824) found sleep quality is associated with next-day mood with a coefficient 2.6× larger than the reverse direction (an association, not proven cause). One good night doesn't reverse accumulated fatigue objectively, but subjective experience is disproportionately driven by the most recent night. Playlists target how you FEEL, not lab-measured performance. Backtest: 62 of 150 fatigue days flipped to baseline, all with genuinely restorative sleep.
+**Restorative sleep gate:** Even when all fatigue triggers fire, if last night's sleep was genuinely restorative — no deep sleep deficit, no REM deficit, sleep efficiency >=85%, total sleep >=6 hours — fatigue classification is skipped. The person falls through to baseline. This is a design choice. It is inspired by research showing sleep quality is tied to next-day mood (Triantafillou et al. 2019 — an association, not proof of cause). The assumption that last night's sleep dominates how you feel this morning is ours, not a research finding. Playlists target how you FEEL, not lab-measured performance. Backtest: 62 of 150 fatigue days flipped to baseline, all with genuinely restorative sleep.
 
 **What's happening in your body:** This isn't a bad morning — it's a downward trend across multiple systems over multiple days. Your autonomic nervous system is depleted. The parasympathetic branch (rest/recovery) is suppressed. The requirement for all three signals to align (HRV + RHR + sleep debt) means this is high-confidence — no single bad reading can trigger it.
 
 **What your body needs from music:** Genuine parasympathetic activation. The strongest calming intervention in the system.
 
-| Song Property | Target Range | Why This Range (The Research) |
+| Song Property | Target Range | Why This Range (design choice) |
 |---|---|---|
-| BPM | 50-70 (sweet spot: 60) | Heart rate entrains toward the beat (Dey 2017). 60 BPM = maximum baroreflex sensitivity, driven entirely by parasympathetic activity (Bretherton 2019). 60-80 BPM inhibits sympathetic activity and increases HFR (Kim 2024). |
-| Energy | 0.1-0.3 | Arousal has stronger physiological effect than valence (Int J Psychophysiology 2024). Minimal energy = minimal sympathetic activation. Let the nervous system down-regulate. |
-| Acousticness | >0.7 | Acoustic instruments activate parasympathetic response more than electronic sounds. Classical/acoustic music reduced cortisol, HR, and BP (Thoma 2013). |
-| Instrumentalness | >0.5 | Lyrics add cognitive load (J Cultural Cognitive Science 2024). In a depleted state, the brain should not be processing language — it should be resting. |
+| BPM | 50-70 (sweet spot: 60) | Slow tempo is linked to calmer heart activity (Bernardi et al. 2006; Ooishi et al. 2017). The exact range is ours. |
+| Energy | 0.1-0.3 | Minimal energy = minimal activation. Let the nervous system down-regulate. |
+| Acousticness | >0.7 | We treat acoustic sounds as more calming than electronic ones. |
+| Instrumentalness | >0.5 | We assume a depleted brain is better off not processing lyrics. |
 | Valence | 0.2-0.5 | Not sad (that could worsen mood), not peppy (that would fight the calming goal). Neutral to warm. |
-| Mode | Major preferred | Major mode decreases cortisol more than minor (Zhang 2024). When the body is this depleted, cortisol reduction matters. |
+| Mode | Major preferred | Bright, stable tone. |
 
 **What this playlist sounds like:** Think slow acoustic piano, gentle guitar instrumentals, ambient classical. Your calmest, most peaceful songs.
 
@@ -589,7 +585,7 @@ The classifier evaluates states top-to-bottom and returns the first match. This 
 | Acousticness | >0.6 | Still strongly acoustic for parasympathetic activation, but not as strict as >0.7. |
 | Instrumentalness | >0.3 | Some vocals are OK — the mind is clear, so cognitive load from lyrics isn't as concerning. |
 | Valence | 0.3-0.6 | Moderately positive. Can be a bit brighter than Accumulated Fatigue. |
-| Mode | Major preferred | Same cortisol reduction logic. |
+| Mode | Major preferred | Same reasoning as Accumulated Fatigue. |
 
 **What this playlist sounds like:** Calming but not silent. Think mellow singer-songwriter, soft acoustic with lyrics, gentle folk. The kind of music that lets your body rest while your mind stays gently engaged.
 
@@ -603,7 +599,7 @@ The classifier evaluates states top-to-bottom and returns the first match. This 
 
 | Song Property | Target Range | Why This Range |
 |---|---|---|
-| BPM | 65-90 | Not trying to put you to sleep (body is fine). Not energizing either. Moderate tempo for grounding — research centers emotional grounding at ~75 BPM. |
+| BPM | 65-90 | Not trying to put you to sleep (body is fine). Not energizing either. Moderate tempo for grounding (our design choice). |
 | Energy | 0.2-0.5 | Moderate engagement. Enough to feel present, not so much it's overwhelming for impaired emotional regulation. |
 | Acousticness | 0.4-0.8 | Warm but not strictly acoustic. Electronic warmth (synth pads, ambient textures) is fine too. |
 | Instrumentalness | 0.0-0.5 | **Vocals are OK here.** This is the exception to the "instrumental is better for recovery" rule. When emotional processing is the deficit, hearing a familiar voice singing a song you love provides emotional grounding. Emotional connection > cognitive load. |
@@ -740,7 +736,7 @@ Rather than per-property range matching with progressive relaxation, the engine 
 2. Take the top 60 candidates (all neurologically correct for the state).
 3. Identify up to 5 **recent anchors** — top-scored songs played within 90 days. Anchors get guaranteed slots. Songs tagged "motivational" are excluded from anchors (context-inappropriate for morning playlists) but can still enter through normal scoring.
 4. Run seed-and-expand cohesion to pick a sonically coherent subset of 15-20 songs — the seed is the highest-scoring song, anchors are pre-seeded into the cluster, then expand by adding songs with high genre/mood/era similarity.
-5. **Era hard cap:** When two songs have `era_sim < 0.05` (different production eras), total pairwise similarity is capped at 0.30 regardless of how well other dimensions (mood, BPM, genre) match. A 1999 Bollywood song in a 2013 cluster sounds wrong no matter how similar the mood — production era changes are more jarring than individual property differences.
+5. **Era hard cap:** When two songs have `era_sim < 0.05` (different production eras), total pairwise similarity is capped at 0.30 regardless of how well other dimensions (mood, BPM, genre) match. A 1999 Bollywood song in a 2013 cluster sounds wrong no matter how similar the mood — in our judgment, production era changes are more jarring than individual property differences.
 6. If fewer than 15 songs pass the similarity threshold, progressively relax the cohesion threshold until 15-20 songs qualify.
 
 This produces playlists that feel like they belong together — not just individually matched songs thrown into a list, but a coherent set that shares genre, mood, and era DNA. The anchor mechanism ensures recently-played songs appear (the playlist feels like YOUR current rotation), while the era hard cap prevents cross-era sonic mismatches that other dimensions can't compensate for.
@@ -749,8 +745,8 @@ Every relaxation is logged — the playlist reasoning notes what was relaxed and
 
 ### 8.3 Why 15-20 Songs
 
-- Clinical music therapy guidelines suggest 8-10 songs for a full mood journey
-- The iso principle (Section 10) needs at least 3 transition songs
+- 8-10 songs feels like enough for a full mood journey (our design choice; we found no published guideline)
+- The iso principle (Section 10, not implemented) would need at least 3 transition songs
 - Total target: 15-30 minutes of music
 - 15-20 songs provides enough for the iso transition arc while keeping the playlist a reasonable length
 
@@ -812,18 +808,20 @@ Before creating the Spotify playlist, the engine validates the final track list 
 
 ## 10. How Songs Get Ordered (The Iso Principle)
 
+> **Not implemented.** Playlists are currently ordered by score, not sequenced (see PRODUCT_DECISIONS.md, "Iso principle: decided NOT to implement"). This section describes the idea and the design we considered.
+
 ### 9.1 What the Iso Principle Is
 
-From music therapy: start the music close to where the listener IS right now and gradually transition toward where they NEED to be. Don't jump from the current state to the target — the nervous system resists abrupt shifts.
+From music therapy: start the music close to where the listener IS right now and gradually transition toward where they NEED to be, rather than jumping straight to the target.
 
-Think of it like this: if someone is anxious (high sympathetic activation, fast heart rate), you don't start with a 60 BPM lullaby. Their nervous system won't engage with it. You start with something that matches their current arousal level — maybe 100 BPM, moderate energy — and then each song gently steps down: 95, 85, 75, 65, 60. The nervous system entrains to each step because the shift is small enough to follow.
+Think of it like this: if someone is anxious (high sympathetic activation, fast heart rate), you don't start with a 60 BPM lullaby. Their nervous system won't engage with it. You start with something that matches their current arousal level — maybe 100 BPM, moderate energy — and then each song gently steps down: 95, 85, 75, 65, 60. The idea is that each step is small enough to follow.
 
 ### 9.2 The Algorithm
 
 - **First 2-3 songs:** Match the detected physiological state within +/- 5 BPM and +/- 0.1 energy. These songs meet the listener where they are.
 - **Middle songs:** Each subsequent song shifts 10-15 BPM and 0.1-0.15 energy toward the target state. This is the transition zone.
 - **Last 3-4 songs:** Arrive at the target state. These are the songs with the ideal properties for the detected need.
-- **Minimum 3 transition songs.** Research (Saarikallio 2021) found that using only 2 songs created too-abrupt shifts. 3-5+ songs are needed for effective gradual transition.
+- **Minimum 3 transition songs.** A design choice.
 - **Total duration: 15-30 minutes.**
 
 ### 9.3 What This Means for Each State
@@ -849,12 +847,9 @@ Think of it like this: if someone is anxious (high sympathetic activation, fast 
 
 The first 2-3 songs in any playlist target the starting profile. The last 3-4 songs target the state's ideal property ranges. The middle transitions between them.
 
-### 9.4 Research Support
+### 9.4 Status
 
-- **Heiderscheit & Madson 2015:** Clinically defined iso principle as matching the fit between person's current state and music properties, then gradually shifting.
-- **Starcke & von Georgi 2024:** Iso-principle-based listening successfully modulated affective state in controlled conditions.
-- **"Weightless" (Marconi Union):** Clinically studied single track that starts at 60 BPM and slows to ~50 BPM over 8 minutes. Reduced anxiety by 65% and physiological resting rates by 35%. Note: The MindLab study was not peer-reviewed and was conducted for a marketing partnership. The directional finding is consistent with the broader iso principle literature, but the specific numbers should not be treated as rigorous evidence.
-- **Li et al. 2024:** Computational implementation traversing the valence-arousal space in 30-second increments across 15-minute sessions.
+The step sizes, song counts and starting profiles above are design choices, not research findings. The feature is not built.
 
 ---
 
@@ -883,17 +878,15 @@ The `generated_playlists` table logs everything: the date, detected state, all W
 
 ### 11.0 A Note on Evidence
 
-This system is evidence-informed — every design decision traces to published research, and the directional relationships are well-established. However, the mathematical precision of the formulas exceeds what any single study validates. The research tells us which properties matter and in which direction; our specific weights and thresholds are informed starting points that will be calibrated against real-world playlist quality.
+Research is cited only for the problem: sleep is tied to how you feel, readiness scores and feeling can come apart, and music changes your state (see RESEARCH.md). Every weight, threshold, range and formula in this document is our own design choice, inspired by that reading but not prescribed by it. They are starting points to be calibrated against real-world playlist quality.
 
 ### 11.1 Graceful Degradation
 
-The most important metrics are the most reliable:
-- HRV (#1): 99% clinical accuracy
-- Sleep stages (#2): Fair-to-moderate accuracy, but within-device trends are reliable
-- Recovery score (#5): Proprietary and opaque — but we don't depend on it
-- SpO2/Skin temp (#6): Noisiest — but we don't depend on them
-
-We depend most on what's most reliable. The less reliable the metric, the less weight it carries.
+Each signal is compared against the person's own baseline on the same device, so device-level offsets matter less:
+- HRV (#1): the main signal
+- Sleep stages (#2): estimates, not a lab sleep study, but compared against your own baseline
+- Recovery score (#5): proprietary formula — we don't depend on it
+- SpO2/Skin temp (#6): not used
 
 ### 11.2 Composite State Protection
 
@@ -934,7 +927,7 @@ These features use available data but aren't needed for v1:
 - **Beyond-library recommendations:** Using LLM knowledge of all music to recommend songs from all of Spotify, not just the user's classified library. Taste-anchored by feeding the user's library as context.
 
 _Previously deferred, now shipped:_
-- **Essentia audio analysis** — shipped Day 5. 92% coverage across all users.
+- **Essentia audio analysis** — shipped Day 5. Covers most of each library (the share varies by user).
 - **Conversational DJ** — shipped Day 19. Live on WhatsApp via Twilio. LLM-direct song selection (Claude Sonnet sees full library).
 
 ---
